@@ -70,7 +70,8 @@ Ký hiệu: 🔴 lỗi/cần sửa sớm · 🟡 cân bằng/cải thiện · �
 - ⚪ Bounty (GDD §9): Town đặt bounty, hunter nhận thưởng theo kill, Town nhận vàng khi xong; Torment tăng tỉ lệ rơi.
 - ✅ Trading Post theo yêu cầu vật liệu (xem mục 1; còn thiếu UI đặt yêu cầu).
 - ⚪ Journey (GDD §9): 3 NPC, chạy offline, team power, tỉ lệ thành công.
-- ⚪ Tiến trình offline (TECH_SPEC §9): ước lượng theo tốc độ trung bình, trần 8 giờ, popup tổng kết.
+- ✅ Tiến trình offline (TECH_SPEC §9): `src/core/offline.ts` ước lượng theo tốc độ trung bình 10 phút gần nhất (mẫu lưu trong envelope save, không đổi schema), trần `offlineMaxHours` 8, `offlineEfficiency` 1, chặn đồng hồ lùi/save không có thời gian; client áp dụng lúc boot và khi tab hiện lại, save ngay, popup tổng kết. Test `tests/offline.test.ts` (kể cả so với chạy thật 60 phút).
+  - 🟡 Còn lại: ước lượng tuyến tính hụt nhiều khi game đang tăng tốc (sau 60 phút chơi: kill −28…−43 %, level ~½ thực tế; sau 150–240 phút sai ~±15 %). Gold dùng ròng sàn 0, không so được với thực tế (offline không mua/cường hóa). Offline không craft, không bán/mua shop, không tái sinh (EXP ở max level mất), không có hunter mới đến dù còn slot. Popup mới kiểm bằng DOM (nội dung đúng), chưa xem ảnh chụp.
 - ⚪ Kiểm thử theo checklist GDD §13.
 
 ### M5

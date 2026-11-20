@@ -1,10 +1,12 @@
 import { loadConfig, ConfigError } from '../core/config/load';
 import type { GameConfig } from '../core/config/types';
+import { applyOffline, estimateOffline, recordSample, type OfflineReport, type OfflineTracker } from '../core/offline';
 import { deserialize, serialize, SaveError } from '../core/save/save';
 import { IndexedDbStorage } from '../core/save/storage';
 import { createWorld, Simulation } from '../core/simulation';
 import { rawConfigFromBundle } from './configSource';
 import { DebugOverlay } from './debugOverlay';
+import { showOfflinePopup } from './offlinePopup';
 import { Renderer } from './render';
 import './style.css';
 
@@ -31,15 +33,44 @@ async function boot(): Promise<void> {
   const storage = new IndexedDbStorage();
   const sim = new Simulation(config, createWorld(config, Date.now() >>> 0));
   let status = 'new game';
+  /** Rate samples for offline progress (TECH_SPEC §9); saved in the envelope next to the world. */
+  let tracker: OfflineTracker | null = null;
+  let popupRoot: HTMLElement | null = null;
+  let pendingReport: OfflineReport | null = null;
 
-  async function load(): Promise<boolean> {
+  /** Estimate and apply offline progress for the wall-clock gap since `since`; returns the report when anything was credited. */
+  function creditOffline(since: number): OfflineReport | null {
+    const r = estimateOffline(config, sim.world, tracker, since, Date.now());
+    if (r.skipped) return null;
+    applyOffline(config, sim.world, r, tracker);
+    return r;
+  }
+
+  function showReport(r: OfflineReport | null): void {
+    if (!r) return;
+    if (popupRoot) showOfflinePopup(popupRoot, config, sim.world, r);
+    else pendingReport = r;
+  }
+
+  /** `offline`: credit the time since the save (boot only; the debug Load button just reloads). */
+  async function load(offline = false): Promise<boolean> {
     const text = await storage.read(SLOT);
     if (!text) { status = 'no save'; return false; }
     try {
       const r = deserialize(text, config);
       sim.setWorld(r.world);
+      tracker = r.offline;
       const away = Math.round((Date.now() - r.savedAt) / 1000);
       status = `loaded (saved ${away}s ago${r.migratedFrom !== null ? `, migrated from v${r.migratedFrom}` : ''}${r.configChanged ? ', config changed' : ''})`;
+      if (offline) {
+        const rep = creditOffline(r.savedAt);
+        if (rep) {
+          status += `, offline ${Math.round(rep.creditedMs / 60_000)} min credited`;
+          // Save right away so a reload before the next autosave cannot credit the same gap twice.
+          await save();
+          showReport(rep);
+        }
+      }
       return true;
     } catch (e) {
       status = e instanceof SaveError ? `load failed: ${e.message}` : `load failed: ${String(e)}`;
@@ -49,7 +80,7 @@ async function boot(): Promise<void> {
 
   async function save(): Promise<void> {
     try {
-      await storage.write(SLOT, serialize(sim.world, Date.now()));
+      await storage.write(SLOT, serialize(sim.world, Date.now(), tracker));
       status = `saved at tick ${sim.world.tick}`;
     } catch (e) {
       status = `save failed: ${String(e)}`;
@@ -59,10 +90,11 @@ async function boot(): Promise<void> {
   async function reset(): Promise<void> {
     await storage.remove(SLOT);
     sim.setWorld(createWorld(config, Date.now() >>> 0));
+    tracker = null;
     status = 'reset';
   }
 
-  await load();
+  await load(true);
 
   const app = document.getElementById('app')!;
   const canvas = document.createElement('canvas');
@@ -81,6 +113,9 @@ async function boot(): Promise<void> {
   };
   fitView();
   window.addEventListener('resize', fitView);
+  popupRoot = app;
+  showReport(pendingReport);
+  pendingReport = null;
 
   // Expose for console debugging only.
   (window as unknown as { sim: Simulation }).sim = sim;
@@ -92,6 +127,7 @@ async function boot(): Promise<void> {
     const dt = Math.min(now - last, 1000);
     last = now;
     sim.advance(dt);
+    tracker = recordSample(config, sim.world, tracker);
     overlay.pushEvents(sim.drainEvents());
     renderer.sync(sim.world);
     renderer.draw();
@@ -108,8 +144,21 @@ async function boot(): Promise<void> {
   }
   requestAnimationFrame(frame);
 
+  // A hidden tab stops requestAnimationFrame (the sim pauses), so credit the hidden time as offline progress.
+  let hiddenAt = 0;
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') void save();
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now();
+      void save();
+    } else if (hiddenAt > 0) {
+      const rep = creditOffline(hiddenAt);
+      hiddenAt = 0;
+      last = performance.now();
+      if (rep) {
+        void save();
+        showReport(rep);
+      }
+    }
   });
 }
 

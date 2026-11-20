@@ -31,6 +31,7 @@ Mọi công thức nằm ở `src/core/formulas.ts`, hệ số và ngưỡng AI 
 | `src/core/pathfinding.ts` | Waypoint graph + A*, road nhanh hơn, cache path. |
 | `src/core/commands.ts` | Command của người chơi/debug; command sai sinh event `commandRejected`. |
 | `src/core/save/` | Serialize, migration theo `schemaVersion`, storage IndexedDB/memory. |
+| `src/core/offline.ts` | Tiến trình offline: đo tốc độ khi chơi (mẫu lưu trong envelope save), ước lượng + áp dụng lúc mở lại, trần 8 giờ (TECH_SPEC §9). |
 | `src/client/` | Render Three.js (pipeline pixel: render target thấp + nearest), debug overlay, autosave 30 s. |
 | `tests/` | Vitest. |
 
