@@ -204,20 +204,36 @@ export function recipeWanters(config: GameConfig, world: World, gear: GearDef): 
   return countUpgrades(config, world, gear, 0);
 }
 
-/** Hunters for whom this recipe's sellable rolls (see recipeBeneficiaries) reach craftMinSellChance, judged over max(slot value, covered). */
-function countUpgrades(config: GameConfig, world: World, gear: GearDef, covered: number): number {
+interface CraftRoll { chance: number; value: number; minBudget: number }
+
+/** Config-only roll table per recipe, cached per (config, formula) object (TECH_SPEC §10). Null when no quality can roll. */
+const rollsCache = new WeakMap<GameConfig, { formula: GameConfig['formula']; byGear: Map<GearDef, CraftRoll[] | null> }>();
+
+function craftRolls(config: GameConfig, gear: GearDef): CraftRoll[] | null {
+  let c = rollsCache.get(config);
+  if (!c || c.formula !== config.formula) { c = { formula: config.formula, byGear: new Map() }; rollsCache.set(config, c); }
+  const hit = c.byGear.get(gear);
+  if (hit !== undefined) return hit;
   const f = config.formula;
   let total = 0;
   for (const q of config.qualities) total += Math.max(0, q.craftChance);
-  if (total <= 0) return 0;
-  const minChance = f.craftMinSellChance ?? 0;
-  const rolls = config.qualities.map((q) => ({
+  const rolls = total <= 0 ? null : config.qualities.map((q) => ({
     chance: Math.max(0, q.craftChance) / total,
     value: gearMainValue(config, { uid: '', gearId: gear.id, qualityId: q.id, enhance: 0 }),
     // Hunters who could not come close to paying do not count: that gear just gets scrapped later,
     // wasting the craft gold and the materials bought for it.
     minBudget: (f.craftAffordFrac ?? 0) * Math.round(gear.basePrice * q.priceMult),
   }));
+  c.byGear.set(gear, rolls);
+  return rolls;
+}
+
+/** Hunters for whom this recipe's sellable rolls (see recipeBeneficiaries) reach craftMinSellChance, judged over max(slot value, covered). */
+function countUpgrades(config: GameConfig, world: World, gear: GearDef, covered: number): number {
+  const f = config.formula;
+  const rolls = craftRolls(config, gear);
+  if (!rolls) return 0;
+  const minChance = f.craftMinSellChance ?? 0;
   let n = 0;
   for (const h of world.hunters) {
     if (h.level < gear.level - f.craftLevelAhead) continue;
