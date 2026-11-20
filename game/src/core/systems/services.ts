@@ -4,13 +4,18 @@ import type { System } from '../system';
 import { isAlive, type Hunter } from '../world';
 
 /**
- * Price a hunter pays for a service: round(base × (1 + servicePriceLevelPct / 100 × (level − 1))).
- * Scales with level so late-game hunter gold flows back to the town. Single source for the system, AI and commands.
+ * Price a hunter pays for a service:
+ * round(base × (1 + servicePriceLevelPct / 100 × (level − 1) + servicePriceLatePct / 100 × max(0, level − servicePriceLateLevel))).
+ * Scales with level so late-game hunter gold flows back to the town (a rich town burns it through townFeeShare);
+ * the steeper late term starts only at servicePriceLateLevel so early pacing is untouched.
+ * Single source for the system, AI and commands.
  */
 export function servicePrice(config: GameConfig, h: Hunter, b: BuildingDef): number {
+  const f = config.formula;
   const base = b.price ?? 0;
-  const pct = config.formula.servicePriceLevelPct ?? 0;
-  return Math.round(base * (1 + (pct / 100) * Math.max(0, h.level - 1)));
+  const pct = f.servicePriceLevelPct ?? 0;
+  const late = (f.servicePriceLatePct ?? 0) * Math.max(0, h.level - (f.servicePriceLateLevel ?? 0));
+  return Math.round(base * (1 + (pct / 100) * Math.max(0, h.level - 1) + late / 100));
 }
 
 /**

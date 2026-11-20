@@ -386,6 +386,15 @@ export interface FormulaParams {
   retreatTripMul: number;
   retreatKillMul: number;
   retreatHpCap: number;
+  /**
+   * Town treasury target = max(feeTownTargetMin, feeTownTargetMul × autoCraftReserve). Above it the town's fee share
+   * shrinks: feeTownShare × target / townGold (the rest of the fee leaves the economy), so a rich town stops piling up gold.
+   */
+  feeTownTargetMul: number;
+  feeTownTargetMin: number;
+  /** Extra service price above servicePriceLateLevel: + servicePriceLatePct / 100 × (level − servicePriceLateLevel) × base. */
+  servicePriceLatePct: number;
+  servicePriceLateLevel: number;
   [key: string]: number;
 }
 

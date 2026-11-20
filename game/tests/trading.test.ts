@@ -11,10 +11,11 @@ import { Rng } from '../src/core/rng';
 import { createWorld } from '../src/core/simulation';
 import type { SystemContext } from '../src/core/system';
 import { autoCraftReserve, craftingSystem } from '../src/core/systems/crafting';
-import { economySystem } from '../src/core/systems/economy';
+import { academySystem } from '../src/core/systems/academy';
+import { economySystem, enhanceCost, feeTownCut } from '../src/core/systems/economy';
 import { servicePrice } from '../src/core/systems/services';
 import {
-  autoMaterialDemand, materialDemand, requestedDropShare, surplusFloor, surplusPrice,
+  autoMaterialDemand, materialDemand, requestedDropShare, surplusFloor, surplusPrice, townFeeShare, townGoldTarget,
 } from '../src/core/systems/trading';
 import type { Goal, Hunter } from '../src/core/world';
 import { testConfig } from './helpers';
@@ -30,6 +31,7 @@ function cfg(patch: Partial<FormulaParams> = {}): GameConfig {
       ...base.formula,
       requestMaxCopies: 2, requestZoneBonus: 0.3, requestMaxUnits: 999, tradeSaleTax: 0,
       tradeSurplusPriceFrac: 0.5, tradeSurplusFloorMul: 5, craftAffordFrac: 0, craftMinSellChance: 0.35, servicePriceLevelPct: 0,
+      servicePriceLatePct: 0, servicePriceLateLevel: 40, feeTownShare: 0.8, feeTownTargetMul: 0, feeTownTargetMin: 0,
       craftLevelAhead: 2, minUpgradeGain: 0.12,
       ...patch,
     },
@@ -310,5 +312,75 @@ describe('service prices scale with level', () => {
     expect(scoreGoals(config, nav, ctx.world, h).some((c) => c.goal.type === 'service' && c.goal.buildingId === inn.id)).toBe(true);
     applyCommand(ctx, { type: 'hunter.activity', hunterId: h.id, buildingId: inn.id });
     expect(ofType(ctx.events.drain(), 'commandRejected')).toEqual([]);
+  });
+});
+
+describe('service prices: steeper late-game term', () => {
+  it('adds base × servicePriceLatePct/100 × (level − servicePriceLateLevel) above the late level only', () => {
+    const config = cfg({ servicePriceLevelPct: 1, servicePriceLatePct: 5, servicePriceLateLevel: 40 });
+    const inn = config.index.buildings.get('bld.inn')!; // base 18
+    expect(servicePrice(config, hunter(config, { level: 20 }), inn)).toBe(Math.round(18 * 1.19)); // linear term only
+    expect(servicePrice(config, hunter(config, { level: 40 }), inn)).toBe(Math.round(18 * 1.39));
+    expect(servicePrice(config, hunter(config, { level: 90 }), inn)).toBe(Math.round(18 * (1 + 0.89 + 2.5))); // 79
+  });
+});
+
+describe('town treasury: fee share shrinks above the target (restoring force on town gold)', () => {
+  const rich = (patch: Partial<FormulaParams> = {}) => cfg({ feeTownShare: 0.8, feeTownTargetMul: 10, feeTownTargetMin: 5000, ...patch });
+
+  it('target = max(feeTownTargetMin, feeTownTargetMul × autoCraftReserve)', () => {
+    const ctx = makeCtx(rich());
+    addHunter(ctx, { level: 1 }); // low tier: reserve is tiny, the minimum applies
+    expect(townGoldTarget(ctx.config, ctx.world)).toBe(5000);
+    ctx.world.hunters[0]!.level = 80; // top tier
+    expect(townGoldTarget(ctx.config, ctx.world)).toBe(10 * autoCraftReserve(ctx.config, ctx.world));
+    expect(townGoldTarget(ctx.config, ctx.world)).toBeGreaterThan(5000);
+  });
+
+  it('full feeTownShare up to the target, then feeTownShare × target / townGold; 0/0 keys = constant share', () => {
+    const ctx = makeCtx(rich());
+    addHunter(ctx, { level: 1 });
+    ctx.world.town.gold = 5000;
+    expect(townFeeShare(ctx.config, ctx.world)).toBe(0.8);
+    ctx.world.town.gold = 10_000;
+    expect(townFeeShare(ctx.config, ctx.world)).toBeCloseTo(0.4);
+    ctx.world.town.gold = 40_000;
+    expect(townFeeShare(ctx.config, ctx.world)).toBeCloseTo(0.1);
+    expect(townFeeShare(cfg(), ctx.world)).toBe(0.8);
+    expect(feeTownCut(ctx.config, 1000)).toBe(800); // without a world: the plain share
+    expect(feeTownCut(ctx.config, 1000, ctx.world)).toBe(100);
+  });
+
+  it('forge and academy pay the town the reduced cut while it is rich; the hunter always pays the full fee', () => {
+    const config = rich();
+    const ctx = makeCtx({ ...config, enhance: config.enhance.map((r) => ({ ...r, successRate: 1 })) });
+    const h = addHunter(ctx, { level: 1, gold: 100_000, classId: 'class.vanguard', jobTier: 0, skills: {} });
+    h.equipment.weapon = { uid: 'e1', gearId: 'gear.w.iron', qualityId: 'q.rare', enhance: 0 };
+    ctx.world.town.gold = 20_000; // 4 × target → share 0.2
+    const cost = enhanceCost(ctx.config, h.equipment.weapon)!;
+    arrive(h, { type: 'enhance', slot: 'weapon' });
+    economySystem.update(ctx);
+    expect(h.gold).toBe(100_000 - cost);
+    expect(ctx.world.town.gold).toBe(20_000 + Math.round(cost * 0.2));
+
+    const gold = h.gold;
+    const town = ctx.world.town.gold;
+    const share = townFeeShare(ctx.config, ctx.world);
+    arrive(h, { type: 'learn', kind: 'skill', id: 'skill.vanguard.cleave' });
+    academySystem.update(ctx);
+    expect(h.gold).toBe(gold - 50);
+    expect(ctx.world.town.gold).toBe(town + Math.round(50 * share));
+  });
+
+  it('settles a town with steady fee income near the target instead of growing without bound', () => {
+    // Closed loop of the rule alone: each step the town earns `fees` gross at townFeeShare and spends `spend`.
+    const ctx = makeCtx(rich());
+    addHunter(ctx, { level: 1 });
+    const fees = 2000;
+    const spend = 1000; // fees × 0.8 − spend = +600/step at the full share: without the rule gold grows linearly
+    for (let i = 0; i < 2000; i++) ctx.world.town.gold += feeTownCut(ctx.config, fees, ctx.world) - spend;
+    // Equilibrium: 2000 × 0.8 × 5000 / G = 1000 → G = 8000.
+    expect(ctx.world.town.gold).toBeGreaterThan(7500);
+    expect(ctx.world.town.gold).toBeLessThan(8500);
   });
 });

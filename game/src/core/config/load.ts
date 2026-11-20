@@ -244,6 +244,7 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'shopBaseScore', 'shopGainWeight', 'sellBaseScore', 'sellFillWeight', 'learnSkillScore', 'learnTraitScore', 'econMulFloor',
   'serviceFullFrac', 'serviceLowBase', 'serviceLowWeight', 'serviceWeight', 'bagReturnScore', 'restScoreWeight',
   'retreatTripMul', 'retreatKillMul', 'retreatHpCap',
+  'feeTownTargetMul', 'feeTownTargetMin', 'servicePriceLatePct', 'servicePriceLateLevel',
 ];
 
 export class ConfigError extends Error {
@@ -290,6 +291,11 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('tradeSurplusPriceFrac', 0, 1);
     range('tradeSurplusFloorMul', 0, 1000);
     range('craftAffordFrac', 0, 10);
+    range('feeTownShare', 0, 1);
+    range('feeTownTargetMul', 0, 1000);
+    range('feeTownTargetMin', 0, 1e9);
+    range('servicePriceLatePct', 0, 100);
+    range('servicePriceLateLevel', 0, 1000);
     range('craftMinSellChance', 0, 1);
     // Shop markdown schedule: the floor must be reachable (and offered) before an item is scrapped.
     // The scrap age is derived from it (crafting.shopScrapAgeSec), so only the inputs need checking.

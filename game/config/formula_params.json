@@ -108,5 +108,9 @@
  "restScoreWeight": 0.5,
  "retreatTripMul": 3,
  "retreatKillMul": 1,
- "retreatHpCap": 0.6
+ "retreatHpCap": 0.6,
+ "feeTownTargetMul": 10,
+ "feeTownTargetMin": 5000,
+ "servicePriceLatePct": 5,
+ "servicePriceLateLevel": 40
 }
