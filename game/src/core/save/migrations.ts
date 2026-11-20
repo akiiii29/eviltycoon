@@ -154,6 +154,12 @@ export const MIGRATIONS: Record<number, Migration> = {
   },
 };
 
+/** Apply the v7 → v8 building fields when absent (idempotent; existing fields win). Used at load for v9 saves made before buildings. */
+export function fillMissingBuildings(w: Record<string, unknown>, config: GameConfig): Record<string, unknown> {
+  const town = (w.town ?? {}) as Record<string, unknown>;
+  return Array.isArray(town.buildings) ? w : MIGRATIONS[7]!(w, config);
+}
+
 /**
  * v7 → v8 building levels: every plot's startBuilding, at the lowest level that keeps the save playing as before —
  * craft buildings high enough for every recipe the old rules allowed (gear.level ≤ max hunter level + craftLevelAhead)

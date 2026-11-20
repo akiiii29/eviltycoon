@@ -308,6 +308,15 @@ describe('auto-investment', () => {
     expect(started).toBeDefined();
     expect(w.stats.investImportGold).toBeGreaterThan(0);
     expect(gold - w.town.gold).toBe(started.upgrade!.gold);
+    expect(started.upgrade!.importedUnits).toBeGreaterThan(0);
+    // Cancel: all gold back, but imported units are not handed out as free materials.
+    const storageBefore = JSON.stringify(w.town.storage);
+    expect(run(ctx, { type: 'town.cancelUpgrade', buildingInstanceId: started.id })).toBeNull();
+    expect(w.town.gold).toBe(gold);
+    expect(JSON.stringify(w.town.storage)).toBe(storageBefore);
+    expect(w.stats.investGold).toBe(0);
+    expect(w.stats.investImportGold).toBe(0);
+    expect(w.stats.investMaterials).toBe(0);
   });
 
   it('is a real sink and stays deterministic: two identical runs match, and auto-invest off changes nothing in buildings', () => {

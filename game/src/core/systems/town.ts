@@ -175,10 +175,10 @@ function begin(ctx: SystemContext, s: BuildingState, b: BuildingDef, cost: Level
     const left = have - take;
     if (left > 0) world.town.storage[id] = left;
     else delete world.town.storage[id];
-    used[id] = want; // imported units count as consumed too (and come back on cancel)
+    if (take > 0) used[id] = take; // only storage units come back on cancel (imports are refunded as gold)
     units += want;
   }
-  s.upgrade = { toLevel: s.level + 1, remainingMs: cost.ms, totalMs: cost.ms, gold: paidGold, materials: used, auto };
+  s.upgrade = { toLevel: s.level + 1, remainingMs: cost.ms, totalMs: cost.ms, gold: paidGold, materials: used, importGold, importedUnits: units - Object.values(used).reduce((a, n) => a + n, 0), auto };
   const st = world.stats;
   st.investGold = (st.investGold ?? 0) + paidGold;
   st.investMaterials = (st.investMaterials ?? 0) + units;
@@ -252,7 +252,8 @@ export function cancelUpgrade(ctx: SystemContext, instanceId: string): string | 
   }
   const st = world.stats;
   st.investGold = (st.investGold ?? 0) - u.gold;
-  st.investMaterials = (st.investMaterials ?? 0) - units;
+  st.investMaterials = (st.investMaterials ?? 0) - units - (u.importedUnits ?? 0);
+  st.investImportGold = (st.investImportGold ?? 0) - (u.importGold ?? 0);
   s.upgrade = null;
   if (s.level === 0) world.town.buildings.splice(i, 1);
   ctx.events.emit(world.tick, { type: 'buildingCancelled', instanceId, buildingId: s.buildingId, refund: u.gold });

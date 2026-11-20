@@ -1,7 +1,7 @@
 import type { GameConfig } from '../config/types';
 import { parseTracker, type OfflineTracker } from '../offline';
 import { WORLD_SCHEMA_VERSION, type World } from '../world';
-import { MIGRATIONS } from './migrations';
+import { fillMissingBuildings, MIGRATIONS } from './migrations';
 
 export const SAVE_FORMAT = 'town-hunter-save';
 
@@ -69,6 +69,9 @@ export function deserialize(text: string, config: GameConfig): LoadResult {
     v += 1;
     world.schemaVersion = v;
   }
+
+  // A v9 save from a build without Town buildings (Journey landed first and reserved v8): fill them like v7 → v8 did.
+  world = fillMissingBuildings(world, config);
 
   const w = world as unknown as World;
   return {

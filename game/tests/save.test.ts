@@ -184,6 +184,20 @@ describe('save/load', () => {
     expect(r.world.stats).toMatchObject({ buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0 });
   });
 
+  it('fills buildings into a v9 save made before buildings existed (Journey-only build) and the town keeps working', () => {
+    const w = JSON.parse(v7Save(() => {})).world;
+    w.schemaVersion = WORLD_SCHEMA_VERSION;
+    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: WORLD_SCHEMA_VERSION, configVersion: config.version, savedAt: 0, world: w }), config);
+    expect(r.migratedFrom).toBeNull();
+    expect(r.world.town.buildings).toEqual(createWorld(config, 4).town.buildings);
+    expect(r.world.town.autoInvest).toBe(true);
+    expect(r.world.stats.investGold).toBe(0);
+    const s2 = new Simulation(config, r.world);
+    s2.enqueue({ type: 'debug.spawnHunter' });
+    for (let i = 0; i < 600; i++) s2.step();
+    expect(s2.world.stats.serviceUses + s2.world.stats.kills).toBeGreaterThan(0);
+  });
+
   it('migrates a late v7 save at levels that keep its gear craftable (craft buildings, Town Hall)', () => {
     const s = new Simulation(config, createWorld(config, 4));
     s.enqueue({ type: 'debug.spawnHunter' });

@@ -154,9 +154,14 @@ export interface BuildingUpgrade {
   toLevel: number;
   remainingMs: number;
   totalMs: number;
-  /** What was paid (refunded in full on cancel); imported material gold is included in `gold`. */
+  /**
+   * What was paid, refunded on cancel: `gold` (imported material gold included) and the units taken from storage.
+   * Imported units (bought for `importGold`) are not given back as materials.
+   */
   gold: number;
   materials: Record<string, number>;
+  importGold: number;
+  importedUnits: number;
   /** Started by the Town's auto-investment rather than a player command. */
   auto: boolean;
 }
