@@ -15,21 +15,29 @@
 import type { GameConfig, ZoneDef } from '../config/types';
 import type { World } from '../world';
 import { autoCraftReserve, recipeWanters } from './crafting';
+import { extraRequestCopies, gearCraftable, investMaterialNeed, surplusPriceMul } from './town';
 
 export type Demand = Record<string, number>;
 
-/** Automatic requests from auto-craft needs (empty when auto-craft is off). */
+/**
+ * Automatic requests: auto-craft needs (when auto-craft is on; only recipes the craft building's level allows; copies =
+ * requestMaxCopies + Storehouse requestCopies) plus the materials of the auto-investment plan (TECH_SPEC §5.10, when
+ * auto-invest is on), minus what storage already holds.
+ */
 export function autoMaterialDemand(config: GameConfig, world: World): Demand {
   const need: Demand = {};
-  if (!world.town.autoCraft) return need;
-  const copies = Math.max(0, Math.floor(config.formula.requestMaxCopies));
-  if (copies === 0) return need;
-  for (const g of config.gear) {
-    const w = recipeWanters(config, world, g);
-    if (w <= 0) continue;
-    const n = Math.min(w, copies);
-    for (const m of g.materials) need[m.materialId] = (need[m.materialId] ?? 0) + m.count * n;
+  const copies = Math.max(0, Math.floor(config.formula.requestMaxCopies)) + (copiesBonus(config, world));
+  if (world.town.autoCraft && copies > 0) {
+    for (const g of config.gear) {
+      if (!gearCraftable(config, world, g)) continue;
+      const w = recipeWanters(config, world, g);
+      if (w <= 0) continue;
+      const n = Math.min(w, copies);
+      for (const m of g.materials) need[m.materialId] = (need[m.materialId] ?? 0) + m.count * n;
+    }
   }
+  const invest = investMaterialNeed(config, world);
+  for (const id in invest) need[id] = (need[id] ?? 0) + invest[id]!;
   const out: Demand = {};
   for (const id of Object.keys(need).sort()) {
     const lack = need[id]! - (world.town.storage[id] ?? 0);
@@ -55,11 +63,19 @@ export function salePrice(config: GameConfig, materialId: string): number {
   return Math.round(price * (1 - config.formula.tradeSaleTax));
 }
 
-/** Discount price for unrequested units: round(price × tradeSurplusPriceFrac × (1 − tradeSaleTax)). */
-export function surplusPrice(config: GameConfig, materialId: string): number {
+function copiesBonus(config: GameConfig, world: World): number {
+  return Math.max(0, Math.floor(config.formula.requestMaxCopies)) > 0 ? extraRequestCopies(config, world) : 0;
+}
+
+/**
+ * Discount price for unrequested units: round(price × tradeSurplusPriceFrac × Trading Post surplusPriceMul × (1 − tradeSaleTax))
+ * (the multiplier is 1 without `world`).
+ */
+export function surplusPrice(config: GameConfig, materialId: string, world?: World): number {
   const f = config.formula;
   const price = config.index.materials.get(materialId)?.price ?? 0;
-  return Math.round(price * f.tradeSurplusPriceFrac * (1 - f.tradeSaleTax));
+  const mul = world ? surplusPriceMul(config, world) : 1;
+  return Math.round(price * f.tradeSurplusPriceFrac * mul * (1 - f.tradeSaleTax));
 }
 
 /** Town gold the post never spends on unrequested units: tradeSurplusFloorMul × autoCraftReserve. */
@@ -131,7 +147,7 @@ export function bagHasSellable(config: GameConfig, world: World, bag: Record<str
     const want = demand[id] ?? 0;
     if (want > 0 && world.town.gold >= salePrice(config, id)) return true;
     if (have > want) {
-      const p = surplusPrice(config, id);
+      const p = surplusPrice(config, id, world);
       budget ??= surplusBudget(config, world);
       if (p > 0 && budget >= p) return true;
     }

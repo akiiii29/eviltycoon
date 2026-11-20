@@ -52,8 +52,8 @@ export interface MapEdge {
   road: boolean;
 }
 
-export type BuildingKind = 'service' | 'tradingPost' | 'craft' | 'shop' | 'forge' | 'academy';
-export const BUILDING_KINDS: readonly BuildingKind[] = ['service', 'tradingPost', 'craft', 'shop', 'forge', 'academy'];
+export type BuildingKind = 'service' | 'tradingPost' | 'craft' | 'shop' | 'forge' | 'academy' | 'townHall' | 'storehouse';
+export const BUILDING_KINDS: readonly BuildingKind[] = ['service', 'tradingPost', 'craft', 'shop', 'forge', 'academy', 'townHall', 'storehouse'];
 
 /**
  * Stat modifiers shared by traits and skill buffs (M3).
@@ -121,17 +121,53 @@ export interface DifficultyDef {
   rewardMul: number;
 }
 
+/** Gold, Town Storage materials and build time to reach one building level (TECH_SPEC §5.10). */
+export interface BuildingLevelCost {
+  gold: number;
+  materials: { materialId: string; count: number }[];
+  sec: number;
+}
+
+/**
+ * A building TYPE (TECH_SPEC §5.10). Where it stands is a plot (`building_plot`); its level lives in the world.
+ * Per-level arrays have length maxLevel: index i = level i + 1. upgradeCost[0] is the cost to build (level 1).
+ * At most one instance per type (maxCount 1), so systems keep addressing buildings by type id.
+ */
 export interface BuildingDef {
   id: string;
   nameKey: string;
   kind: BuildingKind;
-  doorNode: string;
-  /** service only: need restored, points per second while inside, entry price. */
+  maxLevel: number;
+  /** Town Hall level needed to build this type. Any level of a non-Town-Hall building is also capped at the Town Hall level. */
+  requires: { townHallLevel: number };
+  upgradeCost: BuildingLevelCost[];
+  /** service only: need restored, points per second while inside (per level), entry price (per level, before servicePrice scaling). */
   need?: NeedKey;
-  restorePerSec?: number;
-  price?: number;
-  /** shop only: max items on sale. */
-  capacity?: number;
+  restorePerSec?: number[];
+  price?: number[];
+  /** shop only: max items on sale (per level). */
+  capacity?: number[];
+  /** craft only: highest gear.level this building can craft (per level) — the craftable gear tier. */
+  maxGearLevel?: number[];
+  /** forge only: added to every enhance successRate (per level). */
+  enhanceBonus?: number[];
+  /** academy only: multiplier on skill study gold (per level). */
+  studyGoldMul?: number[];
+  /** tradingPost only: multiplier on tradeSurplusPriceFrac (per level). */
+  surplusPriceMul?: number[];
+  /** storehouse only: extra copies kept by the automatic material requests (per level). */
+  requestCopies?: number[];
+}
+
+/** A building plot (TECH_SPEC §5.10): a fixed spot on the map with its own door node (enterable only once built). */
+export interface BuildingPlotDef {
+  id: string;
+  doorNode: string;
+  /** Town Hall level that unlocks the plot. */
+  townHallLevel: number;
+  /** Building standing here in a new game (and at what level). */
+  startBuilding?: string;
+  startLevel?: number;
   /** Visual footprint (world units), centered at x,y. */
   x: number;
   y: number;
@@ -427,6 +463,23 @@ export interface FormulaParams {
   bountyAutoRewardFrac: number;
   bountyAutoKills: number;
   bountyAutoExpireSec: number;
+  /**
+   * Town buildings (TECH_SPEC §5.10, systems/town.ts). Auto-invest runs every townInvestIntervalSec; an "urgent" step
+   * (a craft building whose gear tier cap is below max hunter level + craftLevelAhead + investCraftLeadLevels, or the Town
+   * Hall level that blocks it) may spend down to investUrgentReserveMul × autoCraftReserve, any other step only gold above
+   * investTargetMul × townGoldTarget. Materials missing for investImportSec are bought at investImportPriceMul × price.
+   */
+  townInvestIntervalSec: number;
+  investCraftLeadLevels: number;
+  investUrgentReserveMul: number;
+  investTargetMul: number;
+  investImportSec: number;
+  investImportPriceMul: number;
+  /** Max buildings under construction/upgrade at once (player and auto). */
+  buildMaxConcurrent: number;
+  /** Multipliers on every upgradeCost gold and sec (tuning). */
+  buildCostMul: number;
+  buildTimeMul: number;
   [key: string]: number;
 }
 
@@ -445,6 +498,8 @@ export interface GameConfig {
   nodes: MapNode[];
   edges: MapEdge[];
   buildings: BuildingDef[];
+  /** Building plots in config order (TECH_SPEC §5.10). */
+  plots: BuildingPlotDef[];
   zones: ZoneDef[];
   monsters: MonsterDef[];
   materials: MaterialDef[];
@@ -464,6 +519,9 @@ export interface GameConfig {
     personalities: Map<string, PersonalityDef>;
     nodes: Map<string, MapNode>;
     buildings: Map<string, BuildingDef>;
+    plots: Map<string, BuildingPlotDef>;
+    /** The single Town Hall building type. */
+    townHall: string;
     zones: Map<string, ZoneDef>;
     monsters: Map<string, MonsterDef>;
     materials: Map<string, MaterialDef>;

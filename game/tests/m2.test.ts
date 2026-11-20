@@ -1,3 +1,4 @@
+import { shopCapacity } from '../src/core/systems/town';
 import { hunterStats } from '../src/core/formulas';
 import { createWorld, Simulation } from '../src/core/simulation';
 import { bagCount } from '../src/core/world';
@@ -18,7 +19,7 @@ function run(seed: number, minutes: number) {
       expect(h.gold).toBeGreaterThanOrEqual(0);
     }
     expect(s.world.town.gold).toBeGreaterThanOrEqual(0);
-    const shopCap = config.index.buildings.get(config.index.shop)!.capacity!;
+    const shopCap = shopCapacity(config, s.world); // at the shop's current level
     expect(s.world.town.shop.length).toBeLessThanOrEqual(shopCap);
   }
   return { s, events };

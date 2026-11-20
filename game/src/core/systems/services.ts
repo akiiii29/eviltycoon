@@ -2,17 +2,20 @@ import type { BuildingDef, GameConfig } from '../config/types';
 import { needMax } from '../formulas';
 import type { System } from '../system';
 import { isAlive, type Hunter } from '../world';
+import { buildingLevel, levelValue, serviceRestorePerSec } from './town';
 
 /**
  * Price a hunter pays for a service:
  * round(base × (1 + servicePriceLevelPct / 100 × (level − 1) + servicePriceLatePct / 100 × max(0, level − servicePriceLateLevel))).
  * Scales with level so late-game hunter gold flows back to the town (a rich town burns it through townFeeShare);
  * the steeper late term starts only at servicePriceLateLevel so early pacing is untouched.
+ * `base` is the building's price at its building level (`price[buildingLvl − 1]`, TECH_SPEC §5.10; 1 when omitted);
+ * `level` in the formula is the hunter's level.
  * Single source for the system, AI and commands.
  */
-export function servicePrice(config: GameConfig, h: Hunter, b: BuildingDef): number {
+export function servicePrice(config: GameConfig, h: Hunter, b: BuildingDef, buildingLvl = 1): number {
   const f = config.formula;
-  const base = b.price ?? 0;
+  const base = levelValue(b.price, Math.max(1, buildingLvl)) ?? 0;
   const pct = f.servicePriceLevelPct ?? 0;
   const late = (f.servicePriceLatePct ?? 0) * Math.max(0, h.level - (f.servicePriceLateLevel ?? 0));
   return Math.round(base * (1 + (pct / 100) * Math.max(0, h.level - 1) + late / 100));
@@ -34,7 +37,7 @@ export const servicesSystem: System = {
         const b = config.index.buildings.get(h.insideBuildingId)!;
         const need = b.need!;
         const max = needMax(config, h, need);
-        h.needs[need] = Math.min(max, h.needs[need] + (b.restorePerSec! * dtMs) / 1000);
+        h.needs[need] = Math.min(max, h.needs[need] + (serviceRestorePerSec(world, b) * dtMs) / 1000);
         if (h.needs[need] >= max) {
           h.insideBuildingId = null;
           h.ai.goal = null; // decide again next tick
@@ -45,7 +48,12 @@ export const servicesSystem: System = {
 
       if (goal?.type !== 'service' || h.ai.phase !== 'act') continue;
       const b = config.index.buildings.get(goal.buildingId)!;
-      const price = servicePrice(config, h, b);
+      const lv = buildingLevel(world, b.id);
+      if (lv < 1) {
+        h.ai.goal = null;
+        continue;
+      }
+      const price = servicePrice(config, h, b, lv);
       if (h.gold < price) {
         h.ai.goal = null;
         continue;

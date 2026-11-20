@@ -4,7 +4,7 @@ import type { GearSlot, ModStat, NeedKey, StatKey } from './config/types';
 export type { GearSlot, NeedKey } from './config/types';
 
 /** Bump when the World shape changes and add a migration in save/migrations.ts. */
-export const WORLD_SCHEMA_VERSION = 7;
+export const WORLD_SCHEMA_VERSION = 8;
 
 export type Grade = 'normal' | 'high' | 'highest';
 export type HunterTier = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
@@ -146,6 +146,38 @@ export interface Bounty {
   postedAtMs: number;
 }
 
+/** v8: a construction or upgrade in progress (TECH_SPEC §5.10). Gold and materials were paid when it started. */
+export interface BuildingUpgrade {
+  toLevel: number;
+  remainingMs: number;
+  totalMs: number;
+  /** What was paid (refunded in full on cancel); imported material gold is included in `gold`. */
+  gold: number;
+  materials: Record<string, number>;
+  /** Started by the Town's auto-investment rather than a player command. */
+  auto: boolean;
+}
+
+/** v8: a building standing on a plot (TECH_SPEC §5.10). `id` is the plot id (one building per plot). */
+export interface BuildingState {
+  id: string;
+  buildingId: string;
+  /** 0 while the first construction is running (not usable yet). Upgrades keep the old level working until done. */
+  level: number;
+  upgrade: BuildingUpgrade | null;
+}
+
+/** v8: the auto-investment's current goal (systems/town.ts): the Trading Post requests its materials. */
+export interface InvestPlan {
+  plotId: string;
+  buildingId: string;
+  toLevel: number;
+  /** Craft-tier cap (or the Town Hall level blocking it) that hunters are about to hit: may spend below the treasury target. */
+  urgent: boolean;
+  /** world.timeMs when this plan was first chosen (missing materials are imported after investImportSec). */
+  sinceMs: number;
+}
+
 export interface World {
   schemaVersion: number;
   configVersion: string;
@@ -178,6 +210,11 @@ export interface World {
     bounties: Bounty[];
     /** v7: post bounties automatically when Town gold is above its treasury target. */
     autoBounty: boolean;
+    /** v8: buildings on plots, in plot config order (TECH_SPEC §5.10). */
+    buildings: BuildingState[];
+    /** v8: spend Town gold above the treasury target (and materials) on building upgrades automatically. */
+    autoInvest: boolean;
+    investPlan: InvestPlan | null;
   };
   /** Arrays (not maps) so iteration order is stable and deterministic. */
   hunters: Hunter[];
@@ -205,6 +242,12 @@ export interface World {
     bountiesCompleted: number;
     bountyGoldPaid: number;
     bountyKingdomGold: number;
+    /** v8: constructions/upgrades finished; gold and material units spent on them (incl. imports); gold paid for imports. */
+    buildingsBuilt: number;
+    buildingUpgrades: number;
+    investGold: number;
+    investMaterials: number;
+    investImportGold: number;
   };
 }
 

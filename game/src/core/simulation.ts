@@ -17,6 +17,7 @@ import { progressionSystem } from './systems/progression';
 import { servicesSystem } from './systems/services';
 import { skillsSystem } from './systems/skills';
 import { spawnSystem } from './systems/spawn';
+import { initialBuildings, townSystem } from './systems/town';
 import { WORLD_SCHEMA_VERSION, type World } from './world';
 
 export const TICK_MS = 100; // 10 ticks per second (TECH_SPEC §3.2)
@@ -25,7 +26,8 @@ const MAX_TICKS_PER_ADVANCE = 600;
 
 /**
  * Fixed per-tick order (TECH_SPEC §3.2; commands are applied first in `step()`). `urgentBackstop` re-runs the AI's
- * emergency check after combat/skills; the Trading Post lives inside `economy`. New systems go here and in §3.2.
+ * emergency check after combat/skills; the Trading Post lives inside `economy`. `town` (constructions, auto-investment) runs
+ * after crafting and before `bounty`, so investment spends spare Town gold before the auto-bounty looks at it. New systems go here and in §3.2.
  */
 export const DEFAULT_SYSTEMS: readonly System[] = [
   arrivalsSystem,
@@ -38,6 +40,7 @@ export const DEFAULT_SYSTEMS: readonly System[] = [
   economySystem,
   academySystem,
   craftingSystem,
+  townSystem,
   bountySystem,
   needsSystem,
   progressionSystem,
@@ -66,11 +69,14 @@ export function createWorld(config: GameConfig, seed: number): World {
       requests: {},
       bounties: [],
       autoBounty: true,
+      buildings: initialBuildings(config),
+      autoInvest: true,
+      investPlan: null,
     },
     hunters: [],
     monsters: [],
     zones: {},
-    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0 },
+    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0 },
   };
 }
 

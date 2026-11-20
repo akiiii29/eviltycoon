@@ -114,6 +114,30 @@
   "kind": "door"
  },
  {
+  "id": "d.townhall",
+  "x": -6,
+  "y": 2,
+  "kind": "door"
+ },
+ {
+  "id": "d.plot.ne",
+  "x": 6,
+  "y": 2,
+  "kind": "door"
+ },
+ {
+  "id": "d.plot.se",
+  "x": 6,
+  "y": -2,
+  "kind": "door"
+ },
+ {
+  "id": "d.plot.sw",
+  "x": -6,
+  "y": -2,
+  "kind": "door"
+ },
+ {
   "id": "t.gate",
   "x": 22,
   "y": 0,

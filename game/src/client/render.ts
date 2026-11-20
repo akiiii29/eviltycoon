@@ -20,6 +20,8 @@ const KIND_COLORS: Record<Exclude<BuildingKind, 'service'>, number> = {
   shop: 0x4ab3a8,
   forge: 0xc8553d,
   academy: 0x6a7fd0,
+  townHall: 0xe8d9a8,
+  storehouse: 0x8a6d4a,
 };
 
 /** Monsters spawned under higher difficulties are drawn darker (order 0 = untinted). */
@@ -51,6 +53,8 @@ export class Renderer {
   private hunterQuad = new THREE.PlaneGeometry(1.6, 2.4);
   private monsterQuad = new THREE.PlaneGeometry(1.4, 1.4);
   private deadMat = new THREE.MeshBasicMaterial({ color: 0x444444 });
+  /** Building meshes per plot, keyed so a new building / finished construction rebuilds them. */
+  private buildings = new Map<string, THREE.Mesh>();
   private viewHeight: number;
   private mapW: number;
   private center: THREE.Vector2;
@@ -103,14 +107,28 @@ export class Renderer {
       mesh.rotation.z = Math.atan2(b.y - a.y, b.x - a.x);
       this.scene.add(mesh);
     }
-    for (const b of config.buildings) {
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(b.w, b.h), new THREE.MeshBasicMaterial({ color: buildingColor(b) }));
-      mesh.position.set(b.x, b.y, -0.5);
-      this.scene.add(mesh);
-      const roof = new THREE.Mesh(new THREE.PlaneGeometry(b.w, 1.2), new THREE.MeshBasicMaterial({ color: 0x5a3a2a }));
-      roof.position.set(b.x, b.y + b.h / 2 - 0.6, -0.4);
-      this.scene.add(roof);
+    // Building plots (TECH_SPEC §5.10): an empty lot each; buildings on them are drawn in sync() from the world.
+    for (const p of config.plots) {
+      const lot = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.h), new THREE.MeshBasicMaterial({ color: 0x3f5638 }));
+      lot.position.set(p.x, p.y, -0.6);
+      this.scene.add(lot);
     }
+  }
+
+  /** One mesh (walls + roof) for a building on a plot; under construction = faded, no roof. */
+  private buildingMesh(plotId: string, buildingId: string, built: boolean): THREE.Mesh {
+    const p = this.config.index.plots.get(plotId)!;
+    const b = this.config.index.buildings.get(buildingId);
+    const color = new THREE.Color(b ? buildingColor(b) : 0xffffff);
+    if (!built) color.multiplyScalar(0.5);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.h), new THREE.MeshBasicMaterial({ color }));
+    mesh.position.set(p.x, p.y, -0.5);
+    if (built) {
+      const roof = new THREE.Mesh(new THREE.PlaneGeometry(p.w, 1.2), new THREE.MeshBasicMaterial({ color: 0x5a3a2a }));
+      roof.position.set(0, p.h / 2 - 0.6, 0.1);
+      mesh.add(roof);
+    }
+    return mesh;
   }
 
   /** Screen pixels covered by the debug panel on the left; the map is framed in the remaining area. */
@@ -173,6 +191,8 @@ export class Renderer {
     const k = Math.min(1, ((now - this.lastSync) / 1000) * 12);
     this.lastSync = now;
 
+    const placed = (world.town.buildings ?? []).map((s) => ({ id: `${s.id}|${s.buildingId}|${s.level > 0 ? 1 : 0}`, s }));
+    this.syncSet(placed, this.buildings, (it) => this.buildingMesh(it.s.id, it.s.buildingId, it.s.level > 0), () => {});
     this.syncSet(world.hunters, this.hunters,
       (h) => new THREE.Mesh(this.hunterQuad, new THREE.MeshBasicMaterial({ color: CLASS_COLORS[h.classId] ?? 0xffffff })),
       (h, mesh, fresh) => {

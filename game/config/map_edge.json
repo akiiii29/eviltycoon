@@ -293,5 +293,25 @@
   "a": "z7.c",
   "b": "z7.d",
   "road": false
+ },
+ {
+  "a": "t.square",
+  "b": "d.townhall",
+  "road": false
+ },
+ {
+  "a": "t.square",
+  "b": "d.plot.ne",
+  "road": false
+ },
+ {
+  "a": "t.square",
+  "b": "d.plot.se",
+  "road": false
+ },
+ {
+  "a": "t.square",
+  "b": "d.plot.sw",
+  "road": false
  }
 ]

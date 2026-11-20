@@ -3,10 +3,11 @@ import { gearMainValue, slotValue } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
 import type { System, SystemContext } from '../system';
 import type { ShopItem, World } from '../world';
+import { buildingLevel, gearCraftable, shopCapacity as shopCapacityAt } from './town';
 
-/** Max items on sale (from the shop building). */
-export function shopCapacity(config: GameConfig): number {
-  return config.index.buildings.get(config.index.shop)?.capacity ?? 0;
+/** Max items on sale (the shop building's capacity at its level, systems/town.ts). */
+export function shopCapacity(config: GameConfig, world: World): number {
+  return shopCapacityAt(config, world);
 }
 
 /** Number of craft jobs currently running (they will each need a shop slot). */
@@ -18,7 +19,7 @@ function runningJobs(world: World): number {
 
 /** True when the shop can take one more item counting jobs already running. */
 export function shopHasRoom(world: World, config: GameConfig): boolean {
-  return world.town.shop.length + runningJobs(world) < shopCapacity(config);
+  return world.town.shop.length + runningJobs(world) < shopCapacity(config, world);
 }
 
 export function hasMaterials(world: World, gear: GearDef): boolean {
@@ -64,8 +65,10 @@ export function startCraft(ctx: SystemContext, buildingId: string, gearId: strin
   const b = config.index.buildings.get(buildingId);
   if (!b) return 'unknown building';
   if (b.kind !== 'craft') return 'not a craft building';
+  if (buildingLevel(world, buildingId) < 1) return 'building not built';
   const gear = config.index.gear.get(gearId);
   if (!gear || gear.craftBuilding !== buildingId) return 'gear not made here';
+  if (!gearCraftable(config, world, gear)) return 'gear tier locked by building level';
   if (world.town.crafting[buildingId]) return 'building is busy';
   if (!hasMaterials(world, gear)) return 'missing materials';
   if (!shopHasRoom(world, config)) return 'shop is full';
@@ -231,7 +234,7 @@ function countUpgrades(config: GameConfig, world: World, gear: GearDef, covered:
 }
 
 /**
- * Auto-craft choice: among this building's recipes with materials in storage and town gold ≥
+ * Auto-craft choice: among this building's recipes its level allows (gear tier cap), with materials in storage and town gold ≥
  * craft cost + autoCraftReserve, pick the one that benefits the most hunters (recipeBeneficiaries),
  * then higher gear level, then gearId. Null when it would help nobody (no junk).
  */
@@ -241,7 +244,7 @@ export function pickRecipe(ctx: SystemContext, buildingId: string): GearDef | nu
   let best: GearDef | null = null;
   let bestN = 0;
   for (const g of config.gear) {
-    if (g.craftBuilding !== buildingId || !hasMaterials(world, g)) continue;
+    if (g.craftBuilding !== buildingId || !hasMaterials(world, g) || !gearCraftable(config, world, g)) continue;
     if (world.town.gold < craftGoldCost(config, g) + reserve) continue;
     const n = recipeBeneficiaries(ctx, g);
     if (n <= 0) continue;
@@ -263,9 +266,9 @@ export const craftingSystem: System = {
       world.stats.gearScrapped = (world.stats.gearScrapped ?? 0) + 1;
       ctx.events.emit(world.tick, { type: 'gearScrapped', itemUid: it.uid, gearId: it.gearId, qualityId: it.qualityId, price: it.price });
     }
-    const cap = shopCapacity(config);
+    const cap = shopCapacity(config, world);
     for (const b of config.buildings) {
-      if (b.kind !== 'craft') continue;
+      if (b.kind !== 'craft' || buildingLevel(world, b.id) < 1) continue;
       const job = world.town.crafting[b.id] ?? null;
       if (world.town.crafting[b.id] === undefined) world.town.crafting[b.id] = null; // old saves
 

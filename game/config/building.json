@@ -1,115 +1,14 @@
 [
- {
-  "id": "bld.infirmary",
-  "nameKey": "bld.infirmary.name",
-  "kind": "service",
-  "need": "hp",
-  "doorNode": "d.infirmary",
-  "restorePerSec": 60,
-  "price": 25,
-  "x": -12,
-  "y": 19,
-  "w": 7,
-  "h": 6
- },
- {
-  "id": "bld.restaurant",
-  "nameKey": "bld.restaurant.name",
-  "kind": "service",
-  "need": "satiety",
-  "doorNode": "d.restaurant",
-  "restorePerSec": 10,
-  "price": 18,
-  "x": 12,
-  "y": 19,
-  "w": 7,
-  "h": 6
- },
- {
-  "id": "bld.tavern",
-  "nameKey": "bld.tavern.name",
-  "kind": "service",
-  "need": "mood",
-  "doorNode": "d.tavern",
-  "restorePerSec": 10,
-  "price": 18,
-  "x": -12,
-  "y": -19,
-  "w": 7,
-  "h": 6
- },
- {
-  "id": "bld.inn",
-  "nameKey": "bld.inn.name",
-  "kind": "service",
-  "need": "stamina",
-  "doorNode": "d.inn",
-  "restorePerSec": 8,
-  "price": 18,
-  "x": 12,
-  "y": -19,
-  "w": 7,
-  "h": 6
- },
- {
-  "id": "bld.trading",
-  "nameKey": "bld.trading.name",
-  "kind": "tradingPost",
-  "doorNode": "d.trading",
-  "x": -21,
-  "y": 0,
-  "w": 6,
-  "h": 7
- },
- {
-  "id": "bld.smithy",
-  "nameKey": "bld.smithy.name",
-  "kind": "craft",
-  "doorNode": "d.smithy",
-  "x": 0,
-  "y": 19,
-  "w": 7,
-  "h": 6
- },
- {
-  "id": "bld.jeweler",
-  "nameKey": "bld.jeweler.name",
-  "kind": "craft",
-  "doorNode": "d.jeweler",
-  "x": -21,
-  "y": -10,
-  "w": 6,
-  "h": 6
- },
- {
-  "id": "bld.shop",
-  "nameKey": "bld.shop.name",
-  "kind": "shop",
-  "capacity": 12,
-  "doorNode": "d.shop",
-  "x": 0,
-  "y": -19,
-  "w": 7,
-  "h": 6
- },
- {
-  "id": "bld.forge",
-  "nameKey": "bld.forge.name",
-  "kind": "forge",
-  "doorNode": "d.forge",
-  "x": 18,
-  "y": 8,
-  "w": 5,
-  "h": 5
- },
- {
-  "id": "bld.academy",
-  "nameKey": "bld.academy.name",
-  "kind": "academy",
-  "doorNode": "d.academy",
-  "x": -21,
-  "y": 10,
-  "w": 6,
-  "h": 6
- }
+  {"id": "bld.townhall", "nameKey": "bld.townhall.name", "kind": "townHall", "maxLevel": 8, "requires": {"townHallLevel": 1}, "upgradeCost": [{"gold": 0, "materials": [], "sec": 0}, {"gold": 400, "materials": [{"materialId": "mat.ore", "count": 4}], "sec": 60}, {"gold": 1000, "materials": [{"materialId": "mat.reed", "count": 6}], "sec": 120}, {"gold": 2000, "materials": [{"materialId": "mat.cinder", "count": 6}], "sec": 180}, {"gold": 3500, "materials": [{"materialId": "mat.frost", "count": 6}], "sec": 240}, {"gold": 6000, "materials": [{"materialId": "mat.brine", "count": 6}], "sec": 300}, {"gold": 9000, "materials": [{"materialId": "mat.sigil", "count": 3}], "sec": 360}, {"gold": 13000, "materials": [{"materialId": "mat.void", "count": 6}], "sec": 420}]},
+  {"id": "bld.infirmary", "nameKey": "bld.infirmary.name", "kind": "service", "need": "hp", "maxLevel": 5, "requires": {"townHallLevel": 1}, "upgradeCost": [{"gold": 300, "materials": [{"materialId": "mat.hide", "count": 6}], "sec": 60}, {"gold": 1000, "materials": [{"materialId": "mat.reed", "count": 4}], "sec": 120}, {"gold": 2500, "materials": [{"materialId": "mat.frost", "count": 4}], "sec": 180}, {"gold": 5000, "materials": [{"materialId": "mat.brine", "count": 4}], "sec": 240}, {"gold": 9000, "materials": [{"materialId": "mat.void", "count": 4}], "sec": 300}], "restorePerSec": [60, 69.0, 78.0, 87.0, 96.0], "price": [25, 27, 29, 31, 33]},
+  {"id": "bld.restaurant", "nameKey": "bld.restaurant.name", "kind": "service", "need": "satiety", "maxLevel": 5, "requires": {"townHallLevel": 1}, "upgradeCost": [{"gold": 300, "materials": [{"materialId": "mat.hide", "count": 6}], "sec": 60}, {"gold": 1000, "materials": [{"materialId": "mat.reed", "count": 4}], "sec": 120}, {"gold": 2500, "materials": [{"materialId": "mat.frost", "count": 4}], "sec": 180}, {"gold": 5000, "materials": [{"materialId": "mat.brine", "count": 4}], "sec": 240}, {"gold": 9000, "materials": [{"materialId": "mat.void", "count": 4}], "sec": 300}], "restorePerSec": [10, 11.5, 13.0, 14.5, 16.0], "price": [18, 19, 21, 22, 24]},
+  {"id": "bld.tavern", "nameKey": "bld.tavern.name", "kind": "service", "need": "mood", "maxLevel": 5, "requires": {"townHallLevel": 1}, "upgradeCost": [{"gold": 300, "materials": [{"materialId": "mat.hide", "count": 6}], "sec": 60}, {"gold": 1000, "materials": [{"materialId": "mat.reed", "count": 4}], "sec": 120}, {"gold": 2500, "materials": [{"materialId": "mat.frost", "count": 4}], "sec": 180}, {"gold": 5000, "materials": [{"materialId": "mat.brine", "count": 4}], "sec": 240}, {"gold": 9000, "materials": [{"materialId": "mat.void", "count": 4}], "sec": 300}], "restorePerSec": [10, 11.5, 13.0, 14.5, 16.0], "price": [18, 19, 21, 22, 24]},
+  {"id": "bld.inn", "nameKey": "bld.inn.name", "kind": "service", "need": "stamina", "maxLevel": 5, "requires": {"townHallLevel": 1}, "upgradeCost": [{"gold": 300, "materials": [{"materialId": "mat.hide", "count": 6}], "sec": 60}, {"gold": 1000, "materials": [{"materialId": "mat.reed", "count": 4}], "sec": 120}, {"gold": 2500, "materials": [{"materialId": "mat.frost", "count": 4}], "sec": 180}, {"gold": 5000, "materials": [{"materialId": "mat.brine", "count": 4}], "sec": 240}, {"gold": 9000, "materials": [{"materialId": "mat.void", "count": 4}], "sec": 300}], "restorePerSec": [8, 9.2, 10.4, 11.6, 12.8], "price": [18, 19, 21, 22, 24]},
+  {"id": "bld.trading", "nameKey": "bld.trading.name", "kind": "tradingPost", "maxLevel": 4, "requires": {"townHallLevel": 1}, "upgradeCost": [{"gold": 300, "materials": [{"materialId": "mat.gel", "count": 10}], "sec": 60}, {"gold": 1500, "materials": [{"materialId": "mat.reed", "count": 6}], "sec": 120}, {"gold": 4000, "materials": [{"materialId": "mat.frost", "count": 6}], "sec": 180}, {"gold": 8000, "materials": [{"materialId": "mat.brine", "count": 6}], "sec": 240}], "surplusPriceMul": [1, 1.1, 1.2, 1.3]},
+  {"id": "bld.smithy", "nameKey": "bld.smithy.name", "kind": "craft", "maxLevel": 8, "requires": {"townHallLevel": 1}, "upgradeCost": [{"gold": 300, "materials": [{"materialId": "mat.gel", "count": 10}], "sec": 60}, {"gold": 400, "materials": [{"materialId": "mat.ore", "count": 6}, {"materialId": "mat.core", "count": 2}], "sec": 60}, {"gold": 900, "materials": [{"materialId": "mat.reed", "count": 8}, {"materialId": "mat.venom", "count": 3}], "sec": 120}, {"gold": 2000, "materials": [{"materialId": "mat.cinder", "count": 8}, {"materialId": "mat.scale", "count": 3}], "sec": 180}, {"gold": 3500, "materials": [{"materialId": "mat.frost", "count": 8}, {"materialId": "mat.pelt", "count": 3}], "sec": 240}, {"gold": 6000, "materials": [{"materialId": "mat.brine", "count": 8}, {"materialId": "mat.pearl", "count": 3}], "sec": 300}, {"gold": 9000, "materials": [{"materialId": "mat.pearl", "count": 5}, {"materialId": "mat.sigil", "count": 3}], "sec": 360}, {"gold": 13000, "materials": [{"materialId": "mat.void", "count": 8}, {"materialId": "mat.shade", "count": 3}], "sec": 420}], "maxGearLevel": [15, 23, 31, 41, 51, 61, 71, 81]},
+  {"id": "bld.jeweler", "nameKey": "bld.jeweler.name", "kind": "craft", "maxLevel": 8, "requires": {"townHallLevel": 1}, "upgradeCost": [{"gold": 300, "materials": [{"materialId": "mat.gel", "count": 12}], "sec": 60}, {"gold": 400, "materials": [{"materialId": "mat.core", "count": 4}], "sec": 60}, {"gold": 900, "materials": [{"materialId": "mat.venom", "count": 5}], "sec": 120}, {"gold": 2000, "materials": [{"materialId": "mat.scale", "count": 4}, {"materialId": "mat.ember", "count": 2}], "sec": 180}, {"gold": 3500, "materials": [{"materialId": "mat.pelt", "count": 5}], "sec": 240}, {"gold": 6000, "materials": [{"materialId": "mat.pearl", "count": 5}], "sec": 300}, {"gold": 9000, "materials": [{"materialId": "mat.sigil", "count": 4}], "sec": 360}, {"gold": 13000, "materials": [{"materialId": "mat.shade", "count": 5}], "sec": 420}], "maxGearLevel": [15, 23, 31, 41, 51, 61, 71, 81]},
+  {"id": "bld.shop", "nameKey": "bld.shop.name", "kind": "shop", "maxLevel": 5, "requires": {"townHallLevel": 1}, "upgradeCost": [{"gold": 300, "materials": [{"materialId": "mat.gel", "count": 10}], "sec": 60}, {"gold": 1500, "materials": [{"materialId": "mat.cinder", "count": 4}], "sec": 120}, {"gold": 3500, "materials": [{"materialId": "mat.frost", "count": 4}, {"materialId": "mat.pelt", "count": 2}], "sec": 180}, {"gold": 7000, "materials": [{"materialId": "mat.brine", "count": 4}], "sec": 240}, {"gold": 12000, "materials": [{"materialId": "mat.void", "count": 4}, {"materialId": "mat.shade", "count": 1}], "sec": 300}], "capacity": [12, 14, 16, 18, 20]},
+  {"id": "bld.forge", "nameKey": "bld.forge.name", "kind": "forge", "maxLevel": 5, "requires": {"townHallLevel": 1}, "upgradeCost": [{"gold": 300, "materials": [{"materialId": "mat.ore", "count": 6}], "sec": 60}, {"gold": 2000, "materials": [{"materialId": "mat.scale", "count": 4}], "sec": 120}, {"gold": 5000, "materials": [{"materialId": "mat.pelt", "count": 4}], "sec": 180}, {"gold": 10000, "materials": [{"materialId": "mat.pearl", "count": 4}], "sec": 240}, {"gold": 16000, "materials": [{"materialId": "mat.shade", "count": 4}], "sec": 300}], "enhanceBonus": [0, 0.02, 0.04, 0.06, 0.08]},
+  {"id": "bld.academy", "nameKey": "bld.academy.name", "kind": "academy", "maxLevel": 5, "requires": {"townHallLevel": 1}, "upgradeCost": [{"gold": 300, "materials": [{"materialId": "mat.hide", "count": 6}], "sec": 60}, {"gold": 1500, "materials": [{"materialId": "mat.venom", "count": 4}], "sec": 120}, {"gold": 3500, "materials": [{"materialId": "mat.frost", "count": 4}], "sec": 180}, {"gold": 7000, "materials": [{"materialId": "mat.pearl", "count": 3}], "sec": 240}, {"gold": 12000, "materials": [{"materialId": "mat.shade", "count": 3}], "sec": 300}], "studyGoldMul": [1, 0.95, 0.9, 0.85, 0.8]},
+  {"id": "bld.storehouse", "nameKey": "bld.storehouse.name", "kind": "storehouse", "maxLevel": 3, "requires": {"townHallLevel": 3}, "upgradeCost": [{"gold": 2000, "materials": [{"materialId": "mat.cinder", "count": 6}], "sec": 180}, {"gold": 5000, "materials": [{"materialId": "mat.pelt", "count": 4}], "sec": 240}, {"gold": 10000, "materials": [{"materialId": "mat.pearl", "count": 4}], "sec": 300}], "requestCopies": [1, 2, 3]}
 ]

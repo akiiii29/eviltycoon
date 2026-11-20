@@ -129,5 +129,14 @@
  "bountyAutoGoldMul": 1,
  "bountyAutoRewardFrac": 0.1,
  "bountyAutoKills": 30,
- "bountyAutoExpireSec": 1800
+ "bountyAutoExpireSec": 1800,
+ "townInvestIntervalSec": 10,
+ "investCraftLeadLevels": 4,
+ "investUrgentReserveMul": 5,
+ "investTargetMul": 1,
+ "investImportSec": 900,
+ "investImportPriceMul": 2,
+ "buildMaxConcurrent": 2,
+ "buildCostMul": 1,
+ "buildTimeMul": 1
 }

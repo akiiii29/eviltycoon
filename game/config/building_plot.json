@@ -1,0 +1,16 @@
+[
+  {"id": "plot.townhall", "doorNode": "d.townhall", "townHallLevel": 1, "startBuilding": "bld.townhall", "x": -6, "y": 5.5, "w": 7, "h": 5},
+  {"id": "plot.infirmary", "doorNode": "d.infirmary", "townHallLevel": 1, "startBuilding": "bld.infirmary", "x": -12, "y": 19, "w": 7, "h": 6},
+  {"id": "plot.restaurant", "doorNode": "d.restaurant", "townHallLevel": 1, "startBuilding": "bld.restaurant", "x": 12, "y": 19, "w": 7, "h": 6},
+  {"id": "plot.tavern", "doorNode": "d.tavern", "townHallLevel": 1, "startBuilding": "bld.tavern", "x": -12, "y": -19, "w": 7, "h": 6},
+  {"id": "plot.inn", "doorNode": "d.inn", "townHallLevel": 1, "startBuilding": "bld.inn", "x": 12, "y": -19, "w": 7, "h": 6},
+  {"id": "plot.trading", "doorNode": "d.trading", "townHallLevel": 1, "startBuilding": "bld.trading", "x": -21, "y": 0, "w": 6, "h": 7},
+  {"id": "plot.smithy", "doorNode": "d.smithy", "townHallLevel": 1, "startBuilding": "bld.smithy", "x": 0, "y": 19, "w": 7, "h": 6},
+  {"id": "plot.jeweler", "doorNode": "d.jeweler", "townHallLevel": 1, "startBuilding": "bld.jeweler", "x": -21, "y": -10, "w": 6, "h": 6},
+  {"id": "plot.shop", "doorNode": "d.shop", "townHallLevel": 1, "startBuilding": "bld.shop", "x": 0, "y": -19, "w": 7, "h": 6},
+  {"id": "plot.forge", "doorNode": "d.forge", "townHallLevel": 1, "startBuilding": "bld.forge", "x": 18, "y": 8, "w": 5, "h": 5},
+  {"id": "plot.academy", "doorNode": "d.academy", "townHallLevel": 1, "startBuilding": "bld.academy", "x": -21, "y": 10, "w": 6, "h": 6},
+  {"id": "plot.ne", "doorNode": "d.plot.ne", "townHallLevel": 2, "x": 6, "y": 5.5, "w": 7, "h": 5},
+  {"id": "plot.se", "doorNode": "d.plot.se", "townHallLevel": 4, "x": 6, "y": -5.5, "w": 7, "h": 5},
+  {"id": "plot.sw", "doorNode": "d.plot.sw", "townHallLevel": 6, "x": -6, "y": -5.5, "w": 7, "h": 5}
+]

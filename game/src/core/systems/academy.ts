@@ -1,13 +1,15 @@
 import type { GameConfig } from '../config/types';
 import type { System, SystemContext } from '../system';
-import { isAlive, type Hunter } from '../world';
+import { isAlive, type Hunter, type World } from '../world';
+import { studyGoldMul } from './town';
 import { feeTownCut } from './economy';
 
 /**
  * Next skill level the hunter may study and its gold cost, or null when not allowed
  * (unknown skill, other class, job tier too low, maxed, hunter level too low). Gold is NOT checked here.
+ * With `world` the cost is round(studyGold × the Academy's studyGoldMul) (TECH_SPEC §5.10).
  */
-export function nextSkillStudy(config: GameConfig, h: Hunter, skillId: string): { level: number; cost: number } | null {
+export function nextSkillStudy(config: GameConfig, h: Hunter, skillId: string, world?: World): { level: number; cost: number } | null {
   const def = config.index.skills.get(skillId);
   if (!def || def.classId !== h.classId || def.jobTierMin > h.jobTier) return null;
   const level = (h.skills[skillId] ?? 0) + 1;
@@ -15,7 +17,7 @@ export function nextSkillStudy(config: GameConfig, h: Hunter, skillId: string): 
   const minLevel = def.studyLevel[level - 1];
   const cost = def.studyGold[level - 1];
   if (minLevel === undefined || cost === undefined || h.level < minLevel) return null;
-  return { level, cost };
+  return { level, cost: world ? Math.round(cost * studyGoldMul(config, world)) : cost };
 }
 
 /** True when the hunter may raise this trait by one level right now (class, max level, trait points). */
@@ -29,7 +31,7 @@ export function canLearnTrait(config: GameConfig, h: Hunter, traitId: string): b
 
 function learnSkill(ctx: SystemContext, h: Hunter, skillId: string): void {
   const { world, config } = ctx;
-  const next = nextSkillStudy(config, h, skillId);
+  const next = nextSkillStudy(config, h, skillId, world);
   if (!next || h.gold < next.cost) return;
   h.gold -= next.cost;
   world.town.gold += feeTownCut(config, next.cost, world); // the rest leaves the economy (gold sink)

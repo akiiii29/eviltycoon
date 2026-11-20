@@ -191,7 +191,7 @@ describe('enhancing', () => {
 });
 
 describe('crafting', () => {
-  const capacity = config.index.buildings.get(config.index.shop)!.capacity!;
+  const capacity = config.index.buildings.get(config.index.shop)!.capacity![0]!; // shop level 1
 
   it('a finished job becomes a shop item with a rolled quality and price', () => {
     const ctx = makeCtx();

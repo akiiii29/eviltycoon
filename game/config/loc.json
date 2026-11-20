@@ -678,5 +678,15 @@
   "key": "gear.r.star.name",
   "vi": "Vương Miện Vô Tinh",
   "en": "Starless Crown"
+ },
+ {
+  "key": "bld.townhall.name",
+  "vi": "Tòa Thị Chính",
+  "en": "Town Hall"
+ },
+ {
+  "key": "bld.storehouse.name",
+  "vi": "Nhà Kho",
+  "en": "Storehouse"
  }
 ]

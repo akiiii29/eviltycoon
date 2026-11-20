@@ -1,12 +1,14 @@
 import { validateTables, type ConfigIssue, type FieldSpec, type TableSpec } from './schema';
 import {
   BUILDING_KINDS, GEAR_SLOTS, MOD_STATS, NEED_KEYS, STAT_KEYS,
-  type BuildingDef, type DifficultyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
+  type BuildingDef, type BuildingPlotDef, type DifficultyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
   type MapEdge, type MapNode, type MaterialDef, type MonsterDef, type ZoneDef,
 } from './types';
 
 const range: FieldSpec = { kind: 'array', length: 2, of: { kind: 'number', min: 0 } };
 const gradeRanges: FieldSpec = { kind: 'array', length: 3, of: range };
+/** Optional per-level list of a building (length = maxLevel, TECH_SPEC §8.1). */
+const perLevel = (of: FieldSpec): FieldSpec => ({ kind: 'array', lengthFrom: 'maxLevel', optional: true, of });
 
 /** Schema for every config table. Add new tables here (TECH_SPEC §8). */
 export const TABLE_SPECS: Record<string, TableSpec> = {
@@ -88,11 +90,42 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       id: { kind: 'string', nonEmpty: true },
       nameKey: { kind: 'ref', table: 'loc' },
       kind: { kind: 'enum', values: BUILDING_KINDS },
+      maxLevel: { kind: 'int', min: 1 },
+      requires: { kind: 'object', fields: { townHallLevel: { kind: 'int', min: 1 } } },
+      upgradeCost: {
+        kind: 'array',
+        lengthFrom: 'maxLevel',
+        of: {
+          kind: 'object',
+          fields: {
+            gold: { kind: 'int', min: 0 },
+            materials: {
+              kind: 'array',
+              of: { kind: 'object', fields: { materialId: { kind: 'ref', table: 'material' }, count: { kind: 'int', min: 1 } } },
+            },
+            sec: { kind: 'number', min: 0 },
+          },
+        },
+      },
       need: { kind: 'enum', values: NEED_KEYS, optional: true },
+      restorePerSec: perLevel({ kind: 'number', min: 0.001 }),
+      price: perLevel({ kind: 'int', min: 0 }),
+      capacity: perLevel({ kind: 'int', min: 1 }),
+      maxGearLevel: perLevel({ kind: 'int', min: 0 }),
+      enhanceBonus: perLevel({ kind: 'number', min: 0, max: 1 }),
+      studyGoldMul: perLevel({ kind: 'number', min: 0 }),
+      surplusPriceMul: perLevel({ kind: 'number', min: 0 }),
+      requestCopies: perLevel({ kind: 'int', min: 0 }),
+    },
+  },
+  building_plot: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
       doorNode: { kind: 'ref', table: 'map_node' },
-      restorePerSec: { kind: 'number', min: 0.001, optional: true },
-      price: { kind: 'int', min: 0, optional: true },
-      capacity: { kind: 'int', min: 1, optional: true },
+      townHallLevel: { kind: 'int', min: 1 },
+      startBuilding: { kind: 'ref', table: 'building', optional: true },
+      startLevel: { kind: 'int', min: 1, optional: true },
       x: { kind: 'number' },
       y: { kind: 'number' },
       w: { kind: 'number', min: 0.1 },
@@ -248,6 +281,8 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'offlineMaxHours', 'offlineEfficiency', 'offlineSampleSec', 'offlineWindowMin', 'offlineMinWindowSec', 'offlineMinAwaySec',
   'bountyMaxActive', 'bountyMaxKills', 'bountyCompletionFrac', 'bountyZoneBonus', 'bountyTormentFromOrder', 'bountyTormentDropBonus',
   'bountyAutoIntervalSec', 'bountyAutoGoldMul', 'bountyAutoRewardFrac', 'bountyAutoKills', 'bountyAutoExpireSec',
+  'townInvestIntervalSec', 'investCraftLeadLevels', 'investUrgentReserveMul', 'investTargetMul', 'investImportSec', 'investImportPriceMul',
+  'buildMaxConcurrent', 'buildCostMul', 'buildTimeMul',
 ];
 
 export class ConfigError extends Error {
@@ -338,6 +373,16 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('bountyAutoRewardFrac', 0, 1);
     range('bountyAutoKills', 1, 1e6);
     range('bountyAutoExpireSec', 0, 1e7);
+    // Town buildings (TECH_SPEC §5.10).
+    range('townInvestIntervalSec', 0.1, 1e6);
+    range('investCraftLeadLevels', 0, 1000);
+    range('investUrgentReserveMul', 0, 1000);
+    range('investTargetMul', 0, 100);
+    range('investImportSec', 0, 1e7);
+    range('investImportPriceMul', 0, 100);
+    range('buildMaxConcurrent', 1, 100);
+    range('buildCostMul', 0, 100);
+    range('buildTimeMul', 0, 100);
   }
 
   const grades = raw.stat_grade;
@@ -389,19 +434,56 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
     if (n && n.zoneId !== z.id) issues.push({ path: `zone[${i}].entryNode`, message: `node "${z.entryNode}" is not a field node of this zone` });
   });
   const buildings = raw.building as BuildingDef[];
+  const th = buildings.find((b) => b.kind === 'townHall');
   buildings.forEach((b, i) => {
-    const n = byId.get(b.doorNode);
-    if (n && n.kind !== 'door') issues.push({ path: `building[${i}].doorNode`, message: `node "${b.doorNode}" is not a door` });
     const need = (k: keyof BuildingDef) => {
       if (b[k] === undefined) issues.push({ path: `building[${i}].${k}`, message: `required for kind "${b.kind}"` });
     };
     if (b.kind === 'service') { need('need'); need('restorePerSec'); need('price'); }
     if (b.kind === 'shop') need('capacity');
+    if (b.kind === 'craft') need('maxGearLevel');
+    if (b.kind === 'forge') need('enhanceBonus');
+    if (b.kind === 'academy') need('studyGoldMul');
+    if (b.kind === 'tradingPost') need('surplusPriceMul');
+    if (b.kind === 'storehouse') need('requestCopies');
+    if (th && b.kind !== 'townHall' && Math.max(b.requires.townHallLevel, b.maxLevel) > th.maxLevel) {
+      issues.push({ path: `building[${i}]`, message: `needs a Town Hall level above its max level ${th.maxLevel}` });
+    }
   });
-  for (const kind of ['tradingPost', 'shop', 'forge', 'academy'] as const) {
+  for (const kind of ['tradingPost', 'shop', 'forge', 'academy', 'townHall'] as const) {
     const n = buildings.filter((b) => b.kind === kind).length;
     if (n !== 1) issues.push({ path: 'building', message: `need exactly one "${kind}" building, got ${n}` });
   }
+  // Plots: doors are door nodes used by exactly one plot; a building type starts on at most one plot; the Town Hall starts built.
+  const plots = raw.building_plot as BuildingPlotDef[];
+  const doorUse = new Map<string, number>();
+  const started = new Map<string, number>();
+  const byType = new Map(buildings.map((b) => [b.id, b]));
+  plots.forEach((p, i) => {
+    const n = byId.get(p.doorNode);
+    if (n && n.kind !== 'door') issues.push({ path: `building_plot[${i}].doorNode`, message: `node "${p.doorNode}" is not a door` });
+    doorUse.set(p.doorNode, (doorUse.get(p.doorNode) ?? 0) + 1);
+    if (p.startLevel !== undefined && p.startBuilding === undefined) issues.push({ path: `building_plot[${i}].startLevel`, message: 'needs startBuilding' });
+    if (p.startBuilding !== undefined) {
+      started.set(p.startBuilding, (started.get(p.startBuilding) ?? 0) + 1);
+      const b = byType.get(p.startBuilding);
+      if (b && (p.startLevel ?? 1) > b.maxLevel) issues.push({ path: `building_plot[${i}].startLevel`, message: `above maxLevel ${b.maxLevel}` });
+    }
+  });
+  for (const [door, n] of doorUse) if (n > 1) issues.push({ path: 'building_plot', message: `door "${door}" used by ${n} plots` });
+  for (const [id, n] of started) if (n > 1) issues.push({ path: 'building_plot', message: `"${id}" starts on ${n} plots (one instance per type)` });
+  for (const n of nodes) if (n.kind === 'door' && !doorUse.has(n.id)) issues.push({ path: `map_node.${n.id}`, message: 'door node without a building plot' });
+  const thPlot = th ? plots.find((p) => p.startBuilding === th.id) : undefined;
+  if (th && !thPlot) issues.push({ path: 'building_plot', message: `the Town Hall "${th.id}" must start built on a plot` });
+  const thStart = thPlot?.startLevel ?? 1;
+  plots.forEach((p, i) => {
+    if (p.startBuilding === undefined || p.startBuilding === th?.id) return;
+    const b = byType.get(p.startBuilding);
+    if (p.townHallLevel > thStart) issues.push({ path: `building_plot[${i}]`, message: `starts built but needs Town Hall ${p.townHallLevel} (starts at ${thStart})` });
+    if (b && Math.max(b.requires.townHallLevel, p.startLevel ?? 1) > thStart) {
+      issues.push({ path: `building_plot[${i}].startLevel`, message: `needs a Town Hall above its starting level ${thStart}` });
+    }
+  });
   const byBuilding = new Map(buildings.map((b) => [b.id, b]));
   (raw.gear as GearDef[]).forEach((g, i) => {
     if (byBuilding.get(g.craftBuilding)?.kind !== 'craft') issues.push({ path: `gear[${i}].craftBuilding`, message: `"${g.craftBuilding}" is not a craft building` });
@@ -456,6 +538,7 @@ export function loadConfig(raw: RawConfig): GameConfig {
   const zoneNodes = new Map<string, string[]>(zones.map((z) => [z.id, []]));
   for (const n of nodes) if (n.zoneId) zoneNodes.get(n.zoneId)!.push(n.id);
   const buildings = raw.building as BuildingDef[];
+  const plots = raw.building_plot as BuildingPlotDef[];
   const monsters = raw.monster as MonsterDef[];
   const materials = raw.material as MaterialDef[];
   const gear = raw.gear as GearDef[];
@@ -476,6 +559,7 @@ export function loadConfig(raw: RawConfig): GameConfig {
     nodes,
     edges: raw.map_edge as MapEdge[],
     buildings,
+    plots,
     zones,
     monsters,
     materials,
@@ -492,6 +576,8 @@ export function loadConfig(raw: RawConfig): GameConfig {
       personalities: new Map(personalities.map((p) => [p.id, p])),
       nodes: new Map(nodes.map((n) => [n.id, n])),
       buildings: new Map(buildings.map((b) => [b.id, b])),
+      plots: new Map(plots.map((p) => [p.id, p])),
+      townHall: kindId('townHall'),
       zones: new Map(zones.map((z) => [z.id, z])),
       monsters: new Map(monsters.map((m) => [m.id, m])),
       materials: new Map(materials.map((m) => [m.id, m])),

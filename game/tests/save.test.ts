@@ -149,7 +149,7 @@ describe('save/load', () => {
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 6, configVersion: config.version, savedAt: 0, world: w }), config);
     expect(r.migratedFrom).toBe(6);
     expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
-    expect(WORLD_SCHEMA_VERSION).toBe(7);
+    expect(WORLD_SCHEMA_VERSION).toBeGreaterThanOrEqual(7);
     expect(r.world.town.bounties).toEqual([]);
     expect(r.world.town.autoBounty).toBe(true);
     expect(r.world.town.requests).toEqual({ 'mat.ore': 7 });
@@ -157,6 +157,54 @@ describe('save/load', () => {
     const s2 = new Simulation(config, r.world);
     s2.enqueue({ type: 'debug.spawnHunter' });
     for (let i = 0; i < 600; i++) s2.step();
+  });
+
+  /** A v7 save: no town.buildings / autoInvest / investPlan / building stats. */
+  function v7Save(mutate: (w: any) => void): string {
+    const w = JSON.parse(JSON.stringify(createWorld(config, 4)));
+    delete w.town.buildings;
+    delete w.town.autoInvest;
+    delete w.town.investPlan;
+    for (const k of ['buildingsBuilt', 'buildingUpgrades', 'investGold', 'investMaterials', 'investImportGold']) delete w.stats[k];
+    mutate(w);
+    w.schemaVersion = 7;
+    return JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 7, configVersion: config.version, savedAt: 0, world: w });
+  }
+
+  it('migrates a fresh v7 save: every start building at level 1, auto-invest on, building stats 0', () => {
+    const r = deserialize(v7Save(() => {}), config);
+    expect(r.migratedFrom).toBe(7);
+    expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
+    expect(WORLD_SCHEMA_VERSION).toBe(8);
+    const fresh = createWorld(config, 4);
+    expect(r.world.town.buildings).toEqual(fresh.town.buildings);
+    expect(r.world.town.buildings.every((b) => b.level === 1 && b.upgrade === null)).toBe(true);
+    expect(r.world.town.autoInvest).toBe(true);
+    expect(r.world.town.investPlan).toBeNull();
+    expect(r.world.stats).toMatchObject({ buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0 });
+  });
+
+  it('migrates a late v7 save at levels that keep its gear craftable (craft buildings, Town Hall)', () => {
+    const s = new Simulation(config, createWorld(config, 4));
+    s.enqueue({ type: 'debug.spawnHunter' });
+    s.step();
+    const text = v7Save((w) => {
+      w.hunters = JSON.parse(JSON.stringify(s.world.hunters));
+      w.hunters[0].level = 47; // + craftLevelAhead 2 = 49
+      // a Lv51 item on sale raises the bar to 51: smithy recipes up to Lv50, jeweler up to Lv51
+      w.town.shop = [{ uid: 'gx', gearId: 'gear.r.pearl', qualityId: 'q.rare', enhance: 0, price: 1, listPrice: 1, listedAtMs: 0 }];
+    });
+    const r = deserialize(text, config);
+    const lv = (id: string) => r.world.town.buildings.find((b) => b.buildingId === id)!.level;
+    const cap = (id: string) => config.index.buildings.get(id)!.maxGearLevel![lv(id) - 1]!;
+    expect(cap('bld.smithy')).toBeGreaterThanOrEqual(50);
+    expect(config.index.buildings.get('bld.smithy')!.maxGearLevel![lv('bld.smithy') - 2]!).toBeLessThan(50); // lowest such level
+    expect(cap('bld.jeweler')).toBeGreaterThanOrEqual(51);
+    expect(lv('bld.townhall')).toBe(Math.max(lv('bld.smithy'), lv('bld.jeweler')));
+    expect(lv('bld.shop')).toBe(1);
+    const s2 = new Simulation(config, r.world);
+    for (let i = 0; i < 600; i++) s2.step();
+    expect(s2.world.town.buildings.length).toBeGreaterThanOrEqual(r.world.town.buildings.length);
   });
 
   describe('config-derived migration values', () => {

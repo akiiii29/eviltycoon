@@ -1,19 +1,21 @@
 import { backstopHpFloor, currentZone, sameGoal, scoreGoals, shouldRetreatBeforeNextKill, urgentNeed } from '../ai/utility';
 import type { System, SystemContext } from '../system';
 import { dist, findMonster, isAlive, type Goal, type Hunter } from '../world';
+import { buildingDoor } from './town';
 
 /** Destination node for a goal. */
 function destination(ctx: SystemContext, h: Hunter, goal: Goal): string | null {
-  const { config } = ctx;
+  const { config, world } = ctx;
+  // Building doors come from the plot the building stands on; unbuilt buildings have none (TECH_SPEC §5.10).
   switch (goal.type) {
     case 'hunt': return config.index.zones.get(goal.zoneId)?.entryNode ?? null;
-    case 'service': return config.index.buildings.get(goal.buildingId)?.doorNode ?? null;
+    case 'service': return buildingDoor(config, world, goal.buildingId);
     case 'returnTown': return config.index.squareNode;
     case 'wander': return goal.nodeId || null;
-    case 'sell': return config.index.buildings.get(config.index.tradingPost)?.doorNode ?? null;
-    case 'shop': return config.index.buildings.get(config.index.shop)?.doorNode ?? null;
-    case 'enhance': return config.index.buildings.get(config.index.forge)?.doorNode ?? null;
-    case 'learn': return config.index.buildings.get(config.index.academy)?.doorNode ?? null;
+    case 'sell': return buildingDoor(config, world, config.index.tradingPost);
+    case 'shop': return buildingDoor(config, world, config.index.shop);
+    case 'enhance': return buildingDoor(config, world, config.index.forge);
+    case 'learn': return buildingDoor(config, world, config.index.academy);
     case 'dead': return null;
   }
 }

@@ -7,6 +7,7 @@ import { startCraft } from './systems/crafting';
 import { servicePrice } from './systems/services';
 import { reincarnate } from './systems/progression';
 import { cancelBounty, postBounty, validateBounty } from './systems/bounty';
+import { buildingLevel, cancelUpgrade, startBuild, startUpgrade } from './systems/town';
 
 /** Player/debug commands. Queued by UI, applied at the start of the next tick (TECH_SPEC §3.1). */
 export type Command =
@@ -40,7 +41,15 @@ export type Command =
   /** Cancel an active bounty; its unpaid escrow returns to Town gold. */
   | { type: 'town.cancelBounty'; bountyId: string }
   /** Toggle automatic bounties when Town gold is above its treasury target. */
-  | { type: 'town.setAutoBounty'; on: boolean };
+  | { type: 'town.setAutoBounty'; on: boolean }
+  /** GDD §5: build a building type on a free plot (gold + Town Storage materials paid now; TECH_SPEC §5.10). */
+  | { type: 'town.build'; buildingId: string; plotId: string }
+  /** Upgrade a building instance (id = its plot id) by one level. */
+  | { type: 'town.upgrade'; buildingInstanceId: string }
+  /** Cancel a running construction/upgrade (full refund). */
+  | { type: 'town.cancelUpgrade'; buildingInstanceId: string }
+  /** Toggle the Town's automatic investment of spare gold in building upgrades. */
+  | { type: 'town.setAutoInvest'; on: boolean };
 
 type Handler<C extends Command> = (ctx: SystemContext, cmd: C) => string | null;
 
@@ -68,7 +77,9 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     const h = findHunter(ctx.world, cmd.hunterId)!;
     const b = ctx.config.index.buildings.get(cmd.buildingId);
     if (!b || b.kind !== 'service') return 'unknown service building';
-    if (h.gold < servicePrice(ctx.config, h, b)) return 'not enough gold';
+    const lv = buildingLevel(ctx.world, b.id);
+    if (lv < 1) return 'building not built';
+    if (h.gold < servicePrice(ctx.config, h, b, lv)) return 'not enough gold';
     return setGoal(ctx, h, { type: 'service', buildingId: b.id }, 'order', true) ? null : 'no path';
   },
   'debug.spawnHunter': (ctx) => {
@@ -135,6 +146,14 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
   'town.cancelBounty': (ctx, cmd) => (cancelBounty(ctx, cmd.bountyId, 'cancelled') ? null : 'unknown bounty'),
   'town.setAutoBounty': (ctx, cmd) => {
     ctx.world.town.autoBounty = !!cmd.on;
+    return null;
+  },
+  'town.build': (ctx, cmd) => startBuild(ctx, cmd.buildingId, cmd.plotId),
+  'town.upgrade': (ctx, cmd) => startUpgrade(ctx, cmd.buildingInstanceId),
+  'town.cancelUpgrade': (ctx, cmd) => cancelUpgrade(ctx, cmd.buildingInstanceId),
+  'town.setAutoInvest': (ctx, cmd) => {
+    ctx.world.town.autoInvest = !!cmd.on;
+    if (!ctx.world.town.autoInvest) ctx.world.town.investPlan = null;
     return null;
   },
 };

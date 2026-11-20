@@ -26,11 +26,11 @@ describe('map config', () => {
   it('rejects unreachable nodes, wrong door kinds and zone-less field nodes', () => {
     const raw = clone(readRawConfig()) as Record<string, any>;
     raw.map_node.push({ id: 'island', x: 99, y: 99, kind: 'road' });
-    raw.building[0].doorNode = 't.n';
+    raw.building_plot[0].doorNode = 't.n';
     raw.map_node.find((n: any) => n.id === 'z1.b').zoneId = undefined;
     const msgs = validateConfig(raw as any).map((i) => `${i.path}: ${i.message}`);
     expect(msgs).toContain('map_node.island: unreachable from the square');
-    expect(msgs).toContain('building[0].doorNode: node "t.n" is not a door');
+    expect(msgs).toContain('building_plot[0].doorNode: node "t.n" is not a door');
     expect(msgs.some((m) => m.includes('field node needs zoneId'))).toBe(true);
   });
 });

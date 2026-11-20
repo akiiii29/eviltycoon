@@ -3,6 +3,7 @@ import { hunterStats } from '../formulas';
 import type { System, SystemContext } from '../system';
 import { isAlive, type GearInstance, type Hunter, type ShopItem, type World } from '../world';
 import { materialDemand, salePrice, surplusBudget, surplusPrice, townFeeShare } from './trading';
+import { enhanceBonus } from './town';
 
 /** Gold cost of the next enhance step for this gear, or null when it is already at max (or unknown). */
 export function enhanceCost(config: GameConfig, g: GearInstance): number | null {
@@ -65,7 +66,7 @@ function doSell(ctx: SystemContext, h: Hunter): void {
       else delete requests[matId];
     }
     const extra = have - wanted;
-    const sp = surplusPrice(config, matId);
+    const sp = surplusPrice(config, matId, world);
     const x = sp > 0 ? Math.min(extra, Math.floor(budget / sp)) : 0;
     if (x > 0) {
       const gold = x * sp;
@@ -119,7 +120,8 @@ function doEnhance(ctx: SystemContext, h: Hunter, slot: GearSlot): void {
   h.gold -= cost;
   world.town.gold += feeTownCut(config, cost, world); // the rest leaves the economy (gold sink)
   world.stats.enhanceTries += 1;
-  const success = ctx.rng.chance(row.successRate);
+  // Forge level adds enhanceBonus to the success rate (TECH_SPEC §5.10); one RNG draw as before.
+  const success = ctx.rng.chance(Math.min(1, row.successRate + enhanceBonus(config, world)));
   if (success) {
     g.enhance += 1;
     world.stats.enhanceSuccess += 1;

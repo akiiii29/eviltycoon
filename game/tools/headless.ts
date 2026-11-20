@@ -3,8 +3,10 @@
  * Prints a timeline (town gold, shop items, storage units, hunter gold avg/max, avg level) every
  * snapshotEveryMin game minutes (default 60) plus the town gold ledger of that window (in: services, shop sales,
  * forge/academy fee cut; out: material purchases, craft gold), the bounty ledger (escrow posted, refunds, paid to hunters,
- * kingdom completion gold) and the hunter gold ledger (gross: kill gold, enhance and
- * skill-study spending), then event counts, stats, active bounties and the final hunter list.
+ * kingdom completion gold), the building ledger (gold invested in builds/upgrades incl. material imports, refunds,
+ * material units consumed; TECH_SPEC §5.10) with every building's level (`*` = upgrade running) and the hunter gold ledger
+ * (gross: kill gold, enhance and skill-study spending), then event counts, stats, active bounties, buildings and the final
+ * hunter list.
  * Env HEADLESS_FP="key=value,..." overrides formula_params for the run (no file is changed), like tools/pacing.ts.
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -52,6 +54,11 @@ const ledger = { svc: 0, shop: 0, fees: 0, mats: 0, craft: 0 };
 /** Bounties (TECH_SPEC §5.9): escrowed when posted, refunds of cancelled/expired ones, kingdom completion gold, paid to hunters. */
 const bl = { escrow: 0, refund: 0, kingdom: 0, paid: 0, posted: 0, done: 0 };
 const escrowNow = (w: World): number => (w.town.bounties ?? []).reduce((a, b) => a + b.escrow, 0);
+/** Buildings (TECH_SPEC §5.10): gold paid for builds/upgrades (incl. imports), refunds of cancelled ones, material units used. */
+const inv = { gold: 0, refund: 0, mats: 0, imp: 0, done: 0 };
+const short = (id: string) => id.replace(/^bld\./, '');
+const levels = (w: World): string =>
+  (w.town.buildings ?? []).map((s) => `${short(s.buildingId)}${s.level}${s.upgrade ? '*' : ''}`).join(' ');
 /** Hunter side (gross amounts the hunters paid): enhance tries, skill study. Kill gold is the residual of the window. */
 const hl = { enh: 0, skill: 0 };
 const hunterGold = (w: World): number => w.hunters.reduce((a, h) => a + h.gold, 0);
@@ -81,19 +88,24 @@ for (let t = 0; t < ticks; t++) {
     else if (e.type === 'bountyCancelled') bl.refund += e.refund;
     else if (e.type === 'bountyCompleted') { bl.kingdom += e.kingdomGold; bl.done += 1; }
     else if (e.type === 'bountyProgress') bl.paid += e.gold;
+    else if (e.type === 'buildingStarted') { inv.gold += e.gold; inv.mats += e.materials; inv.imp += e.importGold; }
+    else if (e.type === 'buildingCancelled') inv.refund += e.refund;
+    else if (e.type === 'buildingCompleted') inv.done += 1;
     else if (e.type === 'craftStarted') ledger.craft += Math.round((config.index.gear.get(e.gearId)?.basePrice ?? 0) * config.formula.craftGoldFrac);
     if (e.type === 'goalChanged') reasons[`${e.goal.split(':')[0]} <- ${e.reason.split(' ')[0]}`] = (reasons[`${e.goal.split(':')[0]} <- ${e.reason.split(' ')[0]}`] ?? 0) + 1;
   }
   if (snapEvery > 0 && (t + 1) % (snapEvery * 600) === 0) {
     // Fee cut = residual of the town window (the share depends on town gold, see trading.townFeeShare).
-    ledger.fees = sim.world.town.gold - townGold0 - ledger.svc - ledger.shop + ledger.mats + ledger.craft + bl.escrow - bl.refund - bl.kingdom;
+    ledger.fees = sim.world.town.gold - townGold0 - ledger.svc - ledger.shop + ledger.mats + ledger.craft + bl.escrow - bl.refund - bl.kingdom + inv.gold - inv.refund;
     townGold0 = sim.world.town.gold;
     const kill = hunterGold(sim.world) - hunterGold0 + ledger.svc + ledger.shop + hl.enh + hl.skill - ledger.mats - bl.paid;
     timeline.push(snapshot(sim.world, (t + 1) / 600) +
       ` | in svc ${ledger.svc} shop ${ledger.shop} fees ${ledger.fees} out mats ${ledger.mats} (req ${reqMats}) craft ${ledger.craft}` +
       ` | hunter kill ${kill} enh ${hl.enh} skill ${hl.skill} | burned ${hl.enh + hl.skill - ledger.fees + ledger.craft}` +
       ` total ${sim.world.town.gold + hunterGold(sim.world) + escrowNow(sim.world)} townMin ${townGoldMin}` +
-      ` | bounty posted ${bl.posted} done ${bl.done} escrow ${bl.escrow} refund ${bl.refund} paid ${bl.paid} kingdom ${bl.kingdom} held ${escrowNow(sim.world)}`);
+      ` | bounty posted ${bl.posted} done ${bl.done} escrow ${bl.escrow} refund ${bl.refund} paid ${bl.paid} kingdom ${bl.kingdom} held ${escrowNow(sim.world)}` +
+      ` | build invest ${inv.gold - inv.refund} (import ${inv.imp}) mats ${inv.mats} done ${inv.done} [${levels(sim.world)}]`);
+    inv.gold = inv.refund = inv.mats = inv.imp = inv.done = 0;
     bl.escrow = bl.refund = bl.kingdom = bl.paid = bl.posted = bl.done = 0;
     townGoldMin = Infinity;
     hunterGold0 = hunterGold(sim.world);
@@ -114,6 +126,10 @@ for (const b of w.town.bounties ?? []) {
   console.log(`bounty ${b.id} ${b.auto ? 'auto' : 'player'} ${b.targetKind}:${b.targetId} ${b.progress}/${b.kills} reward ${b.reward} escrow ${b.escrow} age ${Math.round((w.timeMs - b.postedAtMs) / 60000)}m`);
 }
 if ((w.town as { requests?: unknown }).requests) console.log('requests', (w.town as { requests?: unknown }).requests);
+console.log(`buildings [${levels(w)}] autoInvest ${w.town.autoInvest} plan ${w.town.investPlan ? JSON.stringify(w.town.investPlan) : '-'}`);
+for (const s of w.town.buildings ?? []) {
+  if (s.upgrade) console.log(`  building ${s.id} ${s.buildingId} Lv${s.level} → ${s.upgrade.toLevel} ${Math.ceil(s.upgrade.remainingMs / 1000)}s left`);
+}
 for (const h of w.hunters) {
   const n = h.needs;
   const eq = Object.entries(h.equipment).map(([s, g]) => `${s}:${g!.gearId.split('.').pop()}/${g!.qualityId.slice(2)}+${g!.enhance}`).join(' ');

@@ -182,7 +182,7 @@ describe('AI: bestLearn', () => {
     expect(top.goal).toEqual({ type: 'learn', kind: 'skill', id: CLEAVE });
     expect(top.score).toBeCloseTo(1.15);
     expect(setGoal(ctx, h, top.goal, 'test')).toBe(true);
-    const door = config.index.buildings.get(config.index.academy)!.doorNode;
+    const door = config.plots.find((p) => p.startBuilding === config.index.academy)!.doorNode;
     expect(h.ai.path.at(-1)).toBe(door);
     const ev = ctx.events.drain().find((e) => e.type === 'goalChanged');
     expect(ev).toMatchObject({ goal: `learn:skill:${CLEAVE}` });

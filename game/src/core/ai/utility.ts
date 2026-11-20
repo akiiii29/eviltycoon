@@ -7,6 +7,7 @@ import { personalityFactor } from '../hunterFactory';
 import type { NavGraph } from '../pathfinding';
 import { canLearnTrait, nextSkillStudy } from '../systems/academy';
 import { servicePrice } from '../systems/services';
+import { buildingLevel, enhanceBonus, gearCraftable } from '../systems/town';
 import { bountyZoneMul } from '../systems/bounty';
 import { bagHasSellable, bagUnrequested, materialDemand, requestZoneMul, type Demand } from '../systems/trading';
 import { bagCount, type Goal, type Hunter, type ShopItem, type World } from '../world';
@@ -256,15 +257,16 @@ export function bestShopPurchase(config: GameConfig, world: World, h: Hunter): {
 /**
  * Expected cost and success rate of enhancing a slot's gear to its next level (AI estimate):
  * round(basePrice × enhance[next-1].costFrac); null if empty/maxed. The forge's own price is
- * systems/economy.enhanceCost (per gear instance).
+ * systems/economy.enhanceCost (per gear instance). With `world` the success rate includes the Forge level's enhanceBonus.
  */
-export function expectedEnhanceCost(config: GameConfig, h: Hunter, slot: GearSlot): { cost: number; successRate: number } | null {
+export function expectedEnhanceCost(config: GameConfig, h: Hunter, slot: GearSlot, world?: World): { cost: number; successRate: number } | null {
   const g = h.equipment[slot];
   if (!g) return null;
   const def = config.index.gear.get(g.gearId);
   const row = config.enhance[g.enhance]; // next = g.enhance + 1 → enhance[next - 1]
   if (!def || !row) return null;
-  return { cost: Math.round(def.basePrice * row.costFrac), successRate: row.successRate };
+  const bonus = world ? enhanceBonus(config, world) : 0;
+  return { cost: Math.round(def.basePrice * row.costFrac), successRate: Math.min(1, row.successRate + bonus) };
 }
 
 /**
@@ -283,14 +285,16 @@ export function enhanceReserveMul(config: GameConfig, successRate: number): numb
  * (upgradeSavingsFrac × basePrice × aiTypicalQualityMult / (spendRatio × personality)); otherwise 0.
  * aiTypicalQualityMult is the quality multiplier the AI assumes for a piece it has not seen yet (uncommon-ish).
  * Polishing gear that is about to be replaced is wasted gold, so this keeps enhancing from starving gear upgrades.
+ * With `world`, gear above its craft building's tier cap (TECH_SPEC §5.10) is ignored: nobody can make it yet.
  */
-export function upgradeSavings(config: GameConfig, h: Hunter, slot: GearSlot): number {
+export function upgradeSavings(config: GameConfig, h: Hunter, slot: GearSlot, world?: World): number {
   const f = config.formula;
   const cur = slotValue(config, h, slot);
   const spend = Math.max(f.spendRatio * personalityFactor(config, h, 'spendRatio'), 0.01);
   let need = 0;
   for (const def of config.gear) {
     if (def.slot !== slot || def.level > h.level) continue;
+    if (world && !gearCraftable(config, world, def)) continue;
     if (def.mainValue * f.aiTypicalQualityMult < cur * (1 + f.minUpgradeGain)) continue;
     const budget = (f.upgradeSavingsFrac * def.basePrice * f.aiTypicalQualityMult) / spend;
     need = need === 0 ? budget : Math.min(need, budget);
@@ -313,15 +317,15 @@ export interface EnhanceChoice {
  * successRate ≥ enhanceMinSuccess and gold ≥ cost × enhanceReserveMul(successRate) + upgradeSavings(slot).
  * Among those, the highest (successRate × stat step) / cost wins (expected stat gain per gold); ties → GEAR_SLOTS order.
  */
-export function bestEnhance(config: GameConfig, h: Hunter): EnhanceChoice | null {
+export function bestEnhance(config: GameConfig, h: Hunter, world?: World): EnhanceChoice | null {
   const minSuccess = config.formula.enhanceMinSuccess;
   let best: EnhanceChoice | null = null;
   let bestPerGold = -Infinity;
   for (const slot of GEAR_SLOTS) {
-    const c = expectedEnhanceCost(config, h, slot);
+    const c = expectedEnhanceCost(config, h, slot, world);
     const g = h.equipment[slot];
     if (!c || !g || c.successRate < minSuccess) continue;
-    if (h.gold < c.cost * enhanceReserveMul(config, c.successRate) + upgradeSavings(config, h, slot)) continue;
+    if (h.gold < c.cost * enhanceReserveMul(config, c.successRate) + upgradeSavings(config, h, slot, world)) continue;
     const cur = gearMainValue(config, g);
     const step = gearMainValue(config, { ...g, enhance: g.enhance + 1 }) - cur;
     const row = config.enhance[g.enhance]!;
@@ -345,13 +349,13 @@ const TRAIT_PRIORITY: readonly ModStat[] = ['atkPct', 'hpPct', 'defPct', 'atkSpe
  * (at level 1 the starting gold is kept back, so a fresh hunter hunts before studying).
  * Otherwise a learnable trait (enough points, not maxed), by TRAIT_PRIORITY then trait id; cost = point cost.
  */
-export function bestLearn(config: GameConfig, h: Hunter): { kind: 'skill' | 'trait'; id: string; cost: number } | null {
+export function bestLearn(config: GameConfig, h: Hunter, world?: World): { kind: 'skill' | 'trait'; id: string; cost: number } | null {
   const f = config.formula;
   // A level-1 hunter hunts first: it only studies with gold to spare beyond its starting purse.
   const spare = h.level >= 2 ? h.gold : h.gold - f.startingGold;
   let skill: { id: string; cost: number } | null = null;
   for (const def of config.skills) {
-    const next = nextSkillStudy(config, h, def.id);
+    const next = nextSkillStudy(config, h, def.id, world);
     if (!next || spare < next.cost * f.enhanceGoldReserveMul) continue;
     if (!skill || next.cost < skill.cost || (next.cost === skill.cost && def.id < skill.id)) skill = { id: def.id, cost: next.cost };
   }
@@ -434,8 +438,10 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
   } else {
     for (const b of config.buildings) {
       if (b.kind !== 'service' || !b.need || b.price === undefined) continue;
+      const lv = buildingLevel(world, b.id);
+      if (lv < 1) continue; // not built yet
       const frac = needFrac(config, h, b.need);
-      if (frac >= f.serviceFullFrac || h.gold < servicePrice(config, h, b)) continue;
+      if (frac >= f.serviceFullFrac || h.gold < servicePrice(config, h, b, lv)) continue;
       const base = frac < f.softNeedFrac ? f.serviceLowBase + f.serviceLowWeight * (1 - frac) : f.serviceWeight * (1 - frac);
       const s = base * personalityFactor(config, h, `goal.service.${b.need}`);
       out.push({ goal: { type: 'service', buildingId: b.id }, score: s, label: `service ${b.need}` });
@@ -443,19 +449,20 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
 
     // Economy (M2): damped when needs are low so services still win.
     const econMul = Math.max(ok, f.econMulFloor);
-    if (sellable || dump) {
+    const built = (id: string) => buildingLevel(world, id) >= 1;
+    if ((sellable || dump) && built(config.index.tradingPost)) {
       out.push({ goal: { type: 'sell' }, score: (f.sellBaseScore + f.sellFillWeight * fill) * econMul, label: 'sell' });
     }
-    const buy = bestShopPurchase(config, world, h);
+    const buy = built(config.index.shop) ? bestShopPurchase(config, world, h) : null;
     if (buy) {
       const s = (f.shopBaseScore + Math.min(buy.gain, 1) * f.shopGainWeight) * econMul;
       out.push({ goal: { type: 'shop', itemUid: buy.item.uid }, score: s, label: `shop ${buy.item.gearId}` });
     }
-    const enh = bestEnhance(config, h);
+    const enh = built(config.index.forge) ? bestEnhance(config, h, world) : null;
     if (enh) {
       out.push({ goal: { type: 'enhance', slot: enh.slot }, score: (f.enhanceBaseScore + f.enhanceGainWeight * enh.expectedRelGain) * econMul, label: `enhance ${enh.slot}` });
     }
-    const learn = bestLearn(config, h);
+    const learn = built(config.index.academy) ? bestLearn(config, h, world) : null;
     if (learn) {
       const s = (learn.kind === 'skill' ? f.learnSkillScore : f.learnTraitScore) * econMul;
       out.push({ goal: { type: 'learn', kind: learn.kind, id: learn.id }, score: s, label: `learn ${learn.kind} ${learn.id}` });

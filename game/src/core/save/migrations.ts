@@ -132,4 +132,50 @@ export const MIGRATIONS: Record<number, Migration> = {
       stats: { bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, ...stats },
     };
   },
+  // v7 → v8 (Town buildings, TECH_SPEC §5.10): building instances on plots (levels that keep the save playing as before),
+  // auto-invest (on, like auto-craft), building stats.
+  7: (w, config) => {
+    const town = (w.town ?? {}) as Record<string, unknown>;
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    return {
+      ...w,
+      town: { buildings: migrationBuildings(config, w), autoInvest: true, investPlan: null, ...town },
+      stats: { buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, ...stats },
+    };
+  },
 };
+
+/**
+ * v7 → v8 building levels: every plot's startBuilding, at the lowest level that keeps the save playing as before —
+ * craft buildings high enough for every recipe the old rules allowed (gear.level ≤ max hunter level + craftLevelAhead)
+ * and for any gear already equipped, on sale or being crafted; the Town Hall at least as high as any other building.
+ */
+export function migrationBuildings(config: GameConfig, w: Record<string, unknown>): Record<string, unknown>[] {
+  const hunters = (Array.isArray(w.hunters) ? w.hunters : []) as Record<string, any>[];
+  const town = (w.town ?? {}) as Record<string, any>;
+  const gearLevel = (id: unknown) => config.index.gear.get(typeof id === 'string' ? id : '')?.level ?? 0;
+  let want = 0;
+  for (const h of hunters) {
+    want = Math.max(want, (Number(h.level) || 1) + config.formula.craftLevelAhead);
+    for (const g of Object.values(h.equipment ?? {}) as { gearId?: unknown }[]) want = Math.max(want, gearLevel(g?.gearId));
+  }
+  for (const it of (Array.isArray(town.shop) ? town.shop : []) as { gearId?: unknown }[]) want = Math.max(want, gearLevel(it?.gearId));
+  for (const job of Object.values(town.crafting ?? {}) as ({ gearId?: unknown } | null)[]) want = Math.max(want, gearLevel(job?.gearId));
+  const out: { id: string; buildingId: string; level: number; upgrade: null }[] = [];
+  let top = 1;
+  for (const p of config.plots) {
+    if (!p.startBuilding) continue;
+    const b = config.index.buildings.get(p.startBuilding)!;
+    let level = p.startLevel ?? 1;
+    if (b.kind === 'craft' && b.maxGearLevel) {
+      // Lowest level whose cap covers this building's highest recipe within `want`.
+      const need = Math.max(0, ...config.gear.filter((g) => g.craftBuilding === b.id && g.level <= want).map((g) => g.level));
+      while (level < b.maxLevel && (b.maxGearLevel[level - 1] ?? 0) < need) level++;
+    }
+    if (b.kind !== 'townHall') top = Math.max(top, level);
+    out.push({ id: p.id, buildingId: b.id, level, upgrade: null });
+  }
+  const th = config.index.buildings.get(config.index.townHall);
+  for (const s of out) if (th && s.buildingId === th.id) s.level = Math.min(th.maxLevel, Math.max(s.level, top));
+  return out;
+}
