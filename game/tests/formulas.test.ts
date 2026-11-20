@@ -1,9 +1,9 @@
-import { scoreGoals } from '../src/core/ai/utility';
+import { dangerCache, scoreGoals, zoneDanger } from '../src/core/ai/utility';
 import type { FormulaParams, GameConfig } from '../src/core/config/types';
 import { EventBuffer } from '../src/core/events';
 import {
-  critChance, critMultiplier, defReduction, dodgeChance, duel, expectedHit, hunterPower, hunterStats, killsPerLife, levelGapMult,
-  mitigated, moodStatMult, monsterTypeStats, powerRatio, stackPct, zoneFit, zoneScores, zoneShare,
+  critChance, critMultiplier, crowdFactor, defReduction, dodgeChance, duel, expectedHit, hunterPower, hunterStats, killsPerLife, levelGapMult,
+  liveCrowd, mitigated, moodStatMult, monsterTypeStats, powerRatio, stackPct, zoneFit, zoneOccupancy, zoneScores, zoneShare,
 } from '../src/core/formulas';
 import { rollHunter } from '../src/core/hunterFactory';
 import { NavGraph } from '../src/core/pathfinding';
@@ -47,8 +47,44 @@ describe('formulas: DEF reduction', () => {
       expect(r).toBeLessThan(1);
       prev = r;
     }
-    expect(defReduction(1e9, 1, f)).toBe(f.defReductionCap);
+    expect(defReduction(1e9, 1, f)).toBeLessThan(f.defReductionCap);
+    expect(defReduction(1e9, 1, f)).toBeGreaterThan(f.defSoftKnee);
     expect(f.defReductionCap).toBeLessThan(1);
+  });
+
+  it('soft cap: the plain hyperbola up to defSoftKnee, then smooth (same value and slope) and still rising', () => {
+    const half = (lvl: number) => f.defPerLevel * lvl + f.defFlat;
+    const atRaw = (raw: number, lvl: number) => (raw / (1 - raw)) * half(lvl); // DEF giving that hyperbola value
+    expect(f.defSoftKnee).toBeLessThan(f.defReductionCap);
+    for (const raw of [0.1, 0.4, f.defSoftKnee]) expect(defReduction(atRaw(raw, 30), 30, f)).toBeCloseTo(raw, 10);
+    const k = atRaw(f.defSoftKnee, 30), e = 1e-3;
+    const slope = (d: number) => (defReduction(d + e, 30, f) - defReduction(d - e, 30, f)) / (2 * e);
+    expect(slope(k + 2 * e) / slope(k - 2 * e)).toBeCloseTo(1, 2);
+    let prev = 0;
+    for (let d = k; d < 50 * k; d *= 1.5) {
+      const r = defReduction(d, 30, f);
+      expect(r).toBeGreaterThanOrEqual(prev);
+      expect(r).toBeLessThan(f.defReductionCap);
+      prev = r;
+    }
+    // defSoftKnee ≥ cap is the old hard clamp.
+    const hard = { ...f, defSoftKnee: f.defReductionCap };
+    expect(defReduction(1e9, 1, hard)).toBe(f.defReductionCap);
+    expect(defReduction(atRaw(0.5, 30), 30, hard)).toBeCloseTo(0.5, 10);
+  });
+
+  it('Torment I vs a reincarnated Lv30 hunter: monsterDefMul still matters (no saturation at the cap)', () => {
+    const torment = config.index.difficulties.get('diff.torment1')!;
+    const hard = { ...f, defSoftKnee: f.defReductionCap };
+    for (const id of ['mon.voidcrawler', 'mon.hollowlord']) {
+      const def = config.index.monsters.get(id)!.def;
+      const r13 = defReduction(def * torment.monsterDefMul, 30, f);
+      const r20 = defReduction(def * config.index.difficulties.get('diff.torment2')!.monsterDefMul, 30, f);
+      expect(r20).toBeGreaterThan(r13 + 0.005);
+      expect(r20).toBeLessThan(f.defReductionCap);
+      // With the old hard clamp the same DEF step changed little or nothing.
+      expect(defReduction(def * 20, 30, hard) - defReduction(def * 13, 30, hard)).toBeLessThan(r20 - r13);
+    }
   });
 
   it('half value scales with the attacker level: the same DEF stops less against a higher-level attacker', () => {
@@ -59,11 +95,12 @@ describe('formulas: DEF reduction', () => {
     expect(defReduction(50, 0, f)).toBe(defReduction(50, 1, f));
   });
 
-  it('hits never deal 0 or negative damage, and huge DEF leaves (1 − cap) of ATK', () => {
+  it('hits never deal 0 or negative damage, and huge DEF leaves a bit more than (1 − cap) of ATK', () => {
     expect(mitigated(0, 0, 1, 1, f)).toBe(f.minDamage);
     expect(mitigated(-10, 0, 1, 1, f)).toBe(f.minDamage);
     expect(mitigated(1, 1e9, 1, 1, f)).toBe(f.minDamage);
-    expect(mitigated(1000, 1e9, 1, 1, f)).toBeCloseTo(1000 * (1 - f.defReductionCap));
+    expect(mitigated(1000, 1e9, 1, 1, f)).toBeGreaterThan(1000 * (1 - f.defReductionCap));
+    expect(mitigated(1000, 1e9, 1, 1, f)).toBeLessThan(1000 * (1 - f.defSoftKnee));
     expect(mitigated(100, 0, 5, 5, f)).toBe(100);
   });
 
@@ -233,11 +270,13 @@ describe('formulas: zone fit and tie-break', () => {
   it('the tie-break never raises the best zone and leaves zones that are not comfortable alone', () => {
     const h = bareHunter(12, 'zone.meadow');
     const w = createWorld(config, 1);
-    for (const s of zoneScores(config, w, h)) {
-      const base = zoneFit(s.ratio, f);
-      expect(s.fit).toBeLessThanOrEqual(base + 1e-12);
-      if (s.ratio < f.zoneFitBest) expect(s.fit).toBeCloseTo(base); // alone in its zone: share = 1 unless ttk is tiny
-    }
+    const scores = zoneScores(config, w, h);
+    const noTie = zoneScores({ ...config, formula: { ...f, zoneTierBonus: 0 } }, w, h);
+    expect(Math.max(...scores.map((s) => s.fit))).toBeLessThanOrEqual(Math.max(...scores.map((s) => zoneFit(s.ratio, f))) + 1e-12);
+    scores.forEach((s, i) => {
+      expect(s.fit).toBeLessThanOrEqual(noTie[i]!.fit + 1e-12);
+      if (s.ratio < f.zoneFitBest) expect(s.fit).toBeCloseTo(noTie[i]!.fit, 12);
+    });
   });
 
   it('powerRatio grows with level and falls with zone depth; hunterPower grows with level', () => {
@@ -249,11 +288,35 @@ describe('formulas: zone fit and tie-break', () => {
     expect(hunterPower(config, hi)).toBeGreaterThan(hunterPower(config, lo));
   });
 
+  it('crowdFactor = zoneCrowdMul × √(monsters alive per hunter), floored at zoneCrowdMinRho', () => {
+    expect(crowdFactor(12, 1, f)).toBeCloseTo(f.zoneCrowdMul * Math.sqrt(12));
+    expect(crowdFactor(12, 4, f)).toBeCloseTo(crowdFactor(3, 1, f));
+    expect(crowdFactor(12, 4, f) / crowdFactor(12, 1, f)).toBeCloseTo(0.5);
+    expect(crowdFactor(0, 3, f)).toBeCloseTo(f.zoneCrowdMul * Math.sqrt(f.zoneCrowdMinRho));
+    expect(crowdFactor(5, 0, f)).toBe(crowdFactor(5, 1, f)); // never divides by fewer than one hunter
+  });
+
+  it('zoneOccupancy: unvisited zones count as full, the judging hunter is left out of the hunter counts', () => {
+    const w = createWorld(config, 1);
+    const a = bareHunter(20, 'zone.marsh'), b = bareHunter(20, 'zone.marsh');
+    b.id = 'h1';
+    a.ai.goal = b.ai.goal = { type: 'hunt', zoneId: 'zone.marsh' };
+    w.hunters.push(a, b);
+    const occ = zoneOccupancy(config, w, a.id);
+    expect(occ.hunters.get('zone.marsh')).toBe(1);
+    expect(occ.alive.get('zone.marsh')).toBe(config.index.zones.get('zone.marsh')!.monsterCap);
+    w.zones['zone.marsh'] = { respawnMs: 0 }; // visited, now empty
+    expect(zoneOccupancy(config, w, a.id).alive.get('zone.marsh')).toBe(0);
+  });
+
   it('powerRatio is √(killsPerLife / zoneRefKills): 4× the kills per life is 2× the ratio', () => {
     const w = createWorld(config, 1);
     const h = bareHunter(20);
     const z = config.index.zones.get('zone.marsh')!;
-    expect(powerRatio(config, w, h, z)).toBeCloseTo(Math.sqrt(killsPerLife(config, h, z, 'diff.easy') / f.zoneRefKills));
+    const crowd = liveCrowd(zoneOccupancy(config, w, h.id), z, f);
+    expect(powerRatio(config, w, h, z)).toBeCloseTo(Math.sqrt(killsPerLife(config, h, z, 'diff.easy', crowd) / f.zoneRefKills));
+    // A lone hunter in a full (unvisited) zone: ρ = monsterCap.
+    expect(crowd).toBeCloseTo(crowdFactor(z.monsterCap, 1, f));
   });
 });
 
@@ -311,12 +374,12 @@ describe('balance: duel prediction vs simulated combat', () => {
 
 /**
  * Balance in the full simulation: HP lost per kill while hunting a zone stays within a broad band of the AI's
- * prediction (hunter HP / killsPerLife). The band is wide on purpose: real fights have adds, shared targets and
- * AoE skills that the estimate only models through zoneCrowd. It catches a predictor that drifts from the combat
- * system (e.g. a formula changed in one place only).
+ * prediction (zoneDanger.dmgPerKill with the live crowd factor, formulas.crowdFactor). Over 10 seeds × 15 h the
+ * per-zone ratio is 1.01–1.20 (early 6 s-respawn zones highest); the band leaves room for one seed's noise. It catches
+ * a predictor that drifts from the combat system (e.g. a formula changed in one place only).
  */
 describe('balance: in-zone HP cost vs prediction', () => {
-  it('measured / predicted HP lost per kill is within [0.25, 3] in every zone with enough kills', () => {
+  it('measured / predicted HP lost per kill (live crowd factor) is within [0.7, 1.45] in every zone with enough kills', () => {
     const sim = new Simulation(config, createWorld(config, 2));
     for (let i = 0; i < f.hunterSlots; i++) sim.enqueue({ type: 'debug.spawnHunter' });
     const acc: Record<string, { taken: number; pred: number; kills: number }> = {};
@@ -333,15 +396,15 @@ describe('balance: in-zone HP cost vs prediction', () => {
           if (!e.evaded) a.taken += e.damage;
         } else {
           a.kills++;
-          a.pred += hunterStats(config, h, { steady: true }).hp / killsPerLife(config, h, config.index.zones.get(g.zoneId)!, sim.world.town.difficulty);
+          a.pred += zoneDanger(config, h, g.zoneId, sim.world.town.difficulty, dangerCache(config, h, sim.world)).dmgPerKill;
         }
       }
     }
     const checked = Object.entries(acc).filter(([, a]) => a.kills >= 100);
     expect(checked.length).toBeGreaterThanOrEqual(2);
     for (const [, a] of checked) {
-      expect(a.taken / a.pred).toBeGreaterThan(0.25);
-      expect(a.taken / a.pred).toBeLessThan(3);
+      expect(a.taken / a.pred).toBeGreaterThan(0.7);
+      expect(a.taken / a.pred).toBeLessThan(1.45);
     }
   }, 120_000);
 });

@@ -8,7 +8,8 @@
  *   crit      = P(crit) = min(critChanceCap, CRIT%),  × critMultiplier (+ overflow above the cap)
  *   dodge     = P(dodge) = dodgeCap × EVA / (EVA + dodgeHalf)
  *   stacking  = (base × job × reinc + gear) × (1 + Σtrait%) × (1 + Σbuff%) × mood   (each Σ capped)
- *   AI power  = √(kills per life / zoneRefKills), from the same per-hit expectations as the combat system.
+ *   AI power  = √(kills per life / zoneRefKills), from the same per-hit expectations as the combat system,
+ *               × a live crowd factor (monsters alive per hunter in the zone).
  */
 import type { FormulaParams, GameConfig, GearSlot, MainStat, ModStat, NeedKey, SkillDef, StatKey, ZoneDef } from './config/types';
 import { GEAR_SLOTS } from './config/types';
@@ -166,16 +167,27 @@ export function slotValue(config: GameConfig, h: Hunter, slot: GearSlot): number
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
- * Fraction of damage removed by DEF:  R = min(cap, DEF / (DEF + defPerLevel · L_att + defFlat)).
+ * Fraction of damage removed by DEF (TECH_SPEC §7.1):
+ *   raw = DEF / (DEF + defPerLevel · L_att + defFlat)
+ *   R   = raw                                                         if raw ≤ defSoftKnee
+ *         cap − (cap − knee) · exp(−(raw − knee) / (cap − knee))       above the knee   (cap = defReductionCap)
  * Hyperbolic, so it rises with DEF with diminishing returns and never reaches 100 %. The "half-value" DEF
  * (R = 50 %) scales with the ATTACKER's level, so the same DEF stays meaningful over 100 levels and a hunter
  * who out-levels a zone shrugs off its monsters (and vice versa: a low-level hunter's DEF counts for little
- * against a high-level monster). The cap keeps a floor of (1 − cap) × ATK on every hit.
+ * against a high-level monster). Above the knee R bends smoothly (same value and slope at the knee) towards the
+ * cap and never reaches it, so extra DEF (e.g. monsterDefMul on Torment against a reincarnated low-level hunter)
+ * always counts a little instead of being wasted at a hard clamp; every hit keeps more than (1 − cap) × ATK.
+ * defSoftKnee ≥ defReductionCap is the old hard clamp min(cap, raw).
  */
 export function defReduction(def: number, attackerLevel: number, f: FormulaParams): number {
   const d = Math.max(0, def);
   const half = f.defPerLevel * Math.max(1, attackerLevel) + f.defFlat;
-  return Math.min(f.defReductionCap, d / (d + half));
+  const raw = d / (d + half);
+  const cap = f.defReductionCap;
+  const knee = Math.min(f.defSoftKnee, cap);
+  if (raw <= knee) return raw;
+  if (knee >= cap) return cap;
+  return cap - (cap - knee) * Math.exp(-(raw - knee) / (cap - knee));
 }
 
 /**
@@ -269,25 +281,62 @@ export function duel(config: GameConfig, h: Hunter, s: EffectiveStats, m: Monste
 }
 
 /**
- * Spawn-pressure multiplier on damage taken per kill in a zone:  zoneCrowdRespawnSec / respawnSec.
- * A zone refills one monster every respawnSec, so the rate at which extra monsters wander into a fight scales
- * with 1 / respawnSec. EMPIRICAL calibration, not a validated model: in headless runs fast-respawn zones cost
- * more HP per kill than the 1-v-1 duel predicts (adds), slow-respawn zones less (several hunters share targets).
- * With the shipped zones it is effectively two levels (0.5 for meadow/ruins, 1 elsewhere); measured/predicted
- * still ranges ~0.8–1.5 between zones with the same respawnSec (aggro range, AoE and adds are not modelled).
+ * Static crowd factor, used only where there is no live zone to look at (journeys, formulas.zonePower):
+ *   zoneCrowdRespawnSec / respawnSec.
+ * The AI uses the live crowd factor (crowdFactor / zoneOccupancy) instead.
  */
 export function zoneCrowd(zone: ZoneDef, f: FormulaParams): number {
   return f.zoneCrowdRespawnSec / zone.respawnSec;
 }
 
 /**
+ * Live crowd factor on the 1-v-1 duel's damage per kill (TECH_SPEC §5.3), from the monsters alive in the zone per
+ * hunter hunting it (this one included):
+ *   ρ = max(zoneCrowdMinRho, alive / hunters),   crowd = zoneCrowdMul × √ρ.
+ * EMPIRICAL fit to headless runs (seeds 1–10, 15 h, every zone): measured HP lost per kill / duel prediction lies on
+ * one curve of ρ in all zones — a lone hunter in a full zone (ρ ≈ 10–12) pulls adds and takes ≈ 2× the duel, hunters
+ * sharing a zone split the aggro and gang up on each target (ρ ≈ 3 → ≈ 1.1×, ρ ≈ 0.25 → ≈ 0.3×). Respawn speed,
+ * monster cap and aggro range act through ρ (a fast-respawn zone stays full under more hunters).
+ */
+export function crowdFactor(alive: number, hunters: number, f: FormulaParams): number {
+  return f.zoneCrowdMul * Math.sqrt(Math.max(f.zoneCrowdMinRho, Math.max(0, alive) / Math.max(1, hunters)));
+}
+
+/** Monsters alive per zone and hunters whose goal is to hunt it (crowdFactor inputs), from world state. */
+export interface ZoneOccupancy {
+  alive: Map<string, number>;
+  hunters: Map<string, number>;
+}
+
+/**
+ * Live occupancy of every zone. A zone that has never been visited counts as full (monsterCap): the first visit
+ * fills it. `excludeHunterId` is left out of the hunter counts (the hunter judging the zones adds itself as + 1).
+ */
+export function zoneOccupancy(config: GameConfig, world: World, excludeHunterId?: string): ZoneOccupancy {
+  const alive = new Map<string, number>();
+  const hunters = new Map<string, number>();
+  for (const z of config.zones) alive.set(z.id, world.zones[z.id] ? 0 : z.monsterCap);
+  for (const m of world.monsters) if (m.hp > 0 && world.zones[m.zoneId]) alive.set(m.zoneId, (alive.get(m.zoneId) ?? 0) + 1);
+  for (const o of world.hunters) {
+    if (o.id !== excludeHunterId && o.ai.goal?.type === 'hunt') hunters.set(o.ai.goal.zoneId, (hunters.get(o.ai.goal.zoneId) ?? 0) + 1);
+  }
+  return { alive, hunters };
+}
+
+/** Live crowd factor of a zone for a hunter not counted in `occ` (it adds itself as one more hunter). */
+export function liveCrowd(occ: ZoneOccupancy, zone: ZoneDef, f: FormulaParams): number {
+  return crowdFactor(occ.alive.get(zone.id) ?? zone.monsterCap, 1 + (occ.hunters.get(zone.id) ?? 0), f);
+}
+
+/**
  * Expected kills per full HP bar in a zone, against its spawn mix (weights = spawn weights):
- *   killsPerLife = HP / (zoneCrowd × Σ_w dmgPerKill / Σ_w)
+ *   killsPerLife = HP / (crowd × Σ_w dmgPerKill / Σ_w)
+ * `crowd` defaults to the static zoneCrowd (journeys); the AI passes the live crowdFactor.
  * This is the Lanchester-style "DPS × HP vs DPS × HP" product: doubling either the hunter's damage or its
  * effective HP doubles it. Uses steady stats (no buffs, no mood) so zone choice does not flap.
  */
-export function killsPerLife(config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string): number {
-  return zoneEstimate(config, h, zone, difficultyId).killsPerLife;
+export function killsPerLife(config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string, crowd?: number): number {
+  return zoneEstimate(config, h, zone, difficultyId, crowd).killsPerLife;
 }
 
 export interface ZoneEstimate {
@@ -297,8 +346,10 @@ export interface ZoneEstimate {
   ttk: number;
 }
 
-/** killsPerLife and mean TTK of a hunter in a zone, from duel() over the zone's spawn mix. */
-export function zoneEstimate(config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string): ZoneEstimate {
+/** killsPerLife and mean TTK of a hunter in a zone, from duel() over the zone's spawn mix (crowd: see killsPerLife). */
+export function zoneEstimate(
+  config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string, crowd = zoneCrowd(zone, config.formula),
+): ZoneEstimate {
   const s = hunterStats(config, h, { steady: true });
   let w = 0, dmg = 0, ttk = 0;
   for (const e of zone.monsters) {
@@ -307,7 +358,7 @@ export function zoneEstimate(config: GameConfig, h: Hunter, zone: ZoneDef, diffi
     dmg += e.weight * d.dmgPerKill;
     ttk += e.weight * d.ttk;
   }
-  dmg *= zoneCrowd(zone, config.formula);
+  dmg *= crowd;
   return { killsPerLife: dmg > 0 ? (s.hp * w) / dmg : Infinity, ttk: w > 0 ? ttk / w : Infinity };
 }
 
@@ -318,16 +369,22 @@ export function zoneEstimate(config: GameConfig, h: Hunter, zone: ZoneDef, diffi
  * which keeps the zoneFit thresholds (0.7 / 1.1 / 2) readable.
  */
 export function powerRatio(config: GameConfig, world: World, h: Hunter, zone: ZoneDef): number {
-  return ratioFromKills(killsPerLife(config, h, zone, world.town.difficulty), config.formula);
+  const crowd = liveCrowd(zoneOccupancy(config, world, h.id), zone, config.formula);
+  return ratioFromKills(killsPerLife(config, h, zone, world.town.difficulty, crowd), config.formula);
 }
 
 function ratioFromKills(kills: number, f: FormulaParams): number {
   return Math.sqrt(kills / f.zoneRefKills);
 }
 
-/** powerRatio against a zone's spawn mix at an explicit difficulty (journeys snapshot it at departure). */
+/**
+ * powerRatio against a zone's spawn mix at an explicit difficulty (journeys snapshot it at departure). No live zone:
+ * uses the static zoneCrowd and its own reference journeyRefKills (= the zoneRefKills the journey targets were set
+ * with), so the journey power targets (config/journey.json) keep their meaning when the AI's zoneRefKills is retuned:
+ *   √(killsPerLife(static crowd) / journeyRefKills).
+ */
 export function zonePower(config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string): number {
-  return ratioFromKills(killsPerLife(config, h, zone, difficultyId), config.formula);
+  return Math.sqrt(killsPerLife(config, h, zone, difficultyId) / config.formula.journeyRefKills);
 }
 
 /**
@@ -395,8 +452,9 @@ export interface ZoneScore {
 }
 
 /**
- * Fit of every zone (config order = progression order): zoneFit(ratio) × crowding (zoneShare, counting the other
- * hunters whose goal is to hunt there), rescaled so the best zone keeps max zoneFit; then a tie-break towards
+ * Fit of every zone (config order = progression order): zoneFit(ratio) — ratio with the live crowd factor
+ * (zoneOccupancy: monsters alive there; the other hunters whose goal is to hunt there, + 1 for this one) — × crowding
+ * (zoneShare, same hunter count), rescaled so the best zone keeps max zoneFit; then a tie-break towards
  * harder zones: among the zones
  * that are comfortable (ratio ≥ zoneFitBest), the hardest one keeps its fit and each easier comfortable zone
  * loses zoneTierBonus per tier below it. A hunter that out-classes every zone (all at zoneFitFloor) therefore
@@ -407,15 +465,12 @@ export interface ZoneScore {
  */
 export function zoneScores(config: GameConfig, world: World, h: Hunter): ZoneScore[] {
   const f = config.formula;
-  const others: Record<string, number> = {};
-  for (const o of world.hunters) {
-    if (o.id !== h.id && o.ai.goal?.type === 'hunt') others[o.ai.goal.zoneId] = (others[o.ai.goal.zoneId] ?? 0) + 1;
-  }
+  const occ = zoneOccupancy(config, world, h.id);
   let bestRaw = 0, bestAdj = 0;
   const out = config.zones.map((zone) => {
-    const est = zoneEstimate(config, h, zone, world.town.difficulty);
+    const est = zoneEstimate(config, h, zone, world.town.difficulty, liveCrowd(occ, zone, f));
     const ratio = ratioFromKills(est.killsPerLife, f);
-    const share = zoneShare(est.ttk, 1 + (others[zone.id] ?? 0), zone);
+    const share = zoneShare(est.ttk, 1 + (occ.hunters.get(zone.id) ?? 0), zone);
     const raw = zoneFit(ratio, f);
     const fit = raw * (f.zoneShareFloor + (1 - f.zoneShareFloor) * share);
     bestRaw = Math.max(bestRaw, raw);

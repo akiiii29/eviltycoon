@@ -1,4 +1,4 @@
-import { needsOk, scoreGoals, urgentNeed } from '../src/core/ai/utility';
+import { needsOk, retreatHpFloor, scoreGoals, urgentNeed, urgentThreshold } from '../src/core/ai/utility';
 import { validateConfig } from '../src/core/config/load';
 import { needFrac, urgentFrac, zoneFit } from '../src/core/formulas';
 import { NavGraph } from '../src/core/pathfinding';
@@ -58,7 +58,7 @@ describe('NavGraph', () => {
 describe('utility AI', () => {
   it('zone fit: 0 when too weak, best near 1.1×, lower when far too easy', () => {
     const f = config.formula;
-    expect(zoneFit(0.6, f)).toBe(0);
+    expect(zoneFit(f.zoneFitMin - 0.05, f)).toBe(0);
     expect(zoneFit(1.1, f)).toBe(1);
     expect(zoneFit(4, f)).toBeLessThan(1);
   });
@@ -114,10 +114,12 @@ describe('M1 loop (integration)', () => {
           tripsTo.set(e.hunterId, set);
           if (e.goal === 'returnTown') {
             returnsFromField++;
-            // Whenever a hunter decides to go home, at least one need is at or below the soft threshold.
+            // Whenever a hunter decides to go home, at least one need is at or below the soft threshold (for HP the
+            // soft threshold sits on top of the retreat floor, TECH_SPEC §5.2), or it is a kill-boundary retreat.
             const h = s.world.hunters.find((x) => x.id === e.hunterId)!;
-            const worst = Math.min(...(['hp', 'satiety', 'mood', 'stamina'] as const).map((n) => needFrac(config, h, n)));
-            expect(worst).toBeLessThanOrEqual(f.softNeedFrac + 1e-9);
+            const shift = Math.max(0, retreatHpFloor(config, nav, s.world, h) - urgentThreshold(config, h, 'hp'));
+            const worst = Math.min(...(['hp', 'satiety', 'mood', 'stamina'] as const).map((n) => needFrac(config, h, n) - (n === 'hp' ? shift : 0)));
+            if (e.reason !== 'retreat hp') expect(worst).toBeLessThanOrEqual(f.softNeedFrac + 1e-9);
           }
         }
         if (e.type === 'serviceUsed') serviceUses++;

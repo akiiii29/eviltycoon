@@ -316,6 +316,7 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'taxRate', 'taxMinRate', 'taxMaxRate', 'taxMoodFreeRate', 'taxMoodPerKill',
   'journeyTeamMax', 'journeyMaxActive', 'journeySuccessAtRec', 'journeySuccessExp', 'journeySuccessMin', 'journeySuccessMax',
   'journeyReturnNeedFrac',
+  'zoneCrowdMul', 'zoneCrowdMinRho', 'retreatBurstMul', 'defSoftKnee', 'journeyRefKills',
 ];
 
 export class ConfigError extends Error {

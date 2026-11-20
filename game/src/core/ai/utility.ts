@@ -1,7 +1,8 @@
 /** Goal scoring (TECH_SPEC §5). Pure functions: given state, return scored candidates. */
 import { GEAR_SLOTS, NEED_KEYS, type GameConfig, type GearSlot, type ModStat, type NeedKey } from '../config/types';
 import {
-  duel, gearMainValue, hunterStats, type EffectiveStats, monsterTypeStats, moveSpeed, needFrac, needMax, slotValue, urgentFrac, zoneCrowd, zoneScores, type ZoneScore,
+  duel, expectedHit, gearMainValue, hunterStats, type EffectiveStats, liveCrowd, monsterStats, monsterTypeStats, moveSpeed, needFrac, needMax,
+  slotValue, urgentFrac, zoneCrowd, zoneOccupancy, type ZoneOccupancy, zoneScores, type ZoneScore,
 } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
 import type { NavGraph } from '../pathfinding';
@@ -64,7 +65,7 @@ export function needsOk(config: GameConfig, h: Hunter, inField = false, hpFloor 
 // Retreat: HP the hunter needs to get home alive (TECH_SPEC §5.2 "Rút lui").
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Danger of a zone for one hunter, from the duel model (steady stats), × zoneCrowd. Absolute HP. */
+/** Danger of a zone for one hunter, from the duel model (steady stats), × crowd factor. Absolute HP. */
 export interface ZoneDanger {
   /** Spawn-weighted HP lost per second while monsters of this zone are on the hunter. */
   dps: number;
@@ -74,16 +75,27 @@ export interface ZoneDanger {
 
 /**
  * Per-call cache for one hunter: steady stats, current max HP and zone dangers. Pass one cache to several
- * retreat functions in the same decision so hunterStats and the duels run once.
+ * retreat functions in the same decision so hunterStats and the duels run once. With a world, zone danger uses
+ * the live crowd factor (formulas.crowdFactor: monsters alive per hunter, this hunter counted once); without one
+ * (unit tests, no live zone) the static zoneCrowd.
  */
 export interface DangerCache {
   stats: EffectiveStats;
   maxHp: number;
   zones: Map<string, ZoneDanger>;
+  world?: World;
+  occupancy?: ZoneOccupancy;
 }
 
-export function dangerCache(config: GameConfig, h: Hunter): DangerCache {
-  return { stats: hunterStats(config, h, { steady: true }), maxHp: Math.max(needMax(config, h, 'hp'), 1), zones: new Map() };
+export function dangerCache(config: GameConfig, h: Hunter, world?: World): DangerCache {
+  return { stats: hunterStats(config, h, { steady: true }), maxHp: Math.max(needMax(config, h, 'hp'), 1), zones: new Map(), world };
+}
+
+function cacheCrowd(config: GameConfig, h: Hunter, zoneId: string, c: DangerCache): number {
+  const zone = config.index.zones.get(zoneId)!;
+  if (!c.world) return zoneCrowd(zone, config.formula);
+  c.occupancy ??= zoneOccupancy(config, c.world, h.id);
+  return liveCrowd(c.occupancy, zone, config.formula);
 }
 
 export function zoneDanger(config: GameConfig, h: Hunter, zoneId: string, difficultyId: string, cache?: DangerCache): ZoneDanger {
@@ -98,7 +110,7 @@ export function zoneDanger(config: GameConfig, h: Hunter, zoneId: string, diffic
     dps += e.weight * d.monsterDps;
     dmg += e.weight * d.dmgPerKill;
   }
-  const crowd = zoneCrowd(zone, config.formula);
+  const crowd = cacheCrowd(config, h, zoneId, c);
   const out = w > 0 ? { dps: (crowd * dps) / w, dmgPerKill: (crowd * dmg) / w } : { dps: 0, dmgPerKill: 0 };
   c.zones.set(zoneId, out);
   return out;
@@ -148,10 +160,31 @@ export function tripHomeDamage(
 }
 
 /**
+ * Expected damage of the next hit of every monster on the hunter right now (alive, targeting it, in the zone the
+ * hunter stands in): Σ expectedHit(monster ATK vs hunter steady DEF/EVA). Leaving mid-fight costs about one more
+ * hit from each of them (monsters are slower than hunters), and a pile-on of several is what kills.
+ */
+export function engagedHitDamage(config: GameConfig, nav: NavGraph, world: World, h: Hunter, cache?: DangerCache): number {
+  const zone = nav.node(h.nodeId).zoneId;
+  if (!zone) return 0;
+  const f = config.formula;
+  const c = cache ?? dangerCache(config, h, world);
+  let dmg = 0;
+  for (const m of world.monsters) {
+    if (m.targetHunterId !== h.id || m.hp <= 0 || m.zoneId !== zone) continue;
+    const ms = monsterStats(config, m);
+    dmg += expectedHit(ms.atk, c.stats.def, ms.level, h.level, ms.crit, f.monsterCritMultiplier, c.stats.eva, f);
+  }
+  return dmg;
+}
+
+/**
  * HP fraction under which the hunter must head home from where it stands (0 in town):
- *   min(retreatHpCap, retreatTripMul × tripHomeDamage / maxHp).
- * retreatTripMul > 1 covers variance (crits, several monsters on the hunter, adds on the way out).
- * `at` defaults to the hunter's position; scoreGoals uses a zone's entry node to judge a zone before going there.
+ *   min(retreatHpCap, (retreatTripMul × tripHomeDamage + retreatBurstMul × engagedHitDamage) / maxHp).
+ * retreatTripMul > 1 covers the variance of the walk out (crits, adds on the way); the engaged term covers the
+ * monsters already on the hunter, so a pile-on raises the floor at once instead of only after the HP is gone.
+ * `at` defaults to the hunter's position; scoreGoals uses a zone's entry node to judge a zone before going there
+ * (no monster is on the hunter there, so only the trip term counts).
  */
 export function retreatHpFloor(
   config: GameConfig, nav: NavGraph, world: World, h: Hunter,
@@ -160,9 +193,10 @@ export function retreatHpFloor(
   const f = config.formula;
   const node = at?.node ?? nav.nearest(h.position);
   if (!nav.node(node).zoneId) return 0;
-  const c = cache ?? dangerCache(config, h);
-  const dmg = tripHomeDamage(config, nav, h, at?.pos ?? h.position, node, world.town.difficulty, c);
-  return Math.min(f.retreatHpCap, (f.retreatTripMul * dmg) / c.maxHp);
+  const c = cache ?? dangerCache(config, h, world);
+  let dmg = f.retreatTripMul * tripHomeDamage(config, nav, h, at?.pos ?? h.position, node, world.town.difficulty, c);
+  if (!at && f.retreatBurstMul > 0) dmg += f.retreatBurstMul * engagedHitDamage(config, nav, world, h, c);
+  return Math.min(f.retreatHpCap, dmg / c.maxHp);
 }
 
 /**
@@ -187,7 +221,7 @@ function killCostFrac(config: GameConfig, h: Hunter, zoneId: string, difficultyI
  * Same rule as shouldRetreatBeforeNextKill, so a hunter that sets out is not sent straight back.
  */
 export function zoneEntryHpLine(config: GameConfig, nav: NavGraph, world: World, h: Hunter, zoneId: string, cache?: DangerCache): number {
-  const c = cache ?? dangerCache(config, h);
+  const c = cache ?? dangerCache(config, h, world);
   const entry = nav.node(config.index.zones.get(zoneId)!.entryNode);
   const floor = retreatHpFloor(config, nav, world, h, { pos: entry, node: entry.id }, c);
   return Math.max(urgentThreshold(config, h, 'hp'), floor) + killCostFrac(config, h, zoneId, world.town.difficulty, c);
@@ -200,7 +234,7 @@ export function zoneEntryHpLine(config: GameConfig, nav: NavGraph, world: World,
  * Leaving between fights is cheap (no monster is on the hunter), leaving mid-fight is what kills.
  */
 export function shouldRetreatBeforeNextKill(config: GameConfig, nav: NavGraph, world: World, h: Hunter, zoneId: string): boolean {
-  const c = dangerCache(config, h);
+  const c = dangerCache(config, h, world);
   const hp = h.needs.hp / c.maxHp;
   const kill = killCostFrac(config, h, zoneId, world.town.difficulty, c);
   if (hp - kill >= config.formula.retreatHpCap) return false;
@@ -406,7 +440,7 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
   const out: Candidate[] = [];
   const zoneNow = currentZone(nav, h);
   const inField = zoneNow !== null;
-  const danger = dangerCache(config, h);
+  const danger = dangerCache(config, h, world);
   // Retreat floor where the hunter stands (0 in town): the needs band in the field sits on top of the trip home.
   const hereFloor = inField ? retreatHpFloor(config, nav, world, h, undefined, danger) : 0;
   const ok = needsOk(config, h, inField, hereFloor);

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { loadConfig, type RawConfig } from '../src/core/config/load';
 import type { GameConfig } from '../src/core/config/types';
 import type { SimEvent } from '../src/core/events';
-import { hunterStats, journeySuccessChance, needMax, teamPower, zonePower, zoneScores } from '../src/core/formulas';
+import { hunterStats, journeySuccessChance, killsPerLife, needMax, teamPower, zoneCrowd, zonePower, zoneScores } from '../src/core/formulas';
 import { applyOffline, estimateOffline, offlineJourneyMs, takeSample } from '../src/core/offline';
 import { gainExp } from '../src/core/progress';
 import { deserialize, SAVE_FORMAT, serialize } from '../src/core/save/save';
@@ -150,8 +150,10 @@ describe('team power and success chance', () => {
     expect(teamPower(config, [a], zone, diff)).toBeCloseTo(pa, 10);
     expect(teamPower(config, [a, b], zone, diff)).toBeGreaterThan(pa);
     expect(teamPower(config, [a, b, c], zone, diff)).toBeGreaterThan(teamPower(config, [a, b], zone, diff));
-    // Same as the AI's zone ratio at the current difficulty.
-    expect(zoneScores(config, s.world, a).find((z) => z.zone.id === zone.id)!.ratio).toBeCloseTo(pa, 10);
+    // The AI's zone ratio with the static crowd factor (journeys have no live zone to look at; the AI's own
+    // zoneScores uses the live crowd, formulas.crowdFactor).
+    expect(Math.sqrt(killsPerLife(config, a, zone, diff, zoneCrowd(zone, config.formula)) / config.formula.journeyRefKills)).toBeCloseTo(pa, 10);
+    expect(zoneScores(config, s.world, a).find((z) => z.zone.id === zone.id)!.ratio).toBeGreaterThan(0);
     const strong = JSON.parse(JSON.stringify(a)) as Hunter;
     gainExp({ world: s.world, config, events: { emit() {} } } as unknown as SystemContext, strong, 20_000);
     expect(strong.level).toBeGreaterThan(a.level);

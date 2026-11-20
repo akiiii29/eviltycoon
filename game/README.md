@@ -20,6 +20,8 @@ Mọi công thức nằm ở `src/core/formulas.ts`, hệ số và ngưỡng AI 
 
 `PACING_FP="key=value,..." npx vite-node tools/pacing.ts 900 1` chạy pacing với hệ số ghi đè (không sửa file).
 
+`REPORT_FP="key=value,..." npx vite-node tools/combat-report.ts 900 1` đo độ chính xác mô hình vùng (HP mất mỗi kill đo / dự đoán theo zone và theo số hunter), chi tiết từng cái chết (số quái đang đánh lúc quyết định về), chuyến về Town và mốc Lv20/Lv50/tái sinh.
+
 ## Cấu trúc
 
 | Đường dẫn | Nội dung |

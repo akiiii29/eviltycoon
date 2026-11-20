@@ -1,5 +1,5 @@
 import {
-  backstopHpFloor, needsOk, retreatHpFloor, scoreGoals, shouldRetreatBeforeNextKill, tripHomeDamage, urgentNeed,
+  backstopHpFloor, dangerCache, engagedHitDamage, needsOk, retreatHpFloor, scoreGoals, shouldRetreatBeforeNextKill, tripHomeDamage, urgentNeed,
   urgentThreshold, zoneDanger, zoneEntryHpLine,
 } from '../src/core/ai/utility';
 import { needMax } from '../src/core/formulas';
@@ -7,7 +7,8 @@ import { rollHunter } from '../src/core/hunterFactory';
 import { NavGraph } from '../src/core/pathfinding';
 import { Rng } from '../src/core/rng';
 import { createWorld, Simulation } from '../src/core/simulation';
-import { aiSystem } from '../src/core/systems/ai';
+import { EventBuffer } from '../src/core/events';
+import { aiSystem, setGoal } from '../src/core/systems/ai';
 import type { Hunter, World } from '../src/core/world';
 import { testConfig } from './helpers';
 
@@ -138,7 +139,7 @@ describe('retreat: kill boundary', () => {
     expect(shouldRetreatBeforeNextKill(config, nav, w, strong, 'zone.meadow')).toBe(false);
     // A fair fight: retreat exactly when HP − retreatKillMul × dmgPerKill drops under the line.
     const mid = inZone(hunter({ level: 12 }), 'zone.ruins');
-    const kill = (f.retreatKillMul * zoneDanger(config, mid, 'zone.ruins', w.town.difficulty).dmgPerKill) / needMax(config, mid, 'hp');
+    const kill = (f.retreatKillMul * zoneDanger(config, mid, 'zone.ruins', w.town.difficulty, dangerCache(config, mid, w)).dmgPerKill) / needMax(config, mid, 'hp');
     const line = Math.max(urgentThreshold(config, mid, 'hp'), retreatHpFloor(config, nav, w, mid));
     setHp(mid, line + kill + 0.01);
     expect(shouldRetreatBeforeNextKill(config, nav, w, mid, 'zone.ruins')).toBe(false);
@@ -192,6 +193,62 @@ describe('retreat: AI system', () => {
     const s2 = sim(ordered);
     s2.step();
     expect(ordered.ai.goal).toEqual({ type: 'hunt', zoneId: 'zone.abyss' });
+  });
+
+  it('a retreat from inside a zone heads straight for the exit instead of first walking to a node behind it', () => {
+    const h = inZone(hunter({ level: 90 }), 'zone.abyss', 'c');
+    // Between z7.c (208,-10) and the entry z7.a (200,0), nearest node z7.c.
+    h.position = { x: 204.5, y: -6 };
+    setHp(h, 1);
+    const s = sim(h);
+    setGoal({ world: s.world, config, nav, rng: new Rng(1), events: new EventBuffer(), debug: { aiScores: new Map() }, dtMs: 100 }, h, { type: 'returnTown' }, 'test');
+    expect(nav.nearest(h.position)).toBe('z7.c');
+    expect(h.ai.path[0]).toBe('z7.a');
+  });
+
+  it('monsters on the hunter raise the floor by retreatBurstMul × their next expected hit (a pile-on sends it home early)', () => {
+    const w = world();
+    const h = inZone(hunter({ level: 70 }), 'zone.abyss');
+    h.stats.hp *= 500; // tough enough that the calm floor is well under retreatHpCap
+    setHp(h, 1);
+    w.hunters.push(h);
+    const calm = retreatHpFloor(config, nav, w, h);
+    expect(calm).toBeLessThan(f.retreatHpCap);
+    const add = (id: string, defId: string) => w.monsters.push({
+      id, defId, zoneId: 'zone.abyss', hp: 1000, position: { ...h.position }, home: { ...h.position },
+      targetHunterId: h.id, attackCdMs: 0, difficultyId: w.town.difficulty,
+    });
+    add('m1', 'mon.voidcrawler');
+    const one = engagedHitDamage(config, nav, w, h);
+    expect(one).toBeGreaterThan(0);
+    for (let i = 2; i <= 4; i++) add(`m${i}`, 'mon.hollowlord');
+    expect(engagedHitDamage(config, nav, w, h)).toBeGreaterThan(3 * one);
+    const piled = retreatHpFloor(config, nav, w, h);
+    expect(piled).toBeGreaterThan(calm);
+    expect(piled).toBeLessThanOrEqual(f.retreatHpCap);
+    // A monster targeting the hunter from another zone (it left that zone) does not count.
+    const other = inZone(hunter({ level: 70 }), 'zone.citadel');
+    w.hunters.push(other);
+    w.monsters.push({ id: 'mx', defId: 'mon.hollowlord', zoneId: 'zone.abyss', hp: 1000, position: { ...other.position }, home: { ...other.position }, targetHunterId: other.id, attackCdMs: 0, difficultyId: w.town.difficulty });
+    expect(engagedHitDamage(config, nav, w, other)).toBe(0);
+    // retreatBurstMul = 0 switches the term off.
+    const off = { ...config, formula: { ...f, retreatBurstMul: 0 } };
+    expect(retreatHpFloor(off, nav, w, h)).toBeCloseTo(calm, 10);
+  });
+
+  it('zone danger follows the live crowd: more hunters sharing the zone, or fewer monsters alive, means less HP per kill', () => {
+    const w = world();
+    const h = inZone(hunter({ level: 70 }), 'zone.abyss');
+    w.hunters.push(h);
+    const alone = zoneDanger(config, h, 'zone.abyss', w.town.difficulty, dangerCache(config, h, w)).dmgPerKill;
+    for (let i = 0; i < 3; i++) {
+      const o = inZone(hunter({ level: 70 }), 'zone.abyss');
+      o.id = `o${i}`;
+      w.hunters.push(o);
+    }
+    const shared = zoneDanger(config, h, 'zone.abyss', w.town.difficulty, dangerCache(config, h, w)).dmgPerKill;
+    expect(shared).toBeLessThan(alone);
+    expect(shared / alone).toBeCloseTo(Math.sqrt(1 / 4), 6); // unvisited zone counts as full: ρ = cap / n
   });
 
   it('the urgent backstop fires at the retreat floor, above the base HP threshold, even under orders', () => {

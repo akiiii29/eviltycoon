@@ -32,6 +32,18 @@ function goalLabel(g: Goal): string {
   }
 }
 
+/**
+ * In a zone the hunter steers freely, so a path that starts at the nearest zone node can skip it when heading
+ * straight for the next node of the same zone is not longer: a retreat does not first walk back into the monsters
+ * it is leaving (TECH_SPEC §5.2).
+ */
+function skipNodeBehind(ctx: SystemContext, h: Hunter, path: string[]): void {
+  if (path.length < 2) return;
+  const a = ctx.nav.node(path[0]!), b = ctx.nav.node(path[1]!);
+  if (!a.zoneId || b.zoneId !== a.zoneId || ctx.nav.node(h.nodeId).zoneId !== a.zoneId) return;
+  if (dist(h.position, b) <= Math.hypot(b.x - a.x, b.y - a.y)) path.shift();
+}
+
 /** Assign a goal and plan the path to it. Exported for commands (player orders). */
 export function setGoal(ctx: SystemContext, h: Hunter, goal: Goal, reason: string, forced = false): boolean {
   const ai = h.ai;
@@ -54,6 +66,7 @@ export function setGoal(ctx: SystemContext, h: Hunter, goal: Goal, reason: strin
       ai.goal = null;
       return false;
     }
+    skipNodeBehind(ctx, h, path);
     ai.goal = goal;
     ai.path = path;
     ai.phase = path.length ? 'travel' : 'act';
