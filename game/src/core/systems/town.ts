@@ -440,3 +440,35 @@ export const townSystem: System = {
     else world.town.investPlan = null;
   },
 };
+
+/** A construction/upgrade that finished (offline report, TECH_SPEC §9). */
+export interface BuildingCompletion {
+  instanceId: string;
+  buildingId: string;
+  level: number;
+}
+
+/**
+ * Count every running construction/upgrade down by `ms` and finish those that reach 0 — the same completion as the
+ * `town` system (level, stats, `buildingCompleted` event), in plot order. Used by the offline step (wall-clock gap,
+ * TECH_SPEC §9); no RNG, no auto-investment. Returns the completed ones.
+ */
+export function advanceBuildingTimers(ctx: Pick<SystemContext, 'world' | 'events'>, ms: number): BuildingCompletion[] {
+  const { world } = ctx;
+  const done: BuildingCompletion[] = [];
+  if (!(ms > 0)) return done;
+  for (const s of world.town.buildings ?? []) {
+    const u = s.upgrade;
+    if (!u) continue;
+    u.remainingMs = Math.max(0, u.remainingMs - ms);
+    if (u.remainingMs > 0) continue;
+    const first = s.level === 0;
+    s.level = u.toLevel;
+    s.upgrade = null;
+    if (first) world.stats.buildingsBuilt = (world.stats.buildingsBuilt ?? 0) + 1;
+    else world.stats.buildingUpgrades = (world.stats.buildingUpgrades ?? 0) + 1;
+    ctx.events.emit(world.tick, { type: 'buildingCompleted', instanceId: s.id, buildingId: s.buildingId, level: s.level });
+    done.push({ instanceId: s.id, buildingId: s.buildingId, level: s.level });
+  }
+  return done;
+}

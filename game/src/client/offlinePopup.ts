@@ -44,16 +44,30 @@ export function showOfflinePopup(root: HTMLElement, config: GameConfig, world: W
       const parts = [`EXP +${w.exp}/người`];
       if (w.gold > 0) parts.push(`vàng Town +${w.gold}`);
       const mats = Object.entries(w.materials).map(([id, n]) => `${matName(id)} ×${n}`).join(', ');
-      if (mats) parts.push(mats);
+      if (mats) parts.push(`vào kho ${mats}`);
+      const sold = Object.entries(w.exported ?? {}).map(([id, n]) => `${matName(id)} ×${n}`).join(', ');
+      if (sold) parts.push(`bán xuất khẩu ${sold}`);
       for (const it of w.items) parts.push(`${t(config, config.index.gear.get(it.gearId)?.nameKey ?? it.gearId)} [${t(config, config.index.qualities.get(it.qualityId)?.nameKey ?? it.qualityId)}]`);
       line(box, `${dest} (${j.hunterIds.join(', ')}): ${j.success ? 'THÀNH CÔNG' : 'THẤT BẠI'} · ${parts.join(' · ')}`, 'offline-hunter');
     }
   }
+  // Constructions/upgrades finished on wall-clock time (TECH_SPEC §5.12, §9).
+  if (r.buildings.length > 0) {
+    line(box, 'Công trình hoàn thành', 'debug-sub');
+    for (const b of r.buildings) {
+      const name = t(config, config.index.buildings.get(b.buildingId)?.nameKey ?? b.buildingId);
+      line(box, `${name} → Lv${b.level}`, 'offline-hunter');
+    }
+  }
+  if (r.arrivals.length > 0) line(box, `Hunter mới đến: ${r.arrivals.join(', ')}`);
   if (r.hunters.length > 0) line(box, 'Hunter', 'debug-sub');
   for (const g of r.hunters) {
     const h = world.hunters.find((x) => x.id === g.id);
     const cls = h ? t(config, config.index.classes.get(h.classId)?.nameKey ?? h.classId) : '';
-    const lv = g.levelAfter > g.levelBefore ? `Lv${g.levelBefore} → Lv${g.levelAfter}` : `Lv${g.levelAfter}`;
+    const reinc = g.reincarnations ?? 0;
+    const lv = reinc > 0
+      ? `Lv${g.levelBefore} → tái sinh ×${reinc} → Lv${g.levelAfter}`
+      : g.levelAfter > g.levelBefore ? `Lv${g.levelBefore} → Lv${g.levelAfter}` : `Lv${g.levelAfter}`;
     line(box, `${g.id} ${cls} · ${lv} · vàng +${g.gold} · kill +${g.kills}`, 'offline-hunter');
   }
   const row = document.createElement('div');

@@ -7,6 +7,7 @@ import { gainExp } from '../progress';
 import type { System, SystemContext } from '../system';
 import { findHunter, isAlive, newAiState, type Hunter, type Journey, type World } from '../world';
 import { shopCapacity } from './crafting';
+import { materialDemand, surplusPrice } from './trading';
 
 /**
  * Journeys (GDD §9 "3 NPC, runs offline, team power, success rate"; TECH_SPEC §5.11).
@@ -19,7 +20,8 @@ import { shopCapacity } from './crafting';
  *  - the journey counts down `remainingMs` by game time (this system) and by wall-clock time while the game is closed
  *    (`advanceJourneys` from the client's offline step, via Simulation.runBetweenTicks); at 0 the outcome is rolled
  *    with the sim RNG (one draw, then one per rare entry on success) and the members return to the town square.
- *  - success: Town gold and per-member EXP (× difficulty rewardMul), materials into Town storage, rare gear finds
+ *  - success: Town gold and per-member EXP (× difficulty rewardMul), materials via the Trading Post request rule
+ *    (requested → storage, rest exported at surplusPrice for Town gold; routeRewardMaterials), rare gear finds
  *    listed in the shop (sold at the markdown floor when the shop is full);
  *    failure: failRewardFrac of the EXP only, members return with HP ≤ failHpFrac × max.
  *    Either way satiety/mood/stamina come back at most journeyReturnNeedFrac × max (they head for the services).
@@ -164,6 +166,41 @@ function emptyRewards(): JourneyRewards {
   return { gold: 0, exp: 0, materials: {}, items: [] };
 }
 
+/**
+ * Reward materials follow the Trading Post request rule (§5.7) like a hunter's sale, but the Town owns them: the
+ * requested part (materialDemand at return: automatic + player requests; player requests are decremented like a sale)
+ * goes into storage, the rest is exported at surplusPrice straight away (gold added to `rewards.gold`, no surplus
+ * budget needed since the Town pays nothing). Storage therefore never holds unrequested units. No RNG.
+ * Rewrites `rewards.materials` to what was stored and fills `rewards.exported`.
+ */
+function routeRewardMaterials(config: GameConfig, world: World, rewards: JourneyRewards): void {
+  const ids = Object.keys(rewards.materials).sort();
+  if (ids.length === 0) return;
+  const demand = materialDemand(config, world);
+  const requests = world.town.requests ?? (world.town.requests = {});
+  const stored: Record<string, number> = {};
+  const exported: Record<string, number> = {};
+  for (const id of ids) {
+    const n = rewards.materials[id]!;
+    const keep = Math.min(n, Math.max(0, demand[id] ?? 0));
+    if (keep > 0) {
+      stored[id] = keep;
+      world.town.storage[id] = (world.town.storage[id] ?? 0) + keep;
+      if (requests[id] !== undefined) {
+        const left = requests[id]! - keep;
+        if (left > 0) requests[id] = left;
+        else delete requests[id];
+      }
+    }
+    if (n > keep) {
+      exported[id] = n - keep;
+      rewards.gold += (n - keep) * surplusPrice(config, id, world);
+    }
+  }
+  rewards.materials = stored;
+  if (Object.keys(exported).length > 0) rewards.exported = exported;
+}
+
 /** Roll and apply the outcome of a journey whose time is up, and bring the team home. */
 function resolveJourney(ctx: SystemContext, j: Journey, offline: boolean): JourneyResult {
   const { world, config, rng } = ctx;
@@ -197,11 +234,9 @@ function resolveJourney(ctx: SystemContext, j: Journey, offline: boolean): Journ
       rewards.exp = Math.round(def.exp * mul * def.failRewardFrac);
     }
   }
+  routeRewardMaterials(config, world, rewards);
   world.town.gold += rewards.gold;
   world.stats.journeyGold = (world.stats.journeyGold ?? 0) + rewards.gold;
-  for (const id of Object.keys(rewards.materials).sort()) {
-    world.town.storage[id] = (world.town.storage[id] ?? 0) + rewards.materials[id]!;
-  }
   const hpCap = success || !def ? null : def.failHpFrac;
   for (const h of j.hunters) {
     if (rewards.exp > 0) gainExp(ctx, h, rewards.exp);

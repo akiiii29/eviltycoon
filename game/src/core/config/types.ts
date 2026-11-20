@@ -503,6 +503,19 @@ export interface FormulaParams {
   journeySuccessMax: number;
   /** Returning hunters (either outcome) come back with satiety/mood/stamina at most journeyReturnNeedFrac × max. */
   journeyReturnNeedFrac: number;
+  /**
+   * Offline growth model (TECH_SPEC §9): 1 = project each hunter in offlineModelStepSec steps with the combat model
+   * (zone choice + EXP/kill rate as level rises, reincarnation), calibrated by the measured rates; 0 = flat rates.
+   */
+  offlineGrowthModel: number;
+  offlineModelStepSec: number;
+  /** Clamp of the per-hunter calibration (measured rate / model rate at the moment of leaving). */
+  offlineModelCalMin: number;
+  offlineModelCalMax: number;
+  /** Share of time a hunter spends fighting (walking/town trips excluded) in the offline model's kill speed. */
+  offlineHuntDuty: number;
+  /** Seconds of the offline model's heal trip per HP bar (time per kill += offlineTripSec / killsPerLife). */
+  offlineTripSec: number;
   [key: string]: number;
 }
 
