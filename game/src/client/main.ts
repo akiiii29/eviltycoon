@@ -36,7 +36,7 @@ async function boot(): Promise<void> {
     const text = await storage.read(SLOT);
     if (!text) { status = 'no save'; return false; }
     try {
-      const r = deserialize(text, config.version);
+      const r = deserialize(text, config);
       sim.setWorld(r.world);
       const away = Math.round((Date.now() - r.savedAt) / 1000);
       status = `loaded (saved ${away}s ago${r.migratedFrom !== null ? `, migrated from v${r.migratedFrom}` : ''}${r.configChanged ? ', config changed' : ''})`;

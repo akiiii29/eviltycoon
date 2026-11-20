@@ -3,7 +3,10 @@ import { deserialize, SaveError, serialize, SAVE_FORMAT } from '../src/core/save
 import { IndexedDbStorage, MemoryStorage } from '../src/core/save/storage';
 import { createWorld, Simulation } from '../src/core/simulation';
 import { WORLD_SCHEMA_VERSION } from '../src/core/world';
-import { testConfig } from './helpers';
+import { estimateRollStats, migrationSpawnNode } from '../src/core/save/migrations';
+import { loadConfig } from '../src/core/config/load';
+import type { GameConfig } from '../src/core/config/types';
+import { readRawConfig, testConfig } from './helpers';
 
 const config = testConfig();
 
@@ -18,7 +21,7 @@ describe('save/load', () => {
     const text = serialize(a.world, 1000);
 
     const b = new Simulation(config, createWorld(config, 1));
-    b.setWorld(deserialize(text, config.version).world);
+    b.setWorld(deserialize(text, config).world);
     expect(JSON.stringify(b.world)).toBe(JSON.stringify(a.world));
 
     runFor(a, 1500);
@@ -28,8 +31,8 @@ describe('save/load', () => {
 
   it('flags config version changes', () => {
     const w = createWorld(config, 1);
-    expect(deserialize(serialize(w, 0), 'other').configChanged).toBe(true);
-    expect(deserialize(serialize(w, 0), config.version).configChanged).toBe(false);
+    expect(deserialize(serialize(w, 0), { ...config, version: 'other' }).configChanged).toBe(true);
+    expect(deserialize(serialize(w, 0), config).configChanged).toBe(false);
   });
 
   it('migrates v0 saves to the current schema', () => {
@@ -38,7 +41,7 @@ describe('save/load', () => {
     w.hunters = [{ id: 'h1' }];
     w.schemaVersion = 0;
     const text = JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 0, configVersion: config.version, savedAt: 5, world: w });
-    const r = deserialize(text, config.version);
+    const r = deserialize(text, config);
     expect(r.migratedFrom).toBe(0);
     expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
     expect(r.world.town.arrivalTimerMs).toBe(0);
@@ -54,7 +57,7 @@ describe('save/load', () => {
     delete w.monsters; delete w.zones; delete w.stats;
     w.schemaVersion = 1;
     const text = JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 1, configVersion: config.version, savedAt: 0, world: w });
-    const r = deserialize(text, config.version);
+    const r = deserialize(text, config);
     expect(r.migratedFrom).toBe(1);
     expect(r.world.hunters[0]!.nodeId).toBe(config.index.squareNode);
     const s2 = new Simulation(config, r.world);
@@ -71,7 +74,7 @@ describe('save/load', () => {
     w.town = { gold: 123, arrivalTimerMs: 0 };
     w.stats = { kills: 1, deaths: 0, serviceUses: 2 };
     w.schemaVersion = 2;
-    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 2, configVersion: config.version, savedAt: 0, world: w }), config.version);
+    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 2, configVersion: config.version, savedAt: 0, world: w }), config);
     expect(r.migratedFrom).toBe(2);
     expect(r.world.town.gold).toBe(123);
     expect(r.world.town.shop).toEqual([]);
@@ -96,7 +99,7 @@ describe('save/load', () => {
     for (const k of ['difficulty', 'unlockedDifficulties', 'autoReincarnate']) delete w.town[k];
     for (const k of ['skillCasts', 'jobChanges', 'reincarnations', 'learned']) delete w.stats[k];
     w.schemaVersion = 3;
-    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 3, configVersion: config.version, savedAt: 0, world: w }), config.version);
+    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 3, configVersion: config.version, savedAt: 0, world: w }), config);
     expect(r.migratedFrom).toBe(3);
     const mh = r.world.hunters[0]!;
     expect(mh.rollStats.hp).toBe(roll.hp);
@@ -113,7 +116,7 @@ describe('save/load', () => {
     w.timeMs = 5000;
     w.town.shop = [{ uid: 'g1', gearId: 'gear.w.club', qualityId: 'q.rare', enhance: 0, price: 60 }];
     w.schemaVersion = 4;
-    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 4, configVersion: config.version, savedAt: 0, world: w }), config.version);
+    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 4, configVersion: config.version, savedAt: 0, world: w }), config);
     expect(r.migratedFrom).toBe(4);
     expect(r.world.town.shop[0]).toMatchObject({ price: 60, listPrice: 60, listedAtMs: 5000 });
   });
@@ -125,7 +128,7 @@ describe('save/load', () => {
     delete w.stats.gearScrapped;
     w.town.storage = { 'mat.gel': 300 };
     w.schemaVersion = 5;
-    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 5, configVersion: config.version, savedAt: 0, world: w }), config.version);
+    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 5, configVersion: config.version, savedAt: 0, world: w }), config);
     expect(r.migratedFrom).toBe(5);
     expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
     expect(r.world.town.requests).toEqual({});
@@ -136,12 +139,82 @@ describe('save/load', () => {
     for (let i = 0; i < 600; i++) s2.step();
   });
 
+  describe('config-derived migration values', () => {
+    /** Current config with the square renamed/moved and non-default level gains. */
+    function altConfig(): GameConfig {
+      const raw = JSON.parse(JSON.stringify(readRawConfig()).replaceAll('"t.square"', '"t.plaza"'));
+      const sq = raw.map_node.find((n: any) => n.id === 't.plaza');
+      sq.x = 2; sq.y = -3;
+      Object.assign(raw.formula_params, { levelHpGain: 35, levelAtkGain: 3, levelDefGain: 2 });
+      return loadConfig(raw);
+    }
+
+    function v1Save(cfg: GameConfig, seed: number): string {
+      const s = new Simulation(cfg, createWorld(cfg, seed));
+      s.enqueue({ type: 'debug.spawnHunter' });
+      s.step();
+      const w = JSON.parse(JSON.stringify(s.world));
+      for (const h of w.hunters) for (const k of ['nodeId', 'insideBuildingId', 'ai', 'attackCdMs', 'deadMs', 'kills']) delete h[k];
+      delete w.monsters; delete w.zones; delete w.stats;
+      w.schemaVersion = 1;
+      return JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 1, configVersion: cfg.version, savedAt: 0, world: w });
+    }
+
+    it('v1→v2 places hunters on the config square node (id and coordinates), not a hard-coded one', () => {
+      const cfg = altConfig();
+      expect(migrationSpawnNode(cfg)).toEqual({ id: 't.plaza', x: 2, y: -3 });
+      const r = deserialize(v1Save(cfg, 4), cfg);
+      for (const h of r.world.hunters) {
+        expect(h.nodeId).toBe('t.plaza');
+        expect(h.position).toEqual({ x: 2, y: -3 });
+      }
+      const s2 = new Simulation(cfg, r.world);
+      for (let i = 0; i < 600; i++) s2.step();
+    });
+
+    it('falls back to the M1 square when the config has no square node', () => {
+      const broken = { ...config, nodes: [], index: { ...config.index, nodes: new Map(), squareNode: 'missing' } } as GameConfig;
+      expect(migrationSpawnNode(broken)).toEqual({ id: 't.square', x: 0, y: 0 });
+    });
+
+    it('v3→v4 recovers rollStats using the config level gains', () => {
+      const cfg = altConfig();
+      const s = new Simulation(cfg, createWorld(cfg, 9));
+      s.enqueue({ type: 'debug.spawnHunter' });
+      s.step();
+      const w = JSON.parse(JSON.stringify(s.world));
+      const h = w.hunters[0];
+      const roll = { ...h.rollStats };
+      h.level = 5; h.stats.hp += 4 * 35; h.stats.atk += 4 * 3; h.stats.def += 4 * 2;
+      for (const k of ['rollStats', 'skills', 'skillCdMs', 'traits', 'traitPoints', 'buffs']) delete h[k];
+      w.schemaVersion = 3;
+      const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 3, configVersion: cfg.version, savedAt: 0, world: w }), cfg);
+      expect(r.world.hunters[0]!.rollStats).toEqual(roll);
+    });
+
+    it('estimateRollStats leaves non-growing stats alone and clamps to the class roll range', () => {
+      const f = config.formula;
+      const cls = config.classes[0]!;
+      const r = cls.statRanges;
+      // Unknown class: only floored at 0.
+      expect(estimateRollStats(config, { hp: 100, atk: 1, def: 0, crit: 7 }, 3)).toEqual({
+        hp: Math.max(0, 100 - 2 * f.levelHpGain), atk: Math.max(0, 1 - 2 * f.levelAtkGain), def: 0, crit: 7,
+      });
+      expect(estimateRollStats(config, { hp: 50 }, 0).hp).toBe(50);
+      // Known class: stripped values outside the possible roll are clamped into it.
+      const low = estimateRollStats(config, { hp: 1, atk: 0, def: 0, crit: 7 }, 10, cls.id);
+      expect(low).toEqual({ hp: r.hp[0]![0], atk: r.atk[0]![0], def: r.def[0]![0], crit: 7 });
+      const high = estimateRollStats(config, { hp: 1e6, atk: 1e6, def: 1e6 }, 1, cls.id);
+      expect(high).toEqual({ hp: r.hp[2]![1], atk: r.atk[2]![1], def: r.def[2]![1] });
+    });
+  });
+
   it('rejects garbage, foreign files and future schema versions', () => {
-    expect(() => deserialize('{', config.version)).toThrow(SaveError);
-    expect(() => deserialize('{"a":1}', config.version)).toThrow(/not a save file/);
+    expect(() => deserialize('{', config)).toThrow(SaveError);
+    expect(() => deserialize('{"a":1}', config)).toThrow(/not a save file/);
     const w = createWorld(config, 1);
     const future = JSON.stringify({ format: SAVE_FORMAT, schemaVersion: WORLD_SCHEMA_VERSION + 1, configVersion: '', savedAt: 0, world: w });
-    expect(() => deserialize(future, config.version)).toThrow(/newer than this build/);
+    expect(() => deserialize(future, config)).toThrow(/newer than this build/);
   });
 
   it.each([
