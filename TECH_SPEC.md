@@ -78,7 +78,7 @@ Quy ước: **[CHỐT]** là quyết định kỹ thuật; **[ĐỀ XUẤT]** l�
 | `events` | Event bus một chiều sim → UI/render (hit, kill, levelUp, purchase…) để chơi VFX/âm thanh/toast. Sim không bao giờ đọc lại. |
 | `config/` | Schema DSL (`schema.ts`), `TABLE_SPECS` + kiểm tra chéo + index (`load.ts`), kiểu (`types.ts`). |
 
-Bounty: `systems/bounty` (§5.9). Thuế, invitation, build/upgrade building chưa làm (M4+).
+Bounty: `systems/bounty` (§5.9). Thuế, build/upgrade building chưa làm (M4); invitation (M5) — xem §12.
 
 ### 3.2 Vòng lặp **[CHỐT]**
 
@@ -445,15 +445,47 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 
 | Mốc | Nội dung | Xong khi |
 |---|---|---|
-| M0 | Skeleton: core loop, config loader, save, debug overlay | Load config, chạy tick, save/load được |
-| M1 | 1 Town + 1 zone, waypoint/road, 5 class, needs, AI cơ bản (Hunt/Return/4 dịch vụ) | Hunter tự săn và tự quay về đúng ngưỡng |
-| M2 | Shop, craft, gear + quality + enhance, BuyGear/SellMaterials | Vòng săn → bán → craft → mua chạy kín |
-| M3 | Skill, trait, level, chuyển nghề, reincarnation, difficulty | Mở được difficulty Normal theo điều kiện GDD §8 |
-| M4 | Bounty, Trading Post, Journey, offline progress | QA checklist GDD §13 đạt |
-| M5 | UI hoàn chỉnh, localization, tuning bằng headless | Bản chơi thử nội bộ |
-| M6 | Online: account, cloud save, IAP; sau đó Raid, PvP, Guild | Theo đặc tả riêng |
+| M0 ✅ | Skeleton: core loop, config loader, save, debug overlay | Load config, chạy tick, save/load được |
+| M1 ✅ | 1 Town + 1 zone, waypoint/road, 5 class, needs, AI cơ bản (Hunt/Return/4 dịch vụ) | Hunter tự săn và tự quay về đúng ngưỡng |
+| M2 ✅ | Shop, craft, gear + quality + enhance, BuyGear/SellMaterials | Vòng săn → bán → craft → mua chạy kín |
+| M3 ✅ | Skill, trait, level, chuyển nghề, reincarnation, difficulty | Mở được difficulty Normal theo điều kiện GDD §8 |
+| M4 | Town & chế độ chơi: Trading Post theo yêu cầu ✅, Bounty ✅, offline progress ✅, Journey; **Town Hall, xây/nâng cấp/đặt building, slot building, cấp building giới hạn tier đồ** (GDD §5, bảng `building` §8; graph cập nhật khi đặt/xóa building §6), thuế | QA checklist GDD §13 đạt; vàng/NL Town có chỗ tiêu ra khỏi nền kinh tế |
+| M5 | Chiều sâu hunter & trang bị: Invitation + `hunter_tier` (GDD §4.1–4.2), Donate/Banish; đủ 9 bậc nghề (hiện 3) và 7 slot đồ (GDD §6, hiện 3); nâng tier đồ (Dark Stone), `gear_option` / `gear_set` / `gear_skill`; `consumable` (potion, Alchemist) + goal BuyPotion; Training Ground + goal Train; Bank, Courage Headstone, Fountain of Life, Library of Wisdom; `rune`, `relic`, thú cưỡi, `growth_property`; ghép NL (`material.composeTo`); `exp_curve` theo lần tái sinh; bật Mood ảnh hưởng chỉ số (GDD §4.2); lệnh người chơi học skill/trait | Mọi bảng §8 (trừ `raid`) có code dùng; cân bằng lại bằng headless |
+| M6 | Client & nội dung: UI hoàn chỉnh (GDD §10), sprite/scene pixel-art và camera pan/zoom/chọn bằng click (GDD §11), UI cho yêu cầu vật liệu/bounty/building, vi/en, tutorial, headless xuất CSV; thay toàn bộ dữ liệu trích từ game thương mại (TODO §7), chốt nền tảng (GDD §2) và bố cục map | Bản chơi thử nội bộ, không còn dữ liệu sao chép |
+| M7 | Online: account, cloud save, IAP; Raid, PvP, Guild, World Boss, Tower Defense, chat, ranking | Theo đặc tả riêng |
 
-Hiện trạng: M0–M3 xong (config `0.3.0-m3`, world v6) cùng một lượt cân bằng; từ M4 mới có Trạm Thu Mua theo yêu cầu vật liệu (§5.7).
+Hiện trạng: M0–M3 xong; M4 đã có Trading Post theo yêu cầu (§5.7), Bounty (§5.9), offline progress (§9) — world v7. Còn Journey và Town Hall/building.
+
+### 12.1 Bảng phủ (chống bỏ sót)
+
+Mọi hệ thống nhắc trong GDD hoặc có bảng ở §8 phải nằm trong một mốc ở bảng trên. Khi thêm hệ thống/bảng mới vào GDD hoặc §8, thêm luôn một dòng ở đây. GDD không nằm trong repo: bảng này dựng từ các tham chiếu GDD trong TECH_SPEC/TODO; cần đối chiếu lại với GDD gốc.
+
+| Hệ thống (nguồn) | Mốc | Trạng thái |
+|---|---|---|
+| Class, job, stat grade, personality, skill, trait (§8) | M1–M3 | ✅ (job: 3/9 bậc → M5) |
+| Gear, gear_quality, enhance, material, monster, zone, difficulty, service (§8) | M1–M3 | ✅ (gear: 3/7 slot → M5) |
+| Needs, AI utility, combat, death/revive, reincarnation (GDD §4, §8) | M1–M3 | ✅ |
+| Trading Post / yêu cầu vật liệu (GDD §5, §9) | M4 | ✅ |
+| Bounty (GDD §9) | M4 | ✅ |
+| Offline progress (§9) | M4 | ✅ |
+| Journey (GDD §9, bảng `journey`) | M4 | ⚪ |
+| Town Hall, xây/nâng/đặt building, slot, cấp shop giới hạn tier (GDD §5, bảng `building`) | M4 | ⚪ |
+| Thuế (§3.1) | M4 | ⚪ |
+| QA checklist (GDD §13) | M4 | ⚪ |
+| Invitation, `hunter_tier`, Donate/Banish (GDD §4.1–4.2) | M5 | ⚪ (tier hunter đã có) |
+| 9 bậc nghề, 7 slot đồ (GDD §6) | M5 | ⚪ |
+| Nâng tier đồ, `gear_option`, `gear_set`, `gear_skill` | M5 | ⚪ |
+| `consumable`, potion, Alchemist, goal BuyPotion | M5 | ⚪ |
+| Training Ground + goal Train; Bank, Courage Headstone, Fountain of Life, Library of Wisdom | M5 | ⚪ |
+| `rune`, `relic`, thú cưỡi, `growth_property` | M5 | ⚪ |
+| Ghép NL (`composeTo`), `exp_curve` | M5 | ⚪ |
+| Mood ảnh hưởng chỉ số (GDD §4.2) | M5 | 🟡 code có, đang tắt |
+| Lệnh học skill/trait (GDD §10 menu Learn) | M5 | ⚪ |
+| UI hoàn chỉnh, menu lệnh (GDD §10) | M6 | ⚪ |
+| Đồ họa pixel-art, camera (GDD §11) | M6 | ⚪ |
+| Localization, tutorial, headless CSV (§11) | M6 | ⚪ |
+| Thay dữ liệu trích / IP (TODO §7), nền tảng (GDD §2), bố cục map | M6 | ⚪ |
+| Online, Raid (bảng `raid`), PvP, Guild, World Boss, Tower Defense, chat, ranking | M7 | ⚪ |
 
 ## 13. Việc còn mở
 

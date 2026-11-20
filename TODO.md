@@ -66,20 +66,31 @@ Số liệu hiện tại (headless 12 giờ `tools/headless.ts 720 <seed> 120`, 
   - 🟡 Còn lại: ước lượng tuyến tính hụt nhiều khi game đang tăng tốc (sau 60 phút chơi: kill −28…−43 %, level ~½ thực tế; sau 150–240 phút sai ~±15 %). Gold dùng ròng sàn 0, không so được với thực tế (offline không mua/cường hóa). Offline không craft, không bán/mua shop, không tái sinh (EXP ở max level mất), không có hunter mới đến dù còn slot. Popup mới kiểm bằng DOM (nội dung đúng), chưa xem ảnh chụp.
 - ⚪ Kiểm thử theo checklist GDD §13.
 
-### M5
-- ⚪ UI hoàn chỉnh thay cho debug overlay: Town view, danh sách/chi tiết hunter, menu lệnh (Items / Move / Learn / Activities / Manage), màn building, kho, tiến trình (GDD §10).
+### M4 (tiếp)
+- ⚪ **Town Hall và xây/nâng cấp/đặt building**, slot building, cấp building giới hạn tier đồ (GDD §5, bảng `building` TECH_SPEC §8; graph cập nhật khi đặt/xóa building, TECH_SPEC §6). Đây là chỗ tiêu vàng/NL Town **ra khỏi** nền kinh tế còn thiếu (xem §1 và Bounty ở trên).
+- ⚪ Thuế (TECH_SPEC §3.1).
+
+### M5 — chiều sâu hunter & trang bị
+- ⚪ Invitation (vé gọi hunter theo tier, GDD §4.1), Donate / Banish.
+- ⚪ Đủ 9 bậc nghề (config hiện 3) và 7 slot đồ (GDD §6, hiện 3).
+- ⚪ Upgrade đồ lên tier (Dark Stone), option/set/skill trang bị.
+- ⚪ Potion/consumable, Alchemist, goal BuyPotion.
+- ⚪ Training Ground (goal Train), Bank, Courage Headstone, Fountain of Life, Library of Wisdom.
+- ⚪ Rune, relic, thú cưỡi, growth property; ghép nguyên liệu (`composeTo`); `exp_curve` theo lần tái sinh.
+- ⚪ Bật Mood ảnh hưởng chỉ số (xem §3).
+- ⚪ Học skill/trait bằng lệnh của người chơi (hiện chỉ AI tự học).
+
+### M6 — client & nội dung
+- ⚪ UI hoàn chỉnh thay cho debug overlay: Town view, danh sách/chi tiết hunter, menu lệnh (Items / Move / Learn / Activities / Manage), màn building, kho, tiến trình (GDD §10); UI đặt yêu cầu vật liệu và bounty.
+- ⚪ Đồ họa và camera: xem §5.
 - ⚪ Chuyển ngôn ngữ vi/en trong UI; tutorial.
 - ⚪ Headless xuất CSV để tuning (TECH_SPEC §11).
+- ⚪ Thay dữ liệu trích (xem §7 Pháp lý/IP); chốt nền tảng (GDD §2) và bố cục map.
 
-### M6
-- ⚪ Online: tài khoản, cloud save, IAP; Raid, PvP, Guild, World Boss, Tower Defense, chat, ranking.
+### M7 — online
+- ⚪ Tài khoản, cloud save, IAP; Raid, PvP, Guild, World Boss, Tower Defense, chat, ranking.
 
-### Hệ thống trong GDD chưa có
-- ⚪ Town Hall và **nâng cấp/đặt building**, slot building, cấp shop giới hạn tier đồ (GDD §5).
-- ⚪ Invitation (vé gọi hunter theo tier, GDD §4.1), Donate / Banish.
-- ⚪ Upgrade đồ lên tier (Dark Stone), option/set/skill trang bị, rune, relic, thú cưỡi, potion/Alchemist.
-- ⚪ Training Ground, Bank, Courage Headstone, Fountain of Life, Library of Wisdom.
-- ⚪ Học skill/trait bằng lệnh của người chơi (hiện chỉ AI tự học).
+> Bảng phủ đầy đủ ở TECH_SPEC §12.1: hệ thống mới trong GDD phải được gán mốc ở đó, không để ở danh sách "chưa có" riêng.
 
 ## 5. Đồ họa / client
 
