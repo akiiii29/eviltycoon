@@ -49,7 +49,12 @@ for (const seed of seeds) {
   for (let m = 0; m <= end; m++) {
     if (warms.includes(m)) {
       const w0 = clone(sim.world);
+      const t0 = performance.now();
       const est = estimateOffline(config, w0, clone(tracker), T0, T0 + gap * 60_000);
+      const t8 = performance.now();
+      estimateOffline(config, w0, clone(tracker), T0, T0 + config.formula.offlineMaxHours * 3_600_000);
+      const reinc = est.hunters.reduce((a, h) => a + h.reincarnations, 0);
+      console.log(`  [warm ${m}] estimate ${(t8 - t0).toFixed(1)} ms (${gap} min), ${(performance.now() - t8).toFixed(1)} ms (${config.formula.offlineMaxHours} h); est. reincarnations ${reinc}`);
       pending.push({ warm: m, w0, est });
     }
     for (const p of pending.filter((x) => x.warm + gap === m)) {
@@ -65,6 +70,10 @@ for (const seed of seeds) {
         realLv += absLevel(h1) - absLevel(h0);
         estLv += after - absLevel(h0);
         err += Math.abs(after - absLevel(h1));
+      }
+      const realReinc = w1.stats.reincarnations - w0.stats.reincarnations;
+      if (realReinc > 0 || est.hunters.some((h) => h.reincarnations > 0)) {
+        console.log(`  reincarnations est ${est.hunters.reduce((a, h) => a + h.reincarnations, 0)} / real ${realReinc}`);
       }
       const gold = (w: World) => w.town.gold + w.hunters.reduce((a, h) => a + h.gold, 0);
       const k = pct(est.kills, realKills);
