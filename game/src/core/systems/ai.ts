@@ -1,0 +1,180 @@
+import { currentZone, sameGoal, scoreGoals, urgentNeed } from '../ai/utility';
+import type { System, SystemContext } from '../system';
+import { dist, findMonster, isAlive, type Goal, type Hunter } from '../world';
+
+/** Destination node for a goal. */
+function destination(ctx: SystemContext, h: Hunter, goal: Goal): string | null {
+  const { config } = ctx;
+  switch (goal.type) {
+    case 'hunt': return config.index.zones.get(goal.zoneId)?.entryNode ?? null;
+    case 'service': return config.index.buildings.get(goal.buildingId)?.doorNode ?? null;
+    case 'returnTown': return config.index.squareNode;
+    case 'wander': return goal.nodeId || null;
+    case 'sell': return config.index.buildings.get(config.index.tradingPost)?.doorNode ?? null;
+    case 'shop': return config.index.buildings.get(config.index.shop)?.doorNode ?? null;
+    case 'enhance': return config.index.buildings.get(config.index.forge)?.doorNode ?? null;
+    case 'learn': return config.index.buildings.get(config.index.academy)?.doorNode ?? null;
+    case 'dead': return null;
+  }
+}
+
+function goalLabel(g: Goal): string {
+  switch (g.type) {
+    case 'hunt': return `hunt:${g.zoneId}`;
+    case 'service': return `service:${g.buildingId}`;
+    case 'wander': return `wander:${g.nodeId}`;
+    case 'shop': return `shop:${g.itemUid}`;
+    case 'enhance': return `enhance:${g.slot}`;
+    case 'learn': return `learn:${g.kind}:${g.id}`;
+    default: return g.type;
+  }
+}
+
+/** Assign a goal and plan the path to it. Exported for commands (player orders). */
+export function setGoal(ctx: SystemContext, h: Hunter, goal: Goal, reason: string, forced = false): boolean {
+  const ai = h.ai;
+  const f = ctx.config.formula;
+  ai.targetMonsterId = null;
+  ai.moveTo = null;
+  ai.forced = forced;
+  ai.decideInMs = f.decisionIntervalSec * 1000;
+
+  // Already standing in the target zone: hunt right here.
+  if (goal.type === 'hunt' && currentZone(ctx.nav, h) === goal.zoneId) {
+    ai.goal = goal;
+    ai.path = [];
+    ai.phase = 'act';
+  } else {
+    const dest = destination(ctx, h, goal);
+    const start = ctx.nav.nearest(h.position);
+    const path = dest ? ctx.nav.path(start, dest) : null;
+    if (!path) {
+      ai.goal = null;
+      return false;
+    }
+    ai.goal = goal;
+    ai.path = path;
+    ai.phase = path.length ? 'travel' : 'act';
+  }
+  ctx.events.emit(ctx.world.tick, { type: 'goalChanged', hunterId: h.id, goal: goalLabel(goal), reason });
+  return true;
+}
+
+function decide(ctx: SystemContext, h: Hunter): void {
+  const { config, nav, rng } = ctx;
+  const scored = scoreGoals(config, nav, ctx.world, h);
+  ctx.debug.aiScores.set(h.id, scored.map((c) => ({ label: c.label, score: c.score })));
+  // Small noise so hunters do not act in lockstep (TECH_SPEC §5.1).
+  let best = scored[0];
+  let bestScore = -Infinity;
+  for (const c of scored) {
+    const s = c.score + rng.range(0, config.formula.decisionNoise);
+    if (s > bestScore) { bestScore = s; best = c; }
+  }
+  if (!best) return;
+
+  let goal = best.goal;
+  if (goal.type === 'wander') {
+    const roads = config.nodes.filter((n) => n.kind === 'road' || n.kind === 'square');
+    goal = { type: 'wander', nodeId: rng.pick(roads).id };
+  }
+  if (sameGoal(h.ai.goal, goal) && goal.type !== 'wander') {
+    h.ai.decideInMs = config.formula.decisionIntervalSec * 1000;
+    return;
+  }
+  setGoal(ctx, h, goal, `utility ${best.score.toFixed(2)}`);
+}
+
+/** While hunting in the zone: pick/keep a target and steer towards it, or roam. */
+function huntAct(ctx: SystemContext, h: Hunter, zoneId: string): void {
+  const { world, config, rng } = ctx;
+  const ai = h.ai;
+  let target = ai.targetMonsterId ? findMonster(world, ai.targetMonsterId) : undefined;
+  if (!target || target.hp <= 0 || target.zoneId !== zoneId) {
+    target = undefined;
+    let bestD = Infinity;
+    for (const m of world.monsters) {
+      if (m.zoneId !== zoneId || m.hp <= 0) continue;
+      // Prefer monsters already fighting me.
+      const d = dist(h.position, m.position) - (m.targetHunterId === h.id ? 1000 : 0);
+      if (d < bestD) { bestD = d; target = m; }
+    }
+    ai.targetMonsterId = target?.id ?? null;
+  }
+
+  if (target) {
+    ai.moveTo = dist(h.position, target.position) > config.formula.attackRange * 0.9 ? { ...target.position } : null;
+    return;
+  }
+  // Nothing to fight: roam between zone nodes.
+  if (!ai.moveTo || dist(h.position, ai.moveTo) <= config.formula.arriveEpsilon) {
+    const n = ctx.nav.node(rng.pick(config.index.zoneNodes.get(zoneId)!));
+    ai.moveTo = { x: n.x, y: n.y };
+  }
+}
+
+/** Hunter decision-making (TECH_SPEC §5). Runs before movement and combat. */
+/**
+ * Hard backstop: an urgent need in the field sends the hunter home, even over a player order.
+ * Returns true when it fired. Runs in the AI pass and again right after combat (urgentBackstopSystem),
+ * so a hit that makes a need urgent is acted on in the same tick.
+ */
+export function applyUrgentBackstop(ctx: SystemContext, h: Hunter): boolean {
+  if (!isAlive(h) || h.insideBuildingId) return false;
+  if (!currentZone(ctx.nav, h) || h.ai.goal?.type === 'returnTown') return false;
+  const need = urgentNeed(ctx.config, h);
+  if (!need) return false;
+  setGoal(ctx, h, { type: 'returnTown' }, `urgent ${need}`);
+  return true;
+}
+
+/** Re-applies the urgent backstop after combat (see applyUrgentBackstop). */
+export const urgentBackstopSystem: System = {
+  name: 'urgentBackstop',
+  update(ctx) {
+    for (const h of ctx.world.hunters) applyUrgentBackstop(ctx, h);
+  },
+};
+
+export const aiSystem: System = {
+  name: 'ai',
+  update(ctx) {
+    const { config, nav, dtMs } = ctx;
+    for (const h of ctx.world.hunters) {
+      if (!isAlive(h) || h.insideBuildingId) continue;
+      const ai = h.ai;
+
+      if (applyUrgentBackstop(ctx, h)) continue;
+
+      if (!ai.goal) {
+        decide(ctx, h);
+        continue;
+      }
+
+      if (ai.phase === 'act') {
+        switch (ai.goal.type) {
+          case 'returnTown':
+            ai.goal = null; // arrived; choose a service next tick
+            continue;
+          case 'hunt':
+            huntAct(ctx, h, ai.goal.zoneId);
+            break;
+          case 'wander':
+            break;
+          case 'sell':
+          case 'shop':
+          case 'enhance':
+            continue; // performed by the economy system at the door, which clears the goal
+          case 'learn':
+            continue; // performed by the academy system at the door, which clears the goal
+          default:
+            continue; // services are handled by the services system
+        }
+        if (!ai.forced) {
+          ai.decideInMs -= dtMs;
+          if (ai.decideInMs <= 0) decide(ctx, h);
+        }
+      }
+    }
+  },
+};

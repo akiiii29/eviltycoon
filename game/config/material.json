@@ -1,0 +1,20 @@
+[
+  { "id": "mat.gel", "nameKey": "mat.gel.name", "price": 4 },
+  { "id": "mat.hide", "nameKey": "mat.hide.name", "price": 8 },
+  { "id": "mat.tusk", "nameKey": "mat.tusk.name", "price": 14 },
+  { "id": "mat.ore", "nameKey": "mat.ore.name", "price": 24 },
+  { "id": "mat.core", "nameKey": "mat.core.name", "price": 40 },
+  { "id": "mat.reed", "nameKey": "mat.reed.name", "price": 30 },
+  { "id": "mat.venom", "nameKey": "mat.venom.name", "price": 50 },
+  { "id": "mat.cinder", "nameKey": "mat.cinder.name", "price": 55 },
+  { "id": "mat.scale", "nameKey": "mat.scale.name", "price": 80 },
+  { "id": "mat.ember", "nameKey": "mat.ember.name", "price": 130 },
+  { "id": "mat.frost", "nameKey": "mat.frost.name", "price": 110 },
+  { "id": "mat.pelt", "nameKey": "mat.pelt.name", "price": 160 },
+  { "id": "mat.brine", "nameKey": "mat.brine.name", "price": 180 },
+  { "id": "mat.pearl", "nameKey": "mat.pearl.name", "price": 260 },
+  { "id": "mat.sigil", "nameKey": "mat.sigil.name", "price": 380 },
+  { "id": "mat.void", "nameKey": "mat.void.name", "price": 300 },
+  { "id": "mat.shade", "nameKey": "mat.shade.name", "price": 420 },
+  { "id": "mat.star", "nameKey": "mat.star.name", "price": 600 }
+]

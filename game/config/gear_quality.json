@@ -1,0 +1,7 @@
+[
+  { "id": "q.common", "nameKey": "q.common.name", "statMult": 0.8, "priceMult": 0.8, "craftChance": 0.35 },
+  { "id": "q.uncommon", "nameKey": "q.uncommon.name", "statMult": 0.9, "priceMult": 0.9, "craftChance": 0.3 },
+  { "id": "q.rare", "nameKey": "q.rare.name", "statMult": 1.0, "priceMult": 1.0, "craftChance": 0.2 },
+  { "id": "q.epic", "nameKey": "q.epic.name", "statMult": 1.1, "priceMult": 1.3, "craftChance": 0.1 },
+  { "id": "q.mythic", "nameKey": "q.mythic.name", "statMult": 1.2, "priceMult": 1.6, "craftChance": 0.05 }
+]

@@ -1,0 +1,115 @@
+[
+ {
+  "id": "bld.infirmary",
+  "nameKey": "bld.infirmary.name",
+  "kind": "service",
+  "need": "hp",
+  "doorNode": "d.infirmary",
+  "restorePerSec": 60,
+  "price": 25,
+  "x": -12,
+  "y": 19,
+  "w": 7,
+  "h": 6
+ },
+ {
+  "id": "bld.restaurant",
+  "nameKey": "bld.restaurant.name",
+  "kind": "service",
+  "need": "satiety",
+  "doorNode": "d.restaurant",
+  "restorePerSec": 10,
+  "price": 18,
+  "x": 12,
+  "y": 19,
+  "w": 7,
+  "h": 6
+ },
+ {
+  "id": "bld.tavern",
+  "nameKey": "bld.tavern.name",
+  "kind": "service",
+  "need": "mood",
+  "doorNode": "d.tavern",
+  "restorePerSec": 10,
+  "price": 18,
+  "x": -12,
+  "y": -19,
+  "w": 7,
+  "h": 6
+ },
+ {
+  "id": "bld.inn",
+  "nameKey": "bld.inn.name",
+  "kind": "service",
+  "need": "stamina",
+  "doorNode": "d.inn",
+  "restorePerSec": 8,
+  "price": 18,
+  "x": 12,
+  "y": -19,
+  "w": 7,
+  "h": 6
+ },
+ {
+  "id": "bld.trading",
+  "nameKey": "bld.trading.name",
+  "kind": "tradingPost",
+  "doorNode": "d.trading",
+  "x": -21,
+  "y": 0,
+  "w": 6,
+  "h": 7
+ },
+ {
+  "id": "bld.smithy",
+  "nameKey": "bld.smithy.name",
+  "kind": "craft",
+  "doorNode": "d.smithy",
+  "x": 0,
+  "y": 19,
+  "w": 7,
+  "h": 6
+ },
+ {
+  "id": "bld.jeweler",
+  "nameKey": "bld.jeweler.name",
+  "kind": "craft",
+  "doorNode": "d.jeweler",
+  "x": -21,
+  "y": -10,
+  "w": 6,
+  "h": 6
+ },
+ {
+  "id": "bld.shop",
+  "nameKey": "bld.shop.name",
+  "kind": "shop",
+  "capacity": 12,
+  "doorNode": "d.shop",
+  "x": 0,
+  "y": -19,
+  "w": 7,
+  "h": 6
+ },
+ {
+  "id": "bld.forge",
+  "nameKey": "bld.forge.name",
+  "kind": "forge",
+  "doorNode": "d.forge",
+  "x": 18,
+  "y": 8,
+  "w": 5,
+  "h": 5
+ },
+ {
+  "id": "bld.academy",
+  "nameKey": "bld.academy.name",
+  "kind": "academy",
+  "doorNode": "d.academy",
+  "x": -21,
+  "y": 10,
+  "w": 6,
+  "h": 6
+ }
+]

@@ -1,0 +1,10 @@
+[
+  {"id": "pers.timid", "nameKey": "pers.timid.name", "weight": 20, "modifiers": [{"target": "goal.hunt", "op": "mul", "value": 0.7}]},
+  {"id": "pers.frugal", "nameKey": "pers.frugal.name", "weight": 20, "modifiers": [{"target": "spendRatio", "op": "mul", "value": 0.5}]},
+  {"id": "pers.glutton", "nameKey": "pers.glutton.name", "weight": 20, "modifiers": [{"target": "decay.satiety", "op": "mul", "value": 1.3}]},
+  {"id": "pers.sprinter", "nameKey": "pers.sprinter.name", "weight": 10, "modifiers": [{"target": "moveSpeed", "op": "mul", "value": 1.15}]},
+  {"id": "pers.sleepy", "nameKey": "pers.sleepy.name", "weight": 20, "modifiers": [{"target": "decay.stamina", "op": "mul", "value": 1.3}]},
+  {"id": "pers.cheerful", "nameKey": "pers.cheerful.name", "weight": 20, "modifiers": [{"target": "decay.mood", "op": "mul", "value": 0.7}]},
+  {"id": "pers.plain", "nameKey": "pers.plain.name", "weight": 30, "modifiers": []},
+  {"id": "pers.reckless", "nameKey": "pers.reckless.name", "weight": 12, "modifiers": [{"target": "urgent.hp", "op": "mul", "value": 0.5}, {"target": "goal.hunt", "op": "mul", "value": 1.15}]}
+]

@@ -1,0 +1,56 @@
+:root {
+  --bg: #111613;
+  --panel: rgba(12, 16, 14, 0.88);
+  --text: #e6efe8;
+  --muted: #9fb3a6;
+  --accent: #7fd18b;
+  --low: #e5684f;
+  --bar: #2b3a30;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 12px/1.4 ui-monospace, Consolas, monospace; }
+#app { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.view { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+.debug { position: absolute; top: 8px; left: 8px; width: min(340px, calc(100% - 16px)); max-height: calc(100% - 16px); overflow: auto; background: var(--panel); border: 1px solid #2f3d33; border-radius: 6px; padding: 8px; }
+.debug-head { font-weight: bold; color: var(--accent); margin-bottom: 4px; }
+.debug-sub { color: var(--muted); margin-top: 6px; }
+.debug-status { color: var(--accent); }
+.debug-row { display: flex; gap: 4px; flex-wrap: wrap; margin: 6px 0; }
+.debug button { background: #233028; color: var(--text); border: 1px solid #3a4c40; border-radius: 4px; padding: 2px 8px; font: inherit; cursor: pointer; }
+.debug button:hover { background: #2f4135; }
+.hunter { border-top: 1px solid #2a372e; padding: 4px 0; }
+.hunter-top button { float: right; margin-left: 4px; padding: 0 6px; }
+.hunter-sub { color: var(--muted); }
+.hunter-goal { color: var(--accent); }
+.hunter-scores { color: var(--muted); font-size: 10px; }
+.hunter-moves { display: flex; gap: 3px; margin-top: 3px; }
+.hunter-moves button { padding: 0 5px; font-size: 10px; }
+.bar { display: flex; align-items: center; gap: 4px; height: 10px; margin-top: 2px; }
+.bar span { width: 28px; color: var(--muted); font-size: 10px; }
+.bar i { display: block; height: 6px; background: var(--accent); border-radius: 2px; }
+.bar i.low { background: var(--low); }
+.debug-log { color: var(--muted); font-size: 11px; }
+.tier-rare { color: #6fb3ff; } .tier-superior { color: #c38bff; } .tier-heroic { color: #ffb347; } .tier-legendary { color: #ff6b6b; }
+.fatal { position: absolute; inset: 16px; margin: 0; padding: 16px; background: #2a1414; color: #ffd6d6; white-space: pre-wrap; border-radius: 6px; }
+.debug-town { border-top: 1px solid #2a372e; margin-top: 4px; padding-top: 4px; }
+.debug-town summary { color: var(--accent); cursor: pointer; font-weight: bold; }
+.town-body { overflow-wrap: anywhere; }
+.craft { margin-top: 4px; }
+.craft-job { color: var(--accent); }
+.craft-btns { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
+.craft-btns button { padding: 0 5px; font-size: 10px; }
+.shop-list { font-size: 11px; max-height: 140px; overflow-y: auto; }
+.shop-item .price { color: #ffd479; float: right; }
+.hunter-equip { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.hunter-moves { flex-wrap: wrap; }
+/* M3: progression + difficulty */
+.reinc { color: #ffd479; font-size: 10px; }
+.hunter-prog { color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.hunter-buffs { color: #6fb3ff; }
+.diff-cur { color: var(--accent); }
+.diff-btns button { padding: 0 5px; font-size: 10px; }
+.debug button.on { border-color: var(--accent); color: var(--accent); }
+.debug button:disabled { opacity: 0.5; cursor: default; }
+.debug button:disabled:hover { background: #233028; }
+.diff-btns .req { color: var(--muted); }
+.debug-log { overflow-wrap: anywhere; }

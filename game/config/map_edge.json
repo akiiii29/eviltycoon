@@ -1,0 +1,297 @@
+[
+ {
+  "a": "t.square",
+  "b": "t.n",
+  "road": true
+ },
+ {
+  "a": "t.square",
+  "b": "t.s",
+  "road": true
+ },
+ {
+  "a": "t.square",
+  "b": "t.e",
+  "road": true
+ },
+ {
+  "a": "t.square",
+  "b": "t.w",
+  "road": true
+ },
+ {
+  "a": "t.n",
+  "b": "t.ne",
+  "road": true
+ },
+ {
+  "a": "t.n",
+  "b": "t.nw",
+  "road": true
+ },
+ {
+  "a": "t.s",
+  "b": "t.se",
+  "road": true
+ },
+ {
+  "a": "t.s",
+  "b": "t.sw",
+  "road": true
+ },
+ {
+  "a": "t.e",
+  "b": "t.ne",
+  "road": true
+ },
+ {
+  "a": "t.e",
+  "b": "t.se",
+  "road": true
+ },
+ {
+  "a": "t.w",
+  "b": "t.nw",
+  "road": true
+ },
+ {
+  "a": "t.w",
+  "b": "t.sw",
+  "road": true
+ },
+ {
+  "a": "t.e",
+  "b": "t.gate",
+  "road": true
+ },
+ {
+  "a": "t.square",
+  "b": "t.gate",
+  "road": false
+ },
+ {
+  "a": "t.nw",
+  "b": "d.infirmary",
+  "road": false
+ },
+ {
+  "a": "t.ne",
+  "b": "d.restaurant",
+  "road": false
+ },
+ {
+  "a": "t.sw",
+  "b": "d.tavern",
+  "road": false
+ },
+ {
+  "a": "t.se",
+  "b": "d.inn",
+  "road": false
+ },
+ {
+  "a": "t.w",
+  "b": "d.trading",
+  "road": false
+ },
+ {
+  "a": "t.n",
+  "b": "d.smithy",
+  "road": false
+ },
+ {
+  "a": "t.sw",
+  "b": "d.jeweler",
+  "road": false
+ },
+ {
+  "a": "t.s",
+  "b": "d.shop",
+  "road": false
+ },
+ {
+  "a": "t.e",
+  "b": "d.forge",
+  "road": false
+ },
+ {
+  "a": "t.gate",
+  "b": "z1.a",
+  "road": false
+ },
+ {
+  "a": "z1.a",
+  "b": "z1.b",
+  "road": false
+ },
+ {
+  "a": "z1.a",
+  "b": "z1.c",
+  "road": false
+ },
+ {
+  "a": "z1.b",
+  "b": "z1.d",
+  "road": false
+ },
+ {
+  "a": "z1.c",
+  "b": "z1.d",
+  "road": false
+ },
+ {
+  "a": "z1.d",
+  "b": "z2.a",
+  "road": false
+ },
+ {
+  "a": "z2.a",
+  "b": "z2.b",
+  "road": false
+ },
+ {
+  "a": "z2.a",
+  "b": "z2.c",
+  "road": false
+ },
+ {
+  "a": "z2.b",
+  "b": "z2.d",
+  "road": false
+ },
+ {
+  "a": "z2.c",
+  "b": "z2.d",
+  "road": false
+ },
+ {
+  "a": "t.nw",
+  "b": "d.academy",
+  "road": false
+ },
+ {
+  "a": "z2.d",
+  "b": "z3.a",
+  "road": false
+ },
+ {
+  "a": "z3.a",
+  "b": "z3.b",
+  "road": false
+ },
+ {
+  "a": "z3.a",
+  "b": "z3.c",
+  "road": false
+ },
+ {
+  "a": "z3.b",
+  "b": "z3.d",
+  "road": false
+ },
+ {
+  "a": "z3.c",
+  "b": "z3.d",
+  "road": false
+ },
+ {
+  "a": "z3.d",
+  "b": "z4.a",
+  "road": false
+ },
+ {
+  "a": "z4.a",
+  "b": "z4.b",
+  "road": false
+ },
+ {
+  "a": "z4.a",
+  "b": "z4.c",
+  "road": false
+ },
+ {
+  "a": "z4.b",
+  "b": "z4.d",
+  "road": false
+ },
+ {
+  "a": "z4.c",
+  "b": "z4.d",
+  "road": false
+ },
+ {
+  "a": "z4.d",
+  "b": "z5.a",
+  "road": false
+ },
+ {
+  "a": "z5.a",
+  "b": "z5.b",
+  "road": false
+ },
+ {
+  "a": "z5.a",
+  "b": "z5.c",
+  "road": false
+ },
+ {
+  "a": "z5.b",
+  "b": "z5.d",
+  "road": false
+ },
+ {
+  "a": "z5.c",
+  "b": "z5.d",
+  "road": false
+ },
+ {
+  "a": "z5.d",
+  "b": "z6.a",
+  "road": false
+ },
+ {
+  "a": "z6.a",
+  "b": "z6.b",
+  "road": false
+ },
+ {
+  "a": "z6.a",
+  "b": "z6.c",
+  "road": false
+ },
+ {
+  "a": "z6.b",
+  "b": "z6.d",
+  "road": false
+ },
+ {
+  "a": "z6.c",
+  "b": "z6.d",
+  "road": false
+ },
+ {
+  "a": "z6.d",
+  "b": "z7.a",
+  "road": false
+ },
+ {
+  "a": "z7.a",
+  "b": "z7.b",
+  "road": false
+ },
+ {
+  "a": "z7.a",
+  "b": "z7.c",
+  "road": false
+ },
+ {
+  "a": "z7.b",
+  "b": "z7.d",
+  "road": false
+ },
+ {
+  "a": "z7.c",
+  "b": "z7.d",
+  "road": false
+ }
+]

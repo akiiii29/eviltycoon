@@ -1,0 +1,122 @@
+[
+ {
+  "id": "job.vanguard.0",
+  "classId": "class.vanguard",
+  "tier": 0,
+  "nameKey": "class.vanguard.name",
+  "unlockLevel": 1,
+  "statMult": 1.0
+ },
+ {
+  "id": "job.vanguard.1",
+  "classId": "class.vanguard",
+  "tier": 1,
+  "nameKey": "job.vanguard.1.name",
+  "unlockLevel": 20,
+  "statMult": 1.15
+ },
+ {
+  "id": "job.vanguard.2",
+  "classId": "class.vanguard",
+  "tier": 2,
+  "nameKey": "job.vanguard.2.name",
+  "unlockLevel": 50,
+  "statMult": 1.35
+ },
+ {
+  "id": "job.warden.0",
+  "classId": "class.warden",
+  "tier": 0,
+  "nameKey": "class.warden.name",
+  "unlockLevel": 1,
+  "statMult": 1.0
+ },
+ {
+  "id": "job.warden.1",
+  "classId": "class.warden",
+  "tier": 1,
+  "nameKey": "job.warden.1.name",
+  "unlockLevel": 20,
+  "statMult": 1.15
+ },
+ {
+  "id": "job.warden.2",
+  "classId": "class.warden",
+  "tier": 2,
+  "nameKey": "job.warden.2.name",
+  "unlockLevel": 50,
+  "statMult": 1.35
+ },
+ {
+  "id": "job.strider.0",
+  "classId": "class.strider",
+  "tier": 0,
+  "nameKey": "class.strider.name",
+  "unlockLevel": 1,
+  "statMult": 1.0
+ },
+ {
+  "id": "job.strider.1",
+  "classId": "class.strider",
+  "tier": 1,
+  "nameKey": "job.strider.1.name",
+  "unlockLevel": 20,
+  "statMult": 1.15
+ },
+ {
+  "id": "job.strider.2",
+  "classId": "class.strider",
+  "tier": 2,
+  "nameKey": "job.strider.2.name",
+  "unlockLevel": 50,
+  "statMult": 1.35
+ },
+ {
+  "id": "job.arcanist.0",
+  "classId": "class.arcanist",
+  "tier": 0,
+  "nameKey": "class.arcanist.name",
+  "unlockLevel": 1,
+  "statMult": 1.0
+ },
+ {
+  "id": "job.arcanist.1",
+  "classId": "class.arcanist",
+  "tier": 1,
+  "nameKey": "job.arcanist.1.name",
+  "unlockLevel": 20,
+  "statMult": 1.15
+ },
+ {
+  "id": "job.arcanist.2",
+  "classId": "class.arcanist",
+  "tier": 2,
+  "nameKey": "job.arcanist.2.name",
+  "unlockLevel": 50,
+  "statMult": 1.35
+ },
+ {
+  "id": "job.reaver.0",
+  "classId": "class.reaver",
+  "tier": 0,
+  "nameKey": "class.reaver.name",
+  "unlockLevel": 1,
+  "statMult": 1.0
+ },
+ {
+  "id": "job.reaver.1",
+  "classId": "class.reaver",
+  "tier": 1,
+  "nameKey": "job.reaver.1.name",
+  "unlockLevel": 20,
+  "statMult": 1.15
+ },
+ {
+  "id": "job.reaver.2",
+  "classId": "class.reaver",
+  "tier": 2,
+  "nameKey": "job.reaver.2.name",
+  "unlockLevel": 50,
+  "statMult": 1.35
+ }
+]

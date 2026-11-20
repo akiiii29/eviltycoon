@@ -1,0 +1,90 @@
+[
+ {
+  "id": "diff.easy",
+  "order": 0,
+  "nameKey": "diff.easy.name",
+  "unlockHunters": 0,
+  "unlockReincarnation": 0,
+  "monsterHpMul": 1,
+  "monsterAtkMul": 1,
+  "monsterDefMul": 1,
+  "rewardMul": 1
+ },
+ {
+  "id": "diff.normal",
+  "order": 1,
+  "nameKey": "diff.normal.name",
+  "unlockHunters": 3,
+  "unlockReincarnation": 1,
+  "monsterHpMul": 2.2,
+  "monsterAtkMul": 1.8,
+  "monsterDefMul": 1.8,
+  "rewardMul": 2
+ },
+ {
+  "id": "diff.hard",
+  "order": 2,
+  "nameKey": "diff.hard.name",
+  "unlockHunters": 4,
+  "unlockReincarnation": 2,
+  "monsterHpMul": 4.5,
+  "monsterAtkMul": 3.2,
+  "monsterDefMul": 3,
+  "rewardMul": 4
+ },
+ {
+  "id": "diff.expert",
+  "order": 3,
+  "nameKey": "diff.expert.name",
+  "unlockHunters": 5,
+  "unlockReincarnation": 3,
+  "monsterHpMul": 9,
+  "monsterAtkMul": 5.5,
+  "monsterDefMul": 5,
+  "rewardMul": 8
+ },
+ {
+  "id": "diff.nightmare",
+  "order": 4,
+  "nameKey": "diff.nightmare.name",
+  "unlockHunters": 6,
+  "unlockReincarnation": 4,
+  "monsterHpMul": 18,
+  "monsterAtkMul": 9,
+  "monsterDefMul": 8,
+  "rewardMul": 16
+ },
+ {
+  "id": "diff.torment1",
+  "order": 5,
+  "nameKey": "diff.torment1.name",
+  "unlockHunters": 5,
+  "unlockReincarnation": 5,
+  "monsterHpMul": 36,
+  "monsterAtkMul": 15,
+  "monsterDefMul": 13,
+  "rewardMul": 32
+ },
+ {
+  "id": "diff.torment2",
+  "order": 6,
+  "nameKey": "diff.torment2.name",
+  "unlockHunters": 5,
+  "unlockReincarnation": 5,
+  "monsterHpMul": 72,
+  "monsterAtkMul": 24,
+  "monsterDefMul": 20,
+  "rewardMul": 64
+ },
+ {
+  "id": "diff.torment3",
+  "order": 7,
+  "nameKey": "diff.torment3.name",
+  "unlockHunters": 5,
+  "unlockReincarnation": 5,
+  "monsterHpMul": 144,
+  "monsterAtkMul": 38,
+  "monsterDefMul": 32,
+  "rewardMul": 128
+ }
+]

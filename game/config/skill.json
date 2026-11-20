@@ -1,0 +1,344 @@
+[
+ {
+  "id": "skill.vanguard.cleave",
+  "classId": "class.vanguard",
+  "nameKey": "skill.vanguard.cleave.name",
+  "jobTierMin": 0,
+  "kind": "aoe",
+  "cooldownSec": 8,
+  "maxLevel": 5,
+  "value": [
+   1.6,
+   1.85,
+   2.1,
+   2.35,
+   2.6
+  ],
+  "radius": 4,
+  "studyLevel": [
+   1,
+   5,
+   10,
+   20,
+   35
+  ],
+  "studyGold": [
+   50,
+   150,
+   400,
+   900,
+   2000
+  ]
+ },
+ {
+  "id": "skill.vanguard.rage",
+  "classId": "class.vanguard",
+  "nameKey": "skill.vanguard.rage.name",
+  "jobTierMin": 1,
+  "kind": "buff",
+  "cooldownSec": 20,
+  "maxLevel": 5,
+  "value": [
+   15.0,
+   21.25,
+   27.5,
+   33.75,
+   40.0
+  ],
+  "keepSec": [
+   6.0,
+   7.0,
+   8.0,
+   9.0,
+   10.0
+  ],
+  "buffStat": "atkSpeedPct",
+  "studyLevel": [
+   20,
+   20,
+   20,
+   20,
+   35
+  ],
+  "studyGold": [
+   50,
+   150,
+   400,
+   900,
+   2000
+  ]
+ },
+ {
+  "id": "skill.warden.bash",
+  "classId": "class.warden",
+  "nameKey": "skill.warden.bash.name",
+  "jobTierMin": 0,
+  "kind": "strike",
+  "cooldownSec": 7,
+  "maxLevel": 5,
+  "value": [
+   2.0,
+   2.3,
+   2.6,
+   2.9,
+   3.2
+  ],
+  "studyLevel": [
+   1,
+   5,
+   10,
+   20,
+   35
+  ],
+  "studyGold": [
+   50,
+   150,
+   400,
+   900,
+   2000
+  ]
+ },
+ {
+  "id": "skill.warden.bulwark",
+  "classId": "class.warden",
+  "nameKey": "skill.warden.bulwark.name",
+  "jobTierMin": 1,
+  "kind": "buff",
+  "cooldownSec": 22,
+  "maxLevel": 5,
+  "value": [
+   20.0,
+   27.5,
+   35.0,
+   42.5,
+   50.0
+  ],
+  "keepSec": [
+   8.0,
+   9.0,
+   10.0,
+   11.0,
+   12.0
+  ],
+  "buffStat": "defPct",
+  "studyLevel": [
+   20,
+   20,
+   20,
+   20,
+   35
+  ],
+  "studyGold": [
+   50,
+   150,
+   400,
+   900,
+   2000
+  ]
+ },
+ {
+  "id": "skill.strider.snipe",
+  "classId": "class.strider",
+  "nameKey": "skill.strider.snipe.name",
+  "jobTierMin": 0,
+  "kind": "strike",
+  "cooldownSec": 6,
+  "maxLevel": 5,
+  "value": [
+   2.4,
+   2.8,
+   3.2,
+   3.6,
+   4.0
+  ],
+  "studyLevel": [
+   1,
+   5,
+   10,
+   20,
+   35
+  ],
+  "studyGold": [
+   50,
+   150,
+   400,
+   900,
+   2000
+  ]
+ },
+ {
+  "id": "skill.strider.focus",
+  "classId": "class.strider",
+  "nameKey": "skill.strider.focus.name",
+  "jobTierMin": 1,
+  "kind": "buff",
+  "cooldownSec": 20,
+  "maxLevel": 5,
+  "value": [
+   10.0,
+   15.0,
+   20.0,
+   25.0,
+   30.0
+  ],
+  "keepSec": [
+   6.0,
+   7.0,
+   8.0,
+   9.0,
+   10.0
+  ],
+  "buffStat": "crit",
+  "studyLevel": [
+   20,
+   20,
+   20,
+   20,
+   35
+  ],
+  "studyGold": [
+   50,
+   150,
+   400,
+   900,
+   2000
+  ]
+ },
+ {
+  "id": "skill.arcanist.fireball",
+  "classId": "class.arcanist",
+  "nameKey": "skill.arcanist.fireball.name",
+  "jobTierMin": 0,
+  "kind": "aoe",
+  "cooldownSec": 9,
+  "maxLevel": 5,
+  "value": [
+   1.8,
+   2.1,
+   2.4,
+   2.7,
+   3.0
+  ],
+  "radius": 5,
+  "studyLevel": [
+   1,
+   5,
+   10,
+   20,
+   35
+  ],
+  "studyGold": [
+   50,
+   150,
+   400,
+   900,
+   2000
+  ]
+ },
+ {
+  "id": "skill.arcanist.ward",
+  "classId": "class.arcanist",
+  "nameKey": "skill.arcanist.ward.name",
+  "jobTierMin": 1,
+  "kind": "buff",
+  "cooldownSec": 24,
+  "maxLevel": 5,
+  "value": [
+   15.0,
+   21.25,
+   27.5,
+   33.75,
+   40.0
+  ],
+  "keepSec": [
+   8.0,
+   9.0,
+   10.0,
+   11.0,
+   12.0
+  ],
+  "buffStat": "hpPct",
+  "studyLevel": [
+   20,
+   20,
+   20,
+   20,
+   35
+  ],
+  "studyGold": [
+   50,
+   150,
+   400,
+   900,
+   2000
+  ]
+ },
+ {
+  "id": "skill.reaver.rend",
+  "classId": "class.reaver",
+  "nameKey": "skill.reaver.rend.name",
+  "jobTierMin": 0,
+  "kind": "strike",
+  "cooldownSec": 6,
+  "maxLevel": 5,
+  "value": [
+   2.2,
+   2.55,
+   2.9,
+   3.25,
+   3.6
+  ],
+  "studyLevel": [
+   1,
+   5,
+   10,
+   20,
+   35
+  ],
+  "studyGold": [
+   50,
+   150,
+   400,
+   900,
+   2000
+  ]
+ },
+ {
+  "id": "skill.reaver.bloodlust",
+  "classId": "class.reaver",
+  "nameKey": "skill.reaver.bloodlust.name",
+  "jobTierMin": 1,
+  "kind": "buff",
+  "cooldownSec": 20,
+  "maxLevel": 5,
+  "value": [
+   15.0,
+   21.25,
+   27.5,
+   33.75,
+   40.0
+  ],
+  "keepSec": [
+   6.0,
+   7.0,
+   8.0,
+   9.0,
+   10.0
+  ],
+  "buffStat": "atkPct",
+  "studyLevel": [
+   20,
+   20,
+   20,
+   20,
+   35
+  ],
+  "studyGold": [
+   50,
+   150,
+   400,
+   900,
+   2000
+  ]
+ }
+]

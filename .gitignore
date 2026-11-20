@@ -1,0 +1,19 @@
+# Build / deps
+node_modules/
+dist/
+
+# Local tooling
+.claude/
+
+# Extracted third-party game files and data: never commit
+# (proprietary content, and libil2cpp.so is above GitHub's 100 MB limit)
+*.so
+*.dat
+*.assets
+*.resource
+class_inventory.csv
+serialized_scripts.csv
+data_tables/
+
+# Design docs kept local for now (GDD appendix contains extracted data)
+*.docx

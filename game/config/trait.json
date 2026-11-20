@@ -1,0 +1,50 @@
+[
+ {
+  "id": "trait.atk",
+  "nameKey": "trait.atk.name",
+  "stat": "atkPct",
+  "valuePerLevel": 3,
+  "maxLevel": 10,
+  "pointCost": 1
+ },
+ {
+  "id": "trait.def",
+  "nameKey": "trait.def.name",
+  "stat": "defPct",
+  "valuePerLevel": 3,
+  "maxLevel": 10,
+  "pointCost": 1
+ },
+ {
+  "id": "trait.hp",
+  "nameKey": "trait.hp.name",
+  "stat": "hpPct",
+  "valuePerLevel": 3,
+  "maxLevel": 10,
+  "pointCost": 1
+ },
+ {
+  "id": "trait.speed",
+  "nameKey": "trait.speed.name",
+  "stat": "atkSpeedPct",
+  "valuePerLevel": 2,
+  "maxLevel": 10,
+  "pointCost": 1
+ },
+ {
+  "id": "trait.crit",
+  "nameKey": "trait.crit.name",
+  "stat": "crit",
+  "valuePerLevel": 1,
+  "maxLevel": 10,
+  "pointCost": 1
+ },
+ {
+  "id": "trait.eva",
+  "nameKey": "trait.eva.name",
+  "stat": "eva",
+  "valuePerLevel": 1,
+  "maxLevel": 10,
+  "pointCost": 1
+ }
+]

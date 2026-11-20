@@ -1,0 +1,9 @@
+[
+  { "id": "zone.meadow", "nameKey": "zone.meadow.name", "entryNode": "z1.a", "recommendedPower": 45, "monsterCap": 10, "respawnSec": 6, "monsters": [{ "monsterId": "mon.slime", "weight": 3 }, { "monsterId": "mon.boar", "weight": 1 }] },
+  { "id": "zone.ruins", "nameKey": "zone.ruins.name", "entryNode": "z2.a", "recommendedPower": 130, "monsterCap": 10, "respawnSec": 6, "monsters": [{ "monsterId": "mon.golem", "weight": 1 }] },
+  { "id": "zone.marsh", "nameKey": "zone.marsh.name", "entryNode": "z3.a", "recommendedPower": 280, "monsterCap": 12, "respawnSec": 3, "monsters": [{ "monsterId": "mon.bogling", "weight": 3 }, { "monsterId": "mon.fenstalker", "weight": 1 }] },
+  { "id": "zone.crags", "nameKey": "zone.crags.name", "entryNode": "z4.a", "recommendedPower": 800, "monsterCap": 12, "respawnSec": 3, "monsters": [{ "monsterId": "mon.cinderimp", "weight": 3 }, { "monsterId": "mon.ashdrake", "weight": 1 }] },
+  { "id": "zone.glacier", "nameKey": "zone.glacier.name", "entryNode": "z5.a", "recommendedPower": 2000, "monsterCap": 12, "respawnSec": 3, "monsters": [{ "monsterId": "mon.rimewolf", "weight": 3 }, { "monsterId": "mon.icewarden", "weight": 1 }] },
+  { "id": "zone.citadel", "nameKey": "zone.citadel.name", "entryNode": "z6.a", "recommendedPower": 5000, "monsterCap": 12, "respawnSec": 3, "monsters": [{ "monsterId": "mon.drownedknight", "weight": 3 }, { "monsterId": "mon.tidecaller", "weight": 1 }] },
+  { "id": "zone.abyss", "nameKey": "zone.abyss.name", "entryNode": "z7.a", "recommendedPower": 12500, "monsterCap": 12, "respawnSec": 3, "monsters": [{ "monsterId": "mon.voidcrawler", "weight": 3 }, { "monsterId": "mon.hollowlord", "weight": 1 }] }
+]

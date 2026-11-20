@@ -1,0 +1,142 @@
+import 'fake-indexeddb/auto';
+import { deserialize, SaveError, serialize, SAVE_FORMAT } from '../src/core/save/save';
+import { IndexedDbStorage, MemoryStorage } from '../src/core/save/storage';
+import { createWorld, Simulation } from '../src/core/simulation';
+import { WORLD_SCHEMA_VERSION } from '../src/core/world';
+import { testConfig } from './helpers';
+
+const config = testConfig();
+
+function runFor(s: Simulation, n: number) {
+  for (let i = 0; i < n; i++) s.step();
+}
+
+describe('save/load', () => {
+  it('round-trips and continues identically to an unsaved run', () => {
+    const a = new Simulation(config, createWorld(config, 77));
+    runFor(a, 1500);
+    const text = serialize(a.world, 1000);
+
+    const b = new Simulation(config, createWorld(config, 1));
+    b.setWorld(deserialize(text, config.version).world);
+    expect(JSON.stringify(b.world)).toBe(JSON.stringify(a.world));
+
+    runFor(a, 1500);
+    runFor(b, 1500);
+    expect(JSON.stringify(b.world)).toBe(JSON.stringify(a.world));
+  });
+
+  it('flags config version changes', () => {
+    const w = createWorld(config, 1);
+    expect(deserialize(serialize(w, 0), 'other').configChanged).toBe(true);
+    expect(deserialize(serialize(w, 0), config.version).configChanged).toBe(false);
+  });
+
+  it('migrates v0 saves to the current schema', () => {
+    const w = createWorld(config, 1) as any;
+    delete w.town.arrivalTimerMs;
+    w.hunters = [{ id: 'h1' }];
+    w.schemaVersion = 0;
+    const text = JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 0, configVersion: config.version, savedAt: 5, world: w });
+    const r = deserialize(text, config.version);
+    expect(r.migratedFrom).toBe(0);
+    expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
+    expect(r.world.town.arrivalTimerMs).toBe(0);
+    expect(r.world.hunters[0]!.reincarnation).toBe(0);
+  });
+
+  it('migrates M0 (v1) saves: hunters land on the square with fresh AI, and the game runs on', () => {
+    const s = new Simulation(config, createWorld(config, 4));
+    s.enqueue({ type: 'debug.spawnHunter' });
+    s.step();
+    const w = JSON.parse(JSON.stringify(s.world));
+    for (const h of w.hunters) for (const k of ['nodeId', 'insideBuildingId', 'ai', 'attackCdMs', 'deadMs', 'kills']) delete h[k];
+    delete w.monsters; delete w.zones; delete w.stats;
+    w.schemaVersion = 1;
+    const text = JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 1, configVersion: config.version, savedAt: 0, world: w });
+    const r = deserialize(text, config.version);
+    expect(r.migratedFrom).toBe(1);
+    expect(r.world.hunters[0]!.nodeId).toBe(config.index.squareNode);
+    const s2 = new Simulation(config, r.world);
+    for (let i = 0; i < 600; i++) s2.step();
+    expect(s2.world.monsters.length).toBeGreaterThan(0);
+  });
+
+  it('migrates M1 (v2) saves: empty bags/equipment, town economy initialised', () => {
+    const s = new Simulation(config, createWorld(config, 6));
+    s.enqueue({ type: 'debug.spawnHunter' });
+    s.step();
+    const w = JSON.parse(JSON.stringify(s.world));
+    for (const h of w.hunters) { delete h.equipment; delete h.bag; }
+    w.town = { gold: 123, arrivalTimerMs: 0 };
+    w.stats = { kills: 1, deaths: 0, serviceUses: 2 };
+    w.schemaVersion = 2;
+    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 2, configVersion: config.version, savedAt: 0, world: w }), config.version);
+    expect(r.migratedFrom).toBe(2);
+    expect(r.world.town.gold).toBe(123);
+    expect(r.world.town.shop).toEqual([]);
+    expect(r.world.town.autoCraft).toBe(true);
+    expect(r.world.hunters[0]!.bag).toEqual({});
+    expect(r.world.stats.kills).toBe(1);
+    expect(r.world.stats.crafted).toBe(0);
+    const s2 = new Simulation(config, r.world);
+    for (let i = 0; i < 600; i++) s2.step(); // runs without throwing on missing crafting keys
+  });
+
+  it('migrates M2 (v3) saves: Easy difficulty, empty skills/traits, roll stats recovered', () => {
+    const s = new Simulation(config, createWorld(config, 9));
+    s.enqueue({ type: 'debug.spawnHunter' });
+    s.step();
+    const w = JSON.parse(JSON.stringify(s.world));
+    const h = w.hunters[0];
+    const roll = { ...h.rollStats };
+    h.level = 3; h.stats.hp += 40; h.stats.atk += 2; h.stats.def += 2;
+    for (const k of ['rollStats', 'skills', 'skillCdMs', 'traits', 'traitPoints', 'buffs']) delete h[k];
+    for (const m of w.monsters) delete m.difficultyId;
+    for (const k of ['difficulty', 'unlockedDifficulties', 'autoReincarnate']) delete w.town[k];
+    for (const k of ['skillCasts', 'jobChanges', 'reincarnations', 'learned']) delete w.stats[k];
+    w.schemaVersion = 3;
+    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 3, configVersion: config.version, savedAt: 0, world: w }), config.version);
+    expect(r.migratedFrom).toBe(3);
+    const mh = r.world.hunters[0]!;
+    expect(mh.rollStats.hp).toBe(roll.hp);
+    expect(mh.rollStats.atk).toBe(roll.atk);
+    expect(mh.skills).toEqual({});
+    expect(r.world.town.difficulty).toBe('diff.easy');
+    expect(r.world.monsters.every((m) => m.difficultyId === 'diff.easy')).toBe(true);
+    const s2 = new Simulation(config, r.world);
+    for (let i = 0; i < 600; i++) s2.step();
+  });
+
+  it('migrates v4 saves: shop items get listPrice and listedAtMs', () => {
+    const w = JSON.parse(JSON.stringify(createWorld(config, 3)));
+    w.timeMs = 5000;
+    w.town.shop = [{ uid: 'g1', gearId: 'gear.w.club', qualityId: 'q.rare', enhance: 0, price: 60 }];
+    w.schemaVersion = 4;
+    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 4, configVersion: config.version, savedAt: 0, world: w }), config.version);
+    expect(r.migratedFrom).toBe(4);
+    expect(r.world.town.shop[0]).toMatchObject({ price: 60, listPrice: 60, listedAtMs: 5000 });
+  });
+
+  it('rejects garbage, foreign files and future schema versions', () => {
+    expect(() => deserialize('{', config.version)).toThrow(SaveError);
+    expect(() => deserialize('{"a":1}', config.version)).toThrow(/not a save file/);
+    const w = createWorld(config, 1);
+    const future = JSON.stringify({ format: SAVE_FORMAT, schemaVersion: WORLD_SCHEMA_VERSION + 1, configVersion: '', savedAt: 0, world: w });
+    expect(() => deserialize(future, config.version)).toThrow(/newer than this build/);
+  });
+
+  it.each([
+    ['memory', () => new MemoryStorage()],
+    ['indexeddb', () => new IndexedDbStorage()],
+  ])('%s storage reads, writes and removes', async (_, make) => {
+    const st = make();
+    expect(await st.read('s')).toBeNull();
+    await st.write('s', 'hello');
+    expect(await st.read('s')).toBe('hello');
+    await st.write('s', 'again');
+    expect(await st.read('s')).toBe('again');
+    await st.remove('s');
+    expect(await st.read('s')).toBeNull();
+  });
+});

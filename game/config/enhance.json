@@ -1,0 +1,17 @@
+[
+  {"level": 1, "successRate": 0.9, "costFrac": 0.1, "dropOnFail": false},
+  {"level": 2, "successRate": 0.8, "costFrac": 0.15, "dropOnFail": false},
+  {"level": 3, "successRate": 0.7, "costFrac": 0.2, "dropOnFail": false},
+  {"level": 4, "successRate": 0.6, "costFrac": 0.25, "dropOnFail": false},
+  {"level": 5, "successRate": 0.55, "costFrac": 0.3, "dropOnFail": true},
+  {"level": 6, "successRate": 0.5, "costFrac": 0.4, "dropOnFail": true},
+  {"level": 7, "successRate": 0.45, "costFrac": 0.5, "dropOnFail": true},
+  {"level": 8, "successRate": 0.4, "costFrac": 0.6, "dropOnFail": true},
+  {"level": 9, "successRate": 0.35, "costFrac": 0.8, "dropOnFail": true},
+  {"level": 10, "successRate": 0.3, "costFrac": 1.0, "dropOnFail": true},
+  {"level": 11, "successRate": 0.25, "costFrac": 1.2, "dropOnFail": true},
+  {"level": 12, "successRate": 0.2, "costFrac": 1.5, "dropOnFail": true},
+  {"level": 13, "successRate": 0.15, "costFrac": 2.0, "dropOnFail": true},
+  {"level": 14, "successRate": 0.1, "costFrac": 2.5, "dropOnFail": true},
+  {"level": 15, "successRate": 0.05, "costFrac": 3.0, "dropOnFail": true}
+]

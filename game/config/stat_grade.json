@@ -1,0 +1,5 @@
+[
+  { "grade": "normal", "point": 0, "rollChance": 0.61 },
+  { "grade": "high", "point": 1, "rollChance": 0.33 },
+  { "grade": "highest", "point": 2, "rollChance": 0.06 }
+]

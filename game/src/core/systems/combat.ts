@@ -1,0 +1,145 @@
+import { hunterStats, mitigated, monsterStats } from '../formulas';
+import { personalityFactor } from '../hunterFactory';
+import { gainExp } from '../progress';
+import type { System, SystemContext } from '../system';
+import { bagCount, dist, findHunter, findMonster, isAlive, newAiState, type Hunter, type Monster } from '../world';
+import { stepTowards } from './movement';
+
+function killHunter(ctx: SystemContext, h: Hunter): void {
+  h.needs.hp = 0;
+  h.deadMs = ctx.config.formula.reviveSec * 1000;
+  h.ai = { ...newAiState(), goal: { type: 'dead' } };
+  h.attackCdMs = 0;
+  ctx.world.stats.deaths += 1;
+  for (const m of ctx.world.monsters) if (m.targetHunterId === h.id) m.targetHunterId = null;
+  ctx.events.emit(ctx.world.tick, { type: 'hunterDied', hunterId: h.id });
+}
+
+function revive(ctx: SystemContext, h: Hunter): void {
+  const sq = ctx.nav.node(ctx.config.index.squareNode);
+  h.deadMs = 0;
+  h.position = { x: sq.x, y: sq.y };
+  h.nodeId = sq.id;
+  h.needs.hp = hunterStats(ctx.config, h).hp * ctx.config.formula.reviveHpFrac;
+  h.ai = newAiState();
+  ctx.events.emit(ctx.world.tick, { type: 'hunterRevived', hunterId: h.id });
+}
+
+function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
+  const { config, world } = ctx;
+  const def = config.index.monsters.get(m.defId)!;
+  const ms = monsterStats(config, m);
+  h.kills += 1;
+  h.gold += ms.gold;
+  world.stats.kills += 1;
+  ctx.events.emit(world.tick, { type: 'monsterKilled', hunterId: h.id, monsterId: m.id, defId: m.defId });
+  // M2: material drops go into the hunter's bag while there is room.
+  for (const d of def.drops) {
+    if (!ctx.rng.chance(d.chance)) continue;
+    if (bagCount(h) >= config.formula.bagCapacity) break;
+    h.bag[d.materialId] = (h.bag[d.materialId] ?? 0) + 1;
+  }
+  gainExp(ctx, h, ms.exp);
+}
+
+/**
+ * One hit from a hunter on a monster: difficulty-scaled mitigation, optional crit (rolled via ctx.rng),
+ * aggro, `hit` event, and kill rewards. Returns the damage dealt (0 if the monster was already dead).
+ * Shared by auto-attacks and skills.
+ */
+export function damageMonster(ctx: SystemContext, h: Hunter, m: Monster, rawAtk: number, critAllowed: boolean): number {
+  if (m.hp <= 0) return 0;
+  const { config, world, rng } = ctx;
+  const f = config.formula;
+  const crit = critAllowed && rng.chance(hunterStats(config, h).crit / 100);
+  const dmg = mitigated(rawAtk, monsterStats(config, m).def, f) * (crit ? f.critMultiplier : 1);
+  m.hp -= dmg;
+  if (!m.targetHunterId) m.targetHunterId = h.id;
+  ctx.events.emit(world.tick, { type: 'hit', attackerId: h.id, targetId: m.id, damage: dmg, crit, evaded: false });
+  if (m.hp <= 0) grantKill(ctx, h, m);
+  return dmg;
+}
+
+function hunterAttacks(ctx: SystemContext, h: Hunter): void {
+  const { config, world, dtMs } = ctx;
+  const f = config.formula;
+  const ai = h.ai;
+  if (ai.goal?.type !== 'hunt' || ai.phase !== 'act' || !ai.targetMonsterId) return;
+  const m = findMonster(world, ai.targetMonsterId);
+  if (!m || m.hp <= 0 || dist(h.position, m.position) > f.attackRange) return;
+
+  h.attackCdMs -= dtMs;
+  if (h.attackCdMs > 0) return;
+  const s = hunterStats(config, h);
+  h.attackCdMs += s.atkSpeed * 1000;
+  if (h.attackCdMs < 0) h.attackCdMs = 0;
+
+  // GDD §4.2: satiety drops each time the hunter attacks.
+  h.needs.satiety = Math.max(0, h.needs.satiety - f.satietyPerAttack * personalityFactor(config, h, 'decay.satiety'));
+  damageMonster(ctx, h, m, s.atk, true);
+}
+
+function monsterActs(ctx: SystemContext, m: Monster): void {
+  const { config, world, rng, dtMs } = ctx;
+  const f = config.formula;
+  const def = config.index.monsters.get(m.defId)!;
+  const sec = dtMs / 1000;
+
+  let target = m.targetHunterId ? findHunter(world, m.targetHunterId) : undefined;
+  const valid = (h: Hunter | undefined): h is Hunter =>
+    !!h && isAlive(h) && !h.insideBuildingId && ctx.nav.node(h.nodeId).zoneId === m.zoneId && dist(h.position, m.home) <= f.monsterLeashRange;
+  if (!valid(target)) {
+    target = undefined;
+    m.targetHunterId = null;
+    let bestD = def.aggroRange;
+    for (const h of world.hunters) {
+      if (!valid(h)) continue;
+      const d = dist(h.position, m.position);
+      if (d <= bestD) { bestD = d; target = h; }
+    }
+    if (target) m.targetHunterId = target.id;
+  }
+
+  if (!target) {
+    stepTowards(m.position, m.home, def.moveSpeed * sec);
+    m.attackCdMs = Math.max(0, m.attackCdMs - dtMs);
+    return;
+  }
+  if (dist(m.position, target.position) > f.attackRange) {
+    stepTowards(m.position, target.position, def.moveSpeed * sec);
+    return;
+  }
+  m.attackCdMs -= dtMs;
+  if (m.attackCdMs > 0) return;
+  m.attackCdMs += def.attackSpeed * 1000;
+  if (m.attackCdMs < 0) m.attackCdMs = 0;
+
+  const ts = hunterStats(config, target);
+  // RNG order is fixed: evade roll first, crit roll only when the hit lands.
+  const evaded = rng.chance(ts.eva / 100);
+  const crit = !evaded && rng.chance(def.crit / 100);
+  const dmg = evaded ? 0 : mitigated(monsterStats(config, m).atk, ts.def, f) * (crit ? f.monsterCritMultiplier : 1);
+  ctx.events.emit(world.tick, { type: 'hit', attackerId: m.id, targetId: target.id, damage: dmg, crit, evaded });
+  if (evaded) return;
+  target.needs.hp -= dmg;
+  // GDD §4.2: mood drops when the hunter is attacked.
+  target.needs.mood = Math.max(0, target.needs.mood - f.moodPerHitTaken * personalityFactor(config, target, 'decay.mood'));
+  if (target.needs.hp <= 0) killHunter(ctx, target);
+}
+
+/** Auto-combat, kills/rewards/level-up, death and revive (TECH_SPEC §7; formulas are placeholders). */
+export const combatSystem: System = {
+  name: 'combat',
+  update(ctx) {
+    const { world, dtMs } = ctx;
+    for (const h of world.hunters) {
+      if (h.deadMs > 0) {
+        h.deadMs -= dtMs;
+        if (h.deadMs <= 0) revive(ctx, h);
+      }
+    }
+    for (const h of world.hunters) if (isAlive(h) && !h.insideBuildingId) hunterAttacks(ctx, h);
+    world.monsters = world.monsters.filter((m) => m.hp > 0);
+    for (const m of world.monsters) monsterActs(ctx, m);
+  },
+};
