@@ -135,6 +135,9 @@ describe('M2 AI: enhancing', () => {
   it('only enhances with enough reserve gold (cost × enhanceReserveMul(successRate))', () => {
     const h = freshHunter();
     h.equipment.weapon = { uid: 'eq', gearId: 'gear.w.club', qualityId: 'q.rare', enhance: 0 };
+    // Fill the other slots with maxed level-1 gear: nothing else to enhance and no gear upgrade to save for (§5.4).
+    h.equipment.armor = { uid: 'ea', gearId: 'gear.a.padded', qualityId: 'q.rare', enhance: config.enhance.length };
+    h.equipment.accessory = { uid: 'er', gearId: 'gear.r.charm', qualityId: 'q.rare', enhance: config.enhance.length };
     const row = config.enhance[0]!;
     const cost = Math.round(60 * row.costFrac); // 6
     const need = Math.ceil(cost * enhanceReserveMul(config, row.successRate));

@@ -388,8 +388,23 @@ export interface FormulaParams {
   enhanceRiskExp: number;
   /** The AI never tries an enhance step below this success rate. */
   enhanceMinSuccess: number;
-  /** Fraction of the next gear upgrade's shop budget kept back before enhancing an outdated piece. */
+  /**
+   * The AI only tries an enhance whose expected gain net of the dropOnFail loss is ≥ enhanceMinNetFrac × the
+   * success-weighted step (ai/utility.bestEnhance; 0 = never a losing gamble, p ≥ 0.5 on drop steps).
+   */
+  enhanceMinNetFrac: number;
+  /**
+   * An enhance may dip into the gear savings only when its expected relative gain per gold is ≥ enhanceVsUpgradeMul ×
+   * that of the upgrade saved for (the enhance is lost when the piece is replaced).
+   */
+  enhanceVsUpgradeMul: number;
+  /**
+   * Gold kept back before enhancing, as a fraction of the gold whose shop budget covers the cheapest upgrade
+   * (price / spendRatio; ai/utility.upgradeSavings): upgradeSavingsFrac for gear the Town could craft,
+   * upgradeSavingsConcreteFrac for one on sale or being crafted. 1 = hold the full price.
+   */
   upgradeSavingsFrac: number;
+  upgradeSavingsConcreteFrac: number;
   /** Quality multiplier the AI assumes for a gear piece it has not seen yet (upgradeSavings). */
   aiTypicalQualityMult: number;
   /** Enhance score = (enhanceBaseScore + enhanceGainWeight × expected relative slot gain) × econMul. */
@@ -476,6 +491,25 @@ export interface FormulaParams {
   investTargetMul: number;
   investImportSec: number;
   investImportPriceMul: number;
+  /**
+   * The Town Hall step that unblocks a craft building is urgent investTownHallLeadLevels earlier than the craft step
+   * itself; urgent steps import missing materials after investUrgentImportSec (non-urgent: investImportSec).
+   */
+  investTownHallLeadLevels: number;
+  investUrgentImportSec: number;
+  /**
+   * Non-urgent step priority = investValue / gold (× investReadyMul when the materials are in storage), with
+   * investValue = investValue<Kind> × effect gained (systems/town.investValue, TECH_SPEC §5.12).
+   */
+  investValueService: number;
+  investValueShop: number;
+  investValueForge: number;
+  investValueAcademy: number;
+  investValueTradingPost: number;
+  investValueStorehouse: number;
+  investValueTownHall: number;
+  investValueCraft: number;
+  investReadyMul: number;
   /** Max buildings under construction/upgrade at once (player and auto). */
   buildMaxConcurrent: number;
   /** Multipliers on every upgradeCost gold and sec (tuning). */

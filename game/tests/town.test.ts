@@ -266,7 +266,10 @@ describe('auto-investment', () => {
     const ctx = makeCtx();
     const w = ctx.world;
     w.town.gold = 5000;
-    addHunter(ctx, { level: 12 }); // 12 + craftLevelAhead 2 + lead 4 = 18 ≥ gear Lv22? no
+    const f = config.formula;
+    // The smithy's next step needs Town Hall 2, so the Town Hall looks investTownHallLeadLevels further ahead:
+    // level + craftLevelAhead + investCraftLeadLevels + investTownHallLeadLevels < gear Lv22 → nothing urgent yet.
+    addHunter(ctx, { level: 22 - f.craftLevelAhead - f.investCraftLeadLevels - f.investTownHallLeadLevels - 1 });
     expect(chooseInvestment(config, w)?.urgent ?? false).toBe(false);
     w.hunters[0]!.level = 17; // 23 ≥ 22: smithy Lv1 (≤15) blocks Lv22 recipes
     const c = chooseInvestment(config, w)!;

@@ -318,6 +318,8 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'journeyReturnNeedFrac',
   'offlineGrowthModel', 'offlineModelStepSec', 'offlineModelCalMin', 'offlineModelCalMax', 'offlineHuntDuty', 'offlineTripSec',
   'zoneCrowdMul', 'zoneCrowdMinRho', 'retreatBurstMul', 'defSoftKnee', 'journeyRefKills',
+  // Economy pass 2 (TECH_SPEC §5.4, §5.8, §5.12).
+  'enhanceMinNetFrac', 'upgradeSavingsConcreteFrac', 'enhanceVsUpgradeMul', 'investTownHallLeadLevels', 'investUrgentImportSec', 'investValueService', 'investValueShop', 'investValueForge', 'investValueAcademy', 'investValueTradingPost', 'investValueStorehouse', 'investValueTownHall', 'investValueCraft', 'investReadyMul',
 ];
 
 export class ConfigError extends Error {
@@ -445,6 +447,21 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('offlineModelCalMax', 1, 100);
     range('offlineHuntDuty', 0.01, 1);
     range('offlineTripSec', 0, 3600);
+    // Economy pass 2.
+    range('enhanceMinNetFrac', -1, 1);
+    range('upgradeSavingsConcreteFrac', 0, 10);
+    range('enhanceVsUpgradeMul', 0, 1e6);
+    range('investTownHallLeadLevels', 0, 1000);
+    range('investUrgentImportSec', 0, 1e7);
+    range('investValueService', 0, 1000);
+    range('investValueShop', 0, 1000);
+    range('investValueForge', 0, 1000);
+    range('investValueAcademy', 0, 1000);
+    range('investValueTradingPost', 0, 1000);
+    range('investValueStorehouse', 0, 1000);
+    range('investValueTownHall', 0, 1000);
+    range('investValueCraft', 0, 1000);
+    range('investReadyMul', 0, 1000);
   }
 
   const grades = raw.stat_grade;

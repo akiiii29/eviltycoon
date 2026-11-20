@@ -29,6 +29,8 @@ function hunter(patch: Partial<Hunter> = {}): Hunter {
 }
 
 const gear = (gearId: string, enhance: number, qualityId = 'q.rare'): GearInstance => ({ uid: `g-${gearId}`, gearId, qualityId, enhance });
+/** Maxed level-1 gear: not enhanceable and no upgrade to save for at level 1 (keeps gear savings, §5.4, out of a test). */
+const maxed = (gearId: string): GearInstance => gear(gearId, config.enhance.length);
 const rowAt = (enhance: number) => config.enhance[enhance]!; // step from +enhance to +enhance+1
 const cost = (basePrice: number, enhance: number) => Math.round(basePrice * rowAt(enhance).costFrac);
 
@@ -40,7 +42,7 @@ describe('balance AI: enhance risk budget', () => {
   });
 
   it('a risky step needs more spare gold than a safe one of the same cost', () => {
-    const h = hunter({ equipment: { weapon: gear('gear.w.club', 4) } }); // +4 → +5
+    const h = hunter({ equipment: { weapon: gear('gear.w.club', 4), armor: maxed('gear.a.padded'), accessory: maxed('gear.r.charm') } }); // +4 → +5
     const c = cost(60, 4);
     const need = Math.ceil(c * enhanceReserveMul(config, rowAt(4).successRate));
     expect(need).toBeGreaterThan(c * f.enhanceGoldReserveMul);
@@ -51,7 +53,7 @@ describe('balance AI: enhance risk budget', () => {
   });
 
   it('when the risky slot is not affordable, a safe slot is still enhanced', () => {
-    const h = hunter({ equipment: { weapon: gear('gear.w.club', 5), armor: gear('gear.a.padded', 0) } });
+    const h = hunter({ equipment: { weapon: gear('gear.w.club', 5), armor: gear('gear.a.padded', 0), accessory: maxed('gear.r.charm') } });
     h.gold = Math.ceil(cost(60, 0) * enhanceReserveMul(config, rowAt(0).successRate)); // enough for padded +0 → +1 only
     expect(bestEnhance(config, h)?.slot).toBe('armor');
   });
@@ -59,10 +61,15 @@ describe('balance AI: enhance risk budget', () => {
   it(`never gambles below ${ENHANCE_MIN_SUCCESS} success`, () => {
     const first = config.enhance.findIndex((r) => r.successRate < ENHANCE_MIN_SUCCESS);
     expect(first).toBeGreaterThan(0);
+    // With the expected-value gate off, only enhanceMinSuccess limits the gamble.
+    const loose = { ...config, formula: { ...config.formula, enhanceMinNetFrac: -Infinity } };
     const h = hunter({ gold: 1e9, equipment: { weapon: gear('gear.w.club', first) } });
-    expect(bestEnhance(config, h)).toBeNull();
+    expect(bestEnhance(loose, h)).toBeNull();
+    // (gold 1e9 covers any gear savings)
     h.equipment.weapon = gear('gear.w.club', first - 1);
-    expect(bestEnhance(config, h)?.successRate).toBeGreaterThanOrEqual(ENHANCE_MIN_SUCCESS);
+    expect(bestEnhance(loose, h)?.successRate).toBeGreaterThanOrEqual(ENHANCE_MIN_SUCCESS);
+    // The default gate stops earlier: a drop step with negative expected gain is never tried.
+    expect(bestEnhance(config, h)).toBeNull();
   });
 
   it('the score does not collapse with the success rate (a 50–60 % gamble still beats hunting with spare gold)', () => {

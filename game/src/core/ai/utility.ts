@@ -313,27 +313,83 @@ export function enhanceReserveMul(config: GameConfig, successRate: number): numb
   return f.enhanceGoldReserveMul / Math.pow(Math.max(successRate, 0.01), f.enhanceRiskExp);
 }
 
+/** The upgrade a hunter is saving for in one slot (see upgradeSavings). */
+export interface SavingsTarget {
+  /** Gold to keep back. */
+  hold: number;
+  /** Relative slot gain of the upgrade per gold of its price: ((value − current) / max(current, 1)) / price. */
+  relGainPerGold: number;
+}
+
 /**
- * Gold to keep back before enhancing a slot: when a clearly better gear piece for that slot is wearable at the
- * hunter's level (value × aiTypicalQualityMult ≥ current × (1 + minUpgradeGain)), the shop budget needed to buy it
- * (upgradeSavingsFrac × basePrice × aiTypicalQualityMult / (spendRatio × personality)); otherwise 0.
- * aiTypicalQualityMult is the quality multiplier the AI assumes for a piece it has not seen yet (uncommon-ish).
- * Polishing gear that is about to be replaced is wasted gold, so this keeps enhancing from starving gear upgrades.
- * With `world`, gear above its craft building's tier cap (TECH_SPEC §5.12) is ignored: nobody can make it yet.
+ * The upgrade to save for in one slot, or null. Upgrades = ≥ minUpgradeGain over the current value, wearable at the
+ * hunter's level:
+ *  - concrete (with `world`): items on sale (current marked-down price, actual quality) and items being crafted
+ *    (Rare reference value, price basePrice × aiTypicalQualityMult) → hold upgradeSavingsConcreteFrac × price / spend;
+ *  - otherwise any gear whose craft building allows its tier (TECH_SPEC §5.12; the AI assumes an uncommon-ish roll:
+ *    value and price × aiTypicalQualityMult) → hold upgradeSavingsFrac × price / spend,
+ * with spend = spendRatio × personality (the gold whose shop budget covers the price). The cheapest concrete upgrade
+ * wins over any theoretical one; within a kind the cheapest wins.
  */
-export function upgradeSavings(config: GameConfig, h: Hunter, slot: GearSlot, world?: World): number {
+export function savingsTarget(config: GameConfig, h: Hunter, slot: GearSlot, world?: World): SavingsTarget | null {
   const f = config.formula;
   const cur = slotValue(config, h, slot);
   const spend = Math.max(f.spendRatio * personalityFactor(config, h, 'spendRatio'), 0.01);
-  let need = 0;
-  for (const def of config.gear) {
-    if (def.slot !== slot || def.level > h.level) continue;
-    if (world && !gearCraftable(config, world, def)) continue;
-    if (def.mainValue * f.aiTypicalQualityMult < cur * (1 + f.minUpgradeGain)) continue;
-    const budget = (f.upgradeSavingsFrac * def.basePrice * f.aiTypicalQualityMult) / spend;
-    need = need === 0 ? budget : Math.min(need, budget);
+  const line = cur * (1 + f.minUpgradeGain);
+  let best: { price: number; value: number } | null = null;
+  const consider = (price: number, value: number) => { if (!best || price < best.price) best = { price, value }; };
+  if (world) {
+    for (const it of world.town.shop) {
+      const def = config.index.gear.get(it.gearId);
+      const v = def ? gearMainValue(config, it) : 0;
+      if (!def || def.slot !== slot || def.level > h.level || v < line) continue;
+      consider(it.price, v);
+    }
+    for (const k in world.town.crafting) {
+      const job = world.town.crafting[k];
+      const def = job ? config.index.gear.get(job.gearId) : undefined;
+      if (!def || def.slot !== slot || def.level > h.level || def.mainValue < line) continue;
+      consider(def.basePrice * f.aiTypicalQualityMult, def.mainValue);
+    }
   }
-  return need;
+  let frac = f.upgradeSavingsConcreteFrac;
+  if (!best) {
+    frac = f.upgradeSavingsFrac;
+    for (const def of config.gear) {
+      if (def.slot !== slot || def.level > h.level) continue;
+      if (world && !gearCraftable(config, world, def)) continue;
+      const v = def.mainValue * f.aiTypicalQualityMult;
+      if (v < line) continue;
+      consider(def.basePrice * f.aiTypicalQualityMult, v);
+    }
+  }
+  const t = best as { price: number; value: number } | null;
+  if (!t) return null;
+  return { hold: (frac * t.price) / spend, relGainPerGold: (t.value - cur) / Math.max(cur, 1) / Math.max(t.price, 1) };
+}
+
+/** Gold to keep back for the next gear upgrade of one slot (savingsTarget.hold; 0 when there is none). */
+export function upgradeSavings(config: GameConfig, h: Hunter, slot: GearSlot, world?: World): number {
+  return savingsTarget(config, h, slot, world)?.hold ?? 0;
+}
+
+/**
+ * The savings an enhance must respect: the target with the largest hold over all slots (null when nothing is worth
+ * saving for). Per hunter, not per enhanced slot, so polishing a slot with no upgrade in sight does not spend the gold
+ * put aside for another slot.
+ */
+export function enhanceSavings(config: GameConfig, h: Hunter, world?: World): SavingsTarget | null {
+  let best: SavingsTarget | null = null;
+  for (const slot of GEAR_SLOTS) {
+    const t = savingsTarget(config, h, slot, world);
+    if (t && (!best || t.hold > best.hold)) best = t;
+  }
+  return best;
+}
+
+/** Gold an enhance must leave untouched when it is worse value than the upgrade saved for (enhanceSavings.hold). */
+export function enhanceSavingsHold(config: GameConfig, h: Hunter, world?: World): number {
+  return enhanceSavings(config, h, world)?.hold ?? 0;
 }
 
 export interface EnhanceChoice {
@@ -348,27 +404,42 @@ export interface EnhanceChoice {
 
 /**
  * Best next enhance over equipped slots, or null. A slot qualifies only if
- * successRate ≥ enhanceMinSuccess and gold ≥ cost × enhanceReserveMul(successRate) + upgradeSavings(slot).
- * Among those, the highest (successRate × stat step) / cost wins (expected stat gain per gold); ties → GEAR_SLOTS order.
+ *  - successRate ≥ enhanceMinSuccess,
+ *  - the try is worth it after the dropOnFail risk: expectedGain ≥ enhanceMinNetFrac × successRate × step
+ *    (with step = loss this is (2p − 1) / p ≥ enhanceMinNetFrac, i.e. p ≥ 1 / (2 − enhanceMinNetFrac) on drop steps),
+ *  - gold ≥ cost × enhanceReserveMul(successRate), plus the gear savings (enhanceSavings.hold) unless this try is
+ *    clearly better value than the upgrade saved for (expectedRelGain / cost ≥ enhanceVsUpgradeMul × its
+ *    relGainPerGold; the multiplier stands for the enhance being lost when the piece is replaced): cheap early steps
+ *    still happen, gambles on gear about to be replaced do not.
+ * Among those, the highest expectedGain / cost wins (expected stat gain per gold, net of the expected loss);
+ * ties → GEAR_SLOTS order.
  */
 export function bestEnhance(config: GameConfig, h: Hunter, world?: World): EnhanceChoice | null {
-  const minSuccess = config.formula.enhanceMinSuccess;
+  const f = config.formula;
+  const minSuccess = f.enhanceMinSuccess;
+  const minNet = f.enhanceMinNetFrac ?? -Infinity;
   let best: EnhanceChoice | null = null;
   let bestPerGold = -Infinity;
+  let saving: SavingsTarget | null | undefined;
   for (const slot of GEAR_SLOTS) {
     const c = expectedEnhanceCost(config, h, slot, world);
     const g = h.equipment[slot];
     if (!c || !g || c.successRate < minSuccess) continue;
-    if (h.gold < c.cost * enhanceReserveMul(config, c.successRate) + upgradeSavings(config, h, slot, world)) continue;
     const cur = gearMainValue(config, g);
     const step = gearMainValue(config, { ...g, enhance: g.enhance + 1 }) - cur;
     const row = config.enhance[g.enhance]!;
     const loss = row.dropOnFail && g.enhance > 0 ? cur - gearMainValue(config, { ...g, enhance: g.enhance - 1 }) : 0;
     const expectedGain = c.successRate * step - (1 - c.successRate) * loss;
-    const perGold = (c.successRate * step) / Math.max(c.cost, 1);
+    if (expectedGain < minNet * c.successRate * step - 1e-9) continue;
+    const reserve = c.cost * enhanceReserveMul(config, c.successRate);
+    if (h.gold < reserve) continue;
+    const expectedRelGain = expectedGain / Math.max(cur, 1);
+    if (saving === undefined) saving = enhanceSavings(config, h, world);
+    if (saving && expectedRelGain / Math.max(c.cost, 1) < f.enhanceVsUpgradeMul * saving.relGainPerGold && h.gold < reserve + saving.hold) continue;
+    const perGold = expectedGain / Math.max(c.cost, 1);
     if (perGold > bestPerGold) {
       bestPerGold = perGold;
-      best = { slot, cost: c.cost, successRate: c.successRate, expectedGain, expectedRelGain: expectedGain / Math.max(cur, 1) };
+      best = { slot, cost: c.cost, successRate: c.successRate, expectedGain, expectedRelGain };
     }
   }
   return best;
