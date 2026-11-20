@@ -5,6 +5,7 @@ import type { SimEvent } from '../core/events';
 import { hunterStats, needMax } from '../core/formulas';
 import type { Simulation } from '../core/simulation';
 import { taxMoodLoss, taxRate } from '../core/systems/tax';
+import { buildBlocker, craftMaxGearLevel, levelCost, shopCapacity, townHallLevel, upgradeBlocker } from '../core/systems/town';
 import type { GearInstance, Hunter, NeedKey } from '../core/world';
 import { bagCount } from '../core/world';
 
@@ -87,7 +88,7 @@ export class DebugOverlay {
     this.root = document.createElement('div');
     this.root.className = 'debug';
     this.root.innerHTML = `
-      <div class="debug-head">DEBUG · M3</div>
+      <div class="debug-head">DEBUG · M4</div>
       <div class="debug-stats"></div>
       <div class="debug-row">
         <button data-a="pause">⏸</button>
@@ -140,6 +141,10 @@ export class DebugOverlay {
       case 'difficulty': sim.enqueue({ type: 'town.setDifficulty', difficultyId: el.dataset.d! }); break;
       case 'autoreinc': sim.enqueue({ type: 'town.setAutoReincarnate', on: !sim.world.town.autoReincarnate }); break;
       case 'autobounty': sim.enqueue({ type: 'town.setAutoBounty', on: !sim.world.town.autoBounty }); break;
+      case 'build': sim.enqueue({ type: 'town.build', buildingId: el.dataset.b!, plotId: el.dataset.p! }); break;
+      case 'upgrade': sim.enqueue({ type: 'town.upgrade', buildingInstanceId: el.dataset.id! }); break;
+      case 'cancelupgrade': sim.enqueue({ type: 'town.cancelUpgrade', buildingInstanceId: el.dataset.id! }); break;
+      case 'autoinvest': sim.enqueue({ type: 'town.setAutoInvest', on: !sim.world.town.autoInvest }); break;
       case 'tax': sim.enqueue({ type: 'town.setTaxRate', rate: Number(el.dataset.v) }); break;
       case 'cancelbounty': sim.enqueue({ type: 'town.cancelBounty', bountyId: el.dataset.id! }); break;
       case 'reincarnate': sim.enqueue({ type: 'hunter.reincarnate', hunterId: el.dataset.id! }); break;
@@ -189,7 +194,7 @@ export class DebugOverlay {
         .map((g) => `<button data-a="craft" data-b="${esc(b.id)}" data-g="${esc(g.id)}">+ ${esc(t(config, g.nameKey))}</button>`).join('');
       return `<div class="craft"><b>${esc(t(config, b.nameKey))}</b>: <span class="craft-job">${esc(status)}</span><div class="craft-btns">${btns}</div></div>`;
     }).join('');
-    const cap = config.index.buildings.get(config.index.shop)?.capacity ?? 0;
+    const cap = shopCapacity(config, world);
     const shop = town.shop.map((it) =>
       `<div class="shop-item">${esc(gearLabel(config, it))} <span class="price">${it.price}g</span></div>`).join('')
       || '<div class="shop-item">—</div>';
@@ -200,12 +205,55 @@ export class DebugOverlay {
       <div class="debug-row"><button data-a="autocraft">auto-craft: ${town.autoCraft ? 'BẬT' : 'TẮT'}</button></div>
       <div class="debug-sub">Cửa hàng ${town.shop.length}/${cap}</div>
       <div class="shop-list">${shop}</div>
+      ${this.renderBuildings()}
       ${this.renderBounties()}
       ${this.renderTax()}
       ${this.renderDifficulty()}`;
   }
 
   /** Town tax on kill gold (TECH_SPEC §5.10): current rate, total collected, −/+ 5 points within the config bounds. */
+  /**
+   * Buildings block (TECH_SPEC §5.11): each building with level/max, craft tier cap, upgrade progress, next cost and
+   * upgrade/cancel buttons; free plots with a build button per buildable type; auto-invest toggle and its current plan.
+   */
+  private renderBuildings(): string {
+    const { world, config } = this.sim;
+    const town = world.town;
+    const costText = (c: ReturnType<typeof levelCost>) => {
+      if (!c) return '';
+      const mats = Object.entries(c.materials).map(([id, n]) => `${materialName(config, id)}×${n}`).join(' ');
+      return `${c.gold}g${mats ? ' ' + mats : ''} ${Math.round(c.ms / 1000)}s`;
+    };
+    const rows = (town.buildings ?? []).map((s) => {
+      const b = config.index.buildings.get(s.buildingId);
+      if (!b) return '';
+      const cap = b.kind === 'craft' ? ` · đồ ≤ Lv${craftMaxGearLevel(config, world, b.id)}` : '';
+      let status = '';
+      if (s.upgrade) {
+        const pct = s.upgrade.totalMs > 0 ? Math.round((1 - s.upgrade.remainingMs / s.upgrade.totalMs) * 100) : 100;
+        status = ` → Lv${s.upgrade.toLevel} ${pct}% ${s.upgrade.auto ? '(tự động)' : ''} <button data-a="cancelupgrade" data-id="${esc(s.id)}">hủy</button>`;
+      } else {
+        const why = upgradeBlocker(config, world, s.id);
+        const next = s.level < b.maxLevel ? costText(levelCost(config, b, s.level + 1)) : '';
+        status = why ? ` <span class="req">${esc(why)}</span>` : ` <button data-a="upgrade" data-id="${esc(s.id)}">nâng (${esc(next)})</button>`;
+      }
+      return `<div class="building">${esc(t(config, b.nameKey))} Lv${s.level}/${b.maxLevel}${cap}${status}</div>`;
+    }).join('');
+    const th = townHallLevel(config, world);
+    const free = config.plots.filter((p) => !(town.buildings ?? []).some((s) => s.id === p.id)).map((p) => {
+      if (p.townHallLevel > th) return `<div class="building">${esc(p.id)}: <span class="req">cần Tòa Thị Chính Lv${p.townHallLevel}</span></div>`;
+      const btns = config.buildings.filter((b) => !buildBlocker(config, world, b.id, p.id))
+        .map((b) => `<button data-a="build" data-b="${esc(b.id)}" data-p="${esc(p.id)}">xây ${esc(t(config, b.nameKey))} (${esc(costText(levelCost(config, b, 1)))})</button>`).join('');
+      return `<div class="building">${esc(p.id)}: trống ${btns || '—'}</div>`;
+    }).join('');
+    const plan = town.investPlan;
+    const planText = plan ? `${buildingName(config, plan.buildingId)} → Lv${plan.toLevel}${plan.urgent ? ' (gấp)' : ''}` : '—';
+    return `
+      <div class="debug-sub">Công trình · đầu tư ${world.stats.investGold ?? 0}g</div>
+      ${rows}${free}
+      <div class="debug-row"><button data-a="autoinvest">tự đầu tư: ${town.autoInvest ? 'BẬT' : 'TẮT'}</button> kế hoạch: ${esc(planText)}</div>`;
+  }
+
   private renderTax(): string {
     const { world, config } = this.sim;
     const f = config.formula;

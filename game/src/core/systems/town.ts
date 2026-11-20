@@ -283,32 +283,31 @@ function upgradeCandidate(config: GameConfig, world: World, s: BuildingState, ur
 }
 
 /**
- * Urgent step: the first craft building (config order) whose tier cap is below a recipe that hunters will want soon
- * (gear.level ≤ max hunter level + craftLevelAhead + investCraftLeadLevels). If its next level is above the Town Hall
- * level, the Town Hall upgrade is the urgent step instead. Null while nothing is about to be gear-capped (or the blocking
- * step is already running).
+ * Urgent steps: for every craft building (config order) whose tier cap is below a recipe hunters will want soon
+ * (gear.level ≤ max hunter level + craftLevelAhead + investCraftLeadLevels), its next level — or, when that is above the
+ * Town Hall level, the Town Hall upgrade (listed once). Buildings already upgrading are skipped.
  */
-export function urgentCandidate(config: GameConfig, world: World): Candidate | null {
+export function urgentCandidates(config: GameConfig, world: World): Candidate[] {
   const f = config.formula;
   const want = maxHunterLevel(world) + f.craftLevelAhead + (f.investCraftLeadLevels ?? 0);
+  const out: Candidate[] = [];
   for (const b of config.buildings) {
     if (b.kind !== 'craft') continue;
     const s = buildingState(world, b.id);
-    if (!s || s.level < 1 || s.level >= b.maxLevel) continue;
+    if (!s || s.level < 1 || s.level >= b.maxLevel || s.upgrade) continue;
     const cap = levelValue(b.maxGearLevel, s.level) ?? 0;
     if (!config.gear.some((g) => g.craftBuilding === b.id && g.level > cap && g.level <= want)) continue;
-    if (s.upgrade) continue; // already on its way
-    if (s.level + 1 > townHallLevel(config, world)) {
-      const th = buildingState(world, config.index.townHall);
-      if (!th || th.upgrade) continue;
-      const c = upgradeCandidate(config, world, th, true);
-      if (c) return c;
-      continue;
-    }
-    const c = upgradeCandidate(config, world, s, true);
-    if (c) return c;
+    const target = s.level + 1 > townHallLevel(config, world) ? buildingState(world, config.index.townHall) : s;
+    if (!target || out.some((c) => c.plotId === target.id)) continue;
+    const c = upgradeCandidate(config, world, target, true);
+    if (c) out.push(c);
   }
-  return null;
+  return out;
+}
+
+/** The first urgent step (see urgentCandidates), or null. */
+export function urgentCandidate(config: GameConfig, world: World): Candidate | null {
+  return urgentCandidates(config, world)[0] ?? null;
 }
 
 /** Every other allowed step: upgrades of standing buildings and builds of unlocked types on the first free unlocked plot. */
@@ -337,13 +336,18 @@ export function investFloor(config: GameConfig, world: World, urgent: boolean): 
 }
 
 /**
- * The next investment: the urgent step if any (whatever the gold, so its materials get requested early); otherwise the
- * cheapest other step (gold, then config order) that Town gold above the treasury target can pay for, preferring steps
- * whose materials are already in storage. Null when there is nothing worth doing or no spare gold.
+ * The next investment. Urgent steps first (whatever the gold): one whose materials are in storage, else the stored plan
+ * if it is still urgent (so its import timer keeps running), else the first. Otherwise the cheapest other step (gold, then
+ * config order) that Town gold above the treasury target can pay for, preferring steps whose materials are in storage.
+ * Null when there is nothing worth doing or no spare gold.
  */
 export function chooseInvestment(config: GameConfig, world: World): Candidate | null {
-  const urgent = urgentCandidate(config, world);
-  if (urgent) return urgent;
+  const urgent = urgentCandidates(config, world);
+  if (urgent.length > 0) {
+    return urgent.find((c) => Object.keys(missingMaterials(world, c.cost)).length === 0)
+      ?? urgent.find((c) => samePlan(world.town.investPlan, c))
+      ?? urgent[0]!;
+  }
   const floor = investFloor(config, world, false);
   const spare = world.town.gold - floor;
   let best: Candidate | null = null;
@@ -359,13 +363,22 @@ export function chooseInvestment(config: GameConfig, world: World): Candidate | 
   return best;
 }
 
-/** Materials of the stored investment plan (full counts; the Trading Post subtracts storage). Empty when auto-invest is off. */
+/**
+ * Materials the auto-investment wants in storage (full counts; the Trading Post subtracts storage): every urgent step's
+ * plus the stored plan's when it is not urgent. Empty when auto-invest is off.
+ */
 export function investMaterialNeed(config: GameConfig, world: World): Record<string, number> {
+  if (!world.town.autoInvest) return {};
+  const out: Record<string, number> = {};
+  const add = (m: Record<string, number>) => { for (const id in m) out[id] = (out[id] ?? 0) + m[id]!; };
+  for (const c of urgentCandidates(config, world)) add(c.cost.materials);
   const plan = world.town.investPlan;
-  if (!world.town.autoInvest || !plan) return {};
-  const b = config.index.buildings.get(plan.buildingId);
-  const cost = b ? levelCost(config, b, plan.toLevel) : null;
-  return cost ? { ...cost.materials } : {};
+  if (plan && !plan.urgent) {
+    const b = config.index.buildings.get(plan.buildingId);
+    const cost = b ? levelCost(config, b, plan.toLevel) : null;
+    if (cost) add(cost.materials);
+  }
+  return out;
 }
 
 function samePlan(a: InvestPlan | null, c: Candidate): boolean {
