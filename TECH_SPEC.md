@@ -129,14 +129,26 @@ Chỉ số cuối = base theo `gearId` × hệ số quality (GDD §6) × đườ
 
 ### 5.3 Chấm điểm vùng săn
 
+Tỷ lệ sức mạnh tính **từ chính công thức combat** (§7.1), không còn `recommendedPower` trong config:
+
 ```
-power      = tổng sức chiến (ATK×tốc đánh, HP, DEF) của hunter
-zonePower  = sức chiến đề xuất của zone (config)
-ratio      = power / zonePower
-zoneFit    = 0 nếu ratio < 0.7; tối đa ở ratio ≈ 1.1; giảm dần khi ratio > 2 (quá dễ, ít EXP)
+duel(h, m)    = hunterDps = E[hit(ATK)]/atkSpeed + Σ skill E[hit(ATK×mult)]/cooldown
+                monsterDps = E[hit(ATK quái)]/attackSpeed quái;  ttk = HP quái / hunterDps
+                dmgPerKill = monsterDps × ttk
+zoneCrowd     = zoneCrowdRespawnSec / respawnSec        (zone hồi quái nhanh → nhiều quái chen vào)
+killsPerLife  = HP hunter / (zoneCrowd × Σ_w dmgPerKill / Σ_w)   (w = trọng số spawn; chỉ số "steady": bỏ buff, mood)
+ratio         = √(killsPerLife / zoneRefKills)          (1 = đánh được zoneRefKills con trên một thanh HP)
+zoneFit       = 0 nếu ratio < zoneFitMin; ramp zoneFitRampLow→1 tới zoneFitBest; 1 tới zoneFitEasy;
+                rồi giảm zoneFitDecay mỗi 1.0 ratio, sàn zoneFitFloor (quá dễ, ít EXP)
+share         = min(1, ttk / (n × respawnSec))          (n = số hunter đang săn zone đó, kể cả mình)
+fit           = zoneFit × (zoneShareFloor + (1 − zoneShareFloor) × share)
+tie-break     = trong các zone "thoải mái" (ratio ≥ zoneFitBest), zone khó nhất giữ nguyên điểm,
+                mỗi bậc dễ hơn bị trừ zoneTierBonus (> decisionNoise) → hunter vượt mọi zone chọn zone khó nhất
 ```
 
-Ngưỡng 0.7 / 1.1 / 2 là **[ĐỀ XUẤT]**. Chief dùng lệnh Move để ghi đè: goal `Hunt(zoneChỉĐịnh)` được giữ cho đến khi xong hoặc có nhu cầu khẩn cấp.
+Căn bậc hai làm ratio tuyến tính theo chỉ số: hunter gấp đôi DPS **và** gấp đôi HP hiệu dụng có ratio ×2, nên ngưỡng 0.7 / 1.1 / 2 vẫn đọc được. Test `tests/formulas.test.ts` đối chiếu `duel()` với combat mô phỏng 1-đấu-1 (sai số ≤ 15%) và đối chiếu HP mất mỗi kill trong mô phỏng đầy đủ với dự đoán.
+
+Ngưỡng là **[ĐỀ XUẤT]** (`formula_params.json`). Chief dùng lệnh Move để ghi đè: goal `Hunt(zoneChỉĐịnh)` được giữ cho đến khi xong hoặc có nhu cầu khẩn cấp.
 
 ### 5.4 Mua đồ
 
@@ -171,13 +183,30 @@ Lệnh "nhắc" của người chơi là một **utility bonus có thời hạn*
 - Trong field: đi tới node gần quái, sau đó steering tự do trong bán kính.
 - Trên ~60 hunter: giới hạn 10 truy vấn A*/tick, còn lại xếp hàng.
 
-## 7. Combat (khung, công thức TBD)
+## 7. Combat
 
 - Hunter chọn mục tiêu là quái gần nhất trong tầm nhìn; ưu tiên quái đang đánh mình.
 - Đòn đánh thường lặp theo chu kỳ `ATK SPD` (số nhỏ = nhanh, GDD §4.2).
 - Skill: auto-cast khi hết cooldown và có mục tiêu hợp lệ; ưu tiên theo thứ tự trong config.
 - Mọi công thức (damage, giảm sát thương theo DEF, crit, evasion, buff stacking) nằm trong `formulas.ts`, có unit test và lấy hệ số từ config `formula_params`.
 - Mỗi đòn trúng: giảm Mood của mục tiêu bị đánh; mỗi đòn hunter đánh: giảm Satiety (GDD §4.2).
+
+### 7.1 Mô hình combat **[ĐỀ XUẤT]**
+
+Hằng số ở `formula_params.json`; phương trình và ý đồ ghi ở đầu mỗi hàm trong `formulas.ts`. Hunter và quái dùng cùng công thức (quái có `level` trong `monster.json`).
+
+| Công thức | Phương trình | Ý đồ |
+|---|---|---|
+| Giảm sát thương theo DEF | `R = min(defReductionCap, DEF / (DEF + defPerLevel·L_tấn công + defFlat))` | Hyperbol: tăng dần, lợi ích giảm dần, không bao giờ 100%. DEF "nửa giá trị" tăng theo level **người đánh**, nên DEF giữ ý nghĩa suốt 100 level; hunter vượt cấp zone thì quái zone đó gần như không làm gì được. |
+| Chênh level | `G = max(levelGapMin, 1 − levelGapStep × max(0, L_mục tiêu − L_tấn công − levelGapGrace))` | Chỉ phạt kẻ đánh thấp hơn mục tiêu quá `levelGapGrace` level (không thưởng khi cao hơn). Quái zone thấp không giết được hunter đang đi ngang về Town; hunter vào zone trên level gây ít sát thương → ratio thấp → AI chờ đủ level. |
+| Một đòn | `hit = max(minDamage, ATK × (1 − R) × G)` | Không bao giờ 0/âm; DEF cực lớn vẫn còn `(1 − cap) × ATK`. |
+| Crit | `P = min(critChanceCap, CRIT/100)`; `mult = base + critOverflowMult × max(0, CRIT/100 − critChanceCap)` | `base` = `critMultiplier` (hunter) / `monsterCritMultiplier` (quái). Điểm crit vượt trần chuyển thành sát thương crit. |
+| Né | `P = dodgeCap × EVA / (EVA + dodgeHalf)` | Lợi ích giảm dần, bằng nửa trần tại `dodgeHalf`, không chạm trần. |
+| Kỳ vọng một đòn | `E = hit × (1 − P_né) × (1 + P_crit × (mult − 1))` | Dùng cho AI (§5.3). Thứ tự RNG trong combat: né trước, crit chỉ khi trúng. |
+| Cộng dồn % | `(base × job × (1 + reinc × reincStatBonus) + gear) × (1 + min(traitPctCap, Σtrait%)/100) × (1 + min(buffPctCap, Σbuff%)/100)` | Cộng trong cùng nhóm (trait / buff skill), nhân giữa các nhóm, mỗi nhóm có trần. Crit/EVA là điểm cộng thẳng, trần nằm ở hàm xác suất. Tốc đánh: `interval ÷ (cùng hệ số)`, sàn `minAttackInterval`. |
+| Mood | `× moodStatMult` lên ATK/DEF: 1 khi mood ≥ `moodPenaltyFrac`, giảm tuyến tính tới `moodStatFloor` ở mood 0 | GDD §4.2. `moodStatFloor = 1` là tắt. |
+
+Trần bão hòa: với `defReductionCap = 0.85`, DEF quái chỉ còn tác dụng tới khoảng `5.7 × (defPerLevel·L + defFlat)` (≈1 900 DEF khi hunter Lv100); các độ khó trên Torment III mà tăng thêm `monsterDefMul` sẽ không đổi gì. Ở các độ khó hiện tại DEF quái tối đa ≈ 2 050 (Torment III) nên chỉ chạm trần ở mức cao nhất.
 
 ## 8. Data schema
 
@@ -218,7 +247,7 @@ Kiểu: `id` string, `ref<X>` = id của bảng X, `int[]`/`float[]` = mảng th
 | `enhance` | level, successRate, failPenalty (0 hoặc −1 từ +10), cost |
 | `material` | id, nameKey, rating, price, zoneIds[], composeTo? |
 | `monster` | id, nameKey, race, level, hp, atk, def, exp, gold, drops: [{matId, chance}], zoneIds[] |
-| `zone` | id, nameKey, difficultyId, recommendedPower, monsterPool: [{monsterId, weight}], waypointNodes[] |
+| `zone` | id, nameKey, difficultyId, monsterPool: [{monsterId, weight}], waypointNodes[] |
 | `difficulty` | id, order, unlock: {hunterCount, reincarnation} (GDD §8), monsterMultiplier |
 | `building` | id, nameKey, category (service/craft/buff/core), maxCount, maxLevel, size, buildCost[], upgradeCost: [{gold, mats}] per level, capacity[], output[], requires: {townHallLevel} |
 | `service` | buildingId, need (hp/satiety/mood/stamina), restoreAmount[], price[], stockPerCycle[], cycleSec |
@@ -287,7 +316,7 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 
 ## 13. Việc còn mở
 
-- Công thức combat và kinh tế: **TBD**, cần design chốt trước M1/M2.
+- Công thức kinh tế: **TBD**. Công thức combat: có mô hình §7.1 (**[ĐỀ XUẤT]**, chờ design duyệt số).
 - Bố cục map (Town, zone, waypoint): cần thiết kế riêng hoặc dùng làm tham chiếu dữ liệu scene khi có.
 - Danh sách personality, tên class/job/item/quái của game: do team design đặt.
 - Nền tảng phát hành (web, mobile wrapper) và hướng màn hình: chưa chốt (GDD §2).

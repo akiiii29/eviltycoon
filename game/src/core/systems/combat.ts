@@ -1,4 +1,4 @@
-import { hunterStats, mitigated, monsterStats } from '../formulas';
+import { critChance, critMultiplier, dodgeChance, hunterStats, mitigated, monsterStats } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
 import { gainExp } from '../progress';
 import type { System, SystemContext } from '../system';
@@ -51,8 +51,10 @@ export function damageMonster(ctx: SystemContext, h: Hunter, m: Monster, rawAtk:
   if (m.hp <= 0) return 0;
   const { config, world, rng } = ctx;
   const f = config.formula;
-  const crit = critAllowed && rng.chance(hunterStats(config, h).crit / 100);
-  const dmg = mitigated(rawAtk, monsterStats(config, m).def, f) * (crit ? f.critMultiplier : 1);
+  const critStat = hunterStats(config, h).crit;
+  const crit = critAllowed && rng.chance(critChance(critStat, f));
+  const ms = monsterStats(config, m);
+  const dmg = mitigated(rawAtk, ms.def, h.level, ms.level, f) * (crit ? critMultiplier(critStat, f.critMultiplier, f) : 1);
   m.hp -= dmg;
   if (!m.targetHunterId) m.targetHunterId = h.id;
   ctx.events.emit(world.tick, { type: 'hit', attackerId: h.id, targetId: m.id, damage: dmg, crit, evaded: false });
@@ -116,9 +118,10 @@ function monsterActs(ctx: SystemContext, m: Monster): void {
 
   const ts = hunterStats(config, target);
   // RNG order is fixed: evade roll first, crit roll only when the hit lands.
-  const evaded = rng.chance(ts.eva / 100);
-  const crit = !evaded && rng.chance(def.crit / 100);
-  const dmg = evaded ? 0 : mitigated(monsterStats(config, m).atk, ts.def, f) * (crit ? f.monsterCritMultiplier : 1);
+  const ms = monsterStats(config, m);
+  const evaded = rng.chance(dodgeChance(ts.eva, f));
+  const crit = !evaded && rng.chance(critChance(ms.crit, f));
+  const dmg = evaded ? 0 : mitigated(ms.atk, ts.def, ms.level, target.level, f) * (crit ? critMultiplier(ms.crit, f.monsterCritMultiplier, f) : 1);
   ctx.events.emit(world.tick, { type: 'hit', attackerId: m.id, targetId: target.id, damage: dmg, crit, evaded });
   if (evaded) return;
   target.needs.hp -= dmg;
@@ -127,7 +130,7 @@ function monsterActs(ctx: SystemContext, m: Monster): void {
   if (target.needs.hp <= 0) killHunter(ctx, target);
 }
 
-/** Auto-combat, kills/rewards/level-up, death and revive (TECH_SPEC §7; formulas are placeholders). */
+/** Auto-combat, kills/rewards/level-up, death and revive (TECH_SPEC §7; per-hit formulas in formulas.ts). */
 export const combatSystem: System = {
   name: 'combat',
   update(ctx) {

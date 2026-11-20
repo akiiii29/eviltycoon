@@ -1,5 +1,6 @@
 import { bestLearn, scoreGoals } from '../src/core/ai/utility';
 import { EventBuffer, type SimEvent } from '../src/core/events';
+import { powerRatio } from '../src/core/formulas';
 import { rollHunter } from '../src/core/hunterFactory';
 import { NavGraph } from '../src/core/pathfinding';
 import { Rng } from '../src/core/rng';
@@ -196,16 +197,20 @@ describe('AI: bestLearn', () => {
 });
 
 describe('AI: zone fit under difficulty', () => {
-  it('a fresh hunter scores hunting lower under Normal than under Easy', () => {
+  it('a fresh hunter is weaker against every zone under Normal than under Easy', () => {
     const h = hunter({ gold: 0 });
-    const huntScore = (difficulty: string) => {
+    const world = (difficulty: string) => {
       const w = createWorld(config, 1);
       w.town.difficulty = difficulty;
-      return scoreGoals(config, nav, w, h).find((c) => c.goal.type === 'hunt' && c.goal.zoneId === 'zone.meadow')?.score ?? 0;
+      return w;
     };
-    const easy = huntScore('diff.easy');
-    expect(easy).toBeGreaterThan(0);
-    expect(huntScore('diff.normal')).toBeLessThan(easy);
+    const easy = world('diff.easy'), normal = world('diff.normal');
+    for (const z of config.zones) expect(powerRatio(config, normal, h, z)).toBeLessThan(powerRatio(config, easy, h, z));
+    // Easy: the meadow is huntable. Normal: the hardest zone a fresh hunter may enter is no harder than on Easy.
+    const huntable = (w: ReturnType<typeof world>) => scoreGoals(config, nav, w, h).filter((c) => c.goal.type === 'hunt').map((c) => (c.goal as { zoneId: string }).zoneId);
+    expect(huntable(easy)).toContain('zone.meadow');
+    const idx = (ids: string[]) => Math.max(-1, ...ids.map((id) => config.zones.findIndex((z) => z.id === id)));
+    expect(idx(huntable(normal))).toBeLessThanOrEqual(idx(huntable(easy)));
   });
 });
 

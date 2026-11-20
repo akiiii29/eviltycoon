@@ -1,6 +1,6 @@
 /** Goal scoring (TECH_SPEC §5). Pure functions: given state, return scored candidates. */
 import { GEAR_SLOTS, NEED_KEYS, type GameConfig, type GearSlot, type ModStat, type NeedKey } from '../config/types';
-import { gearMainValue, hunterPower, needFrac, slotValue, urgentFrac, zoneFit, zonePower } from '../formulas';
+import { gearMainValue, needFrac, slotValue, urgentFrac, zoneScores } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
 import type { NavGraph } from '../pathfinding';
 import { canLearnTrait, nextSkillStudy } from '../systems/academy';
@@ -225,12 +225,11 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
   const out: Candidate[] = [];
   const zoneNow = currentZone(nav, h);
   const ok = needsOk(config, h, zoneNow !== null);
-  const power = hunterPower(config, h);
   const huntMul = personalityFactor(config, h, 'goal.hunt');
   const fill = bagFill(config, h);
 
-  for (const z of config.zones) {
-    let s = zoneFit(power, zonePower(config, world, z), f) * ok * huntMul;
+  for (const { zone: z, fit } of zoneScores(config, world, h)) {
+    let s = fit * ok * huntMul;
     if (s > 0 && h.ai.goal?.type === 'hunt' && h.ai.goal.zoneId === z.id) s += f.huntStickiness;
     if (s > 0) out.push({ goal: { type: 'hunt', zoneId: z.id }, score: s, label: `hunt ${z.id}` });
   }
