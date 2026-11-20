@@ -1,15 +1,16 @@
 /**
  * Progression pacing report: npx vite-node tools/pacing.ts [minutes] [seed] [intervalMin] [townGoldFloor]
+ * Env PACING_FP="key=value,..." overrides formula_params for the run (sensitivity sweeps).
  * Optional 4th arg townGoldFloor (default 0 = off): sensitivity knob that tops Town gold up to that floor every
  * game-minute, to see how pacing behaves when the economy is not gold-starved. Not a gameplay feature.
  * Runs the default Simulation with `hunterSlots` hunters (Easy difficulty) and prints, every interval
  * (default 30 game-minutes): max/median level, hunters that ever reached Lv20 / Lv50 / reincarnated,
- * the zone each hunter is hunting (with power / zonePower ratio) and the best gear level equipped.
+ * the zone each hunter is hunting (with its power ratio for that zone, formulas.powerRatio) and the best gear level equipped.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { loadConfig, type RawConfig } from '../src/core/config/load';
-import { hunterPower, zonePower } from '../src/core/formulas';
+import { hunterPower, powerRatio } from '../src/core/formulas';
 import { createWorld, Simulation } from '../src/core/simulation';
 
 const minutes = Number(process.argv[2] ?? 120);
@@ -19,6 +20,11 @@ const townGoldFloor = Number(process.argv[5] ?? 0);
 const dir = join(process.cwd(), 'config');
 const raw: Record<string, unknown> = {};
 for (const f of readdirSync(dir).filter((x) => x.endsWith('.json'))) raw[basename(f, '.json')] = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+// Tuning knob: PACING_FP="key=value,key=value" overrides formula_params for this run only (no file is changed).
+for (const kv of (process.env.PACING_FP ?? '').split(',').filter(Boolean)) {
+  const [k, v] = kv.split('=');
+  (raw.formula_params as Record<string, number>)[k!.trim()] = Number(v);
+}
 const config = loadConfig(raw as RawConfig);
 const sim = new Simulation(config, createWorld(config, seed));
 for (let i = 0; i < config.formula.hunterSlots; i++) sim.enqueue({ type: 'debug.spawnHunter' });
@@ -31,6 +37,16 @@ const reached100 = new Set<string>();
 const firsts: Record<string, number | undefined> = { lv20: undefined, lv50: undefined, lv100: undefined, reinc: undefined };
 let killsWindow = 0;
 let deathsWindow = 0;
+/** Deaths by zone (where the hunter stood when it died), over the whole run. */
+const deathsByZone: Record<string, number> = {};
+/** Deaths in the first 30 game-minutes after a hunter first sets foot in a zone ("new-zone entry" deaths). */
+const entryDeaths: Record<string, number> = {};
+const firstEntry = new Map<string, number>(); // `${hunterId}|${zoneId}` -> minute
+/** Deaths by the hunter's goal at death (hunt in that zone / other zone / transit), and hunter level − zone top monster level. */
+const deathsByGoal: Record<string, number> = {};
+const deathGaps: number[] = [];
+const lastGoal = new Map<string, string>();
+const zoneTopLevel = (zid: string) => Math.max(...config.index.zones.get(zid)!.monsters.map((x) => config.index.monsters.get(x.monsterId)!.level));
 const zoneShort = (id: string | undefined) => (id ? id.replace(/^zone\./, '') : '-');
 
 function report(min: number): void {
@@ -49,7 +65,7 @@ function report(min: number): void {
     // Zone of the hunt goal; otherwise the goal type (e.g. returnTown while walking through a field).
     const zid = goal?.type === 'hunt' ? goal.zoneId : undefined;
     const z = zid ? config.index.zones.get(zid) : undefined;
-    const ratio = z ? (hunterPower(config, h) / zonePower(config, w, z)).toFixed(2) : '';
+    const ratio = z ? powerRatio(config, w, h, z).toFixed(2) : '';
     const r = h.reincarnation ? `R${h.reincarnation}` : '';
     per.push(`${r}L${h.level}@${zid ? zoneShort(zid) : (goal?.type ?? '-') + (node?.zoneId ? '~' + zoneShort(node.zoneId) : '')}${ratio ? '(' + ratio + ')' : ''} g${hg}`);
   }
@@ -71,9 +87,29 @@ const t0 = Date.now();
 for (let min = 1; min <= minutes; min++) {
   for (let t = 0; t < ticksPerMin; t++) {
     sim.step();
+    for (const h of sim.world.hunters) {
+      const g = h.ai.goal;
+      if (g && g.type !== 'dead') lastGoal.set(h.id, g.type === 'hunt' ? `hunt:${g.zoneId}` : g.type);
+      const zid = config.index.nodes.get(h.nodeId)?.zoneId;
+      if (zid && !firstEntry.has(`${h.id}|${zid}`)) firstEntry.set(`${h.id}|${zid}`, min);
+    }
     for (const e of sim.drainEvents()) {
       if (e.type === 'monsterKilled') killsWindow++;
-      else if (e.type === 'hunterDied') deathsWindow++;
+      else if (e.type === 'hunterDied') {
+        deathsWindow++;
+        const hz = sim.world.hunters.find((x) => x.id === e.hunterId);
+        const zid = hz ? config.index.nodes.get(hz.nodeId)?.zoneId : undefined;
+        if (hz && zid) {
+          // goal was already reset to 'dead'; use the last hunt zone recorded before death
+          const g = lastGoal.get(hz.id) ?? '-';
+          const kind = g === `hunt:${zid}` ? 'hunting-here' : g.startsWith('hunt:') ? 'hunt-elsewhere' : g;
+          deathsByGoal[kind] = (deathsByGoal[kind] ?? 0) + 1;
+          deathGaps.push(hz.level - zoneTopLevel(zid));
+          deathsByZone[zid] = (deathsByZone[zid] ?? 0) + 1;
+          const t = firstEntry.get(`${e.hunterId}|${zid}`);
+          if (t !== undefined && min - t <= 30) entryDeaths[zid] = (entryDeaths[zid] ?? 0) + 1;
+        }
+      }
       else if (e.type === 'levelUp') {
         if (e.level >= 20 && !reached20.has(e.hunterId)) { reached20.add(e.hunterId); firsts.lv20 ??= min; }
         if (e.level >= 50 && !reached50.has(e.hunterId)) { reached50.add(e.hunterId); firsts.lv50 ??= min; }
@@ -90,3 +126,10 @@ const fmt = (v: number | undefined) => (v === undefined ? 'never' : `${(v / 60).
 const n20 = reached20.size, n = sim.world.hunters.length;
 console.log(`seed ${seed}: hunters ever ≥Lv20 ${n20}/${n}, ≥Lv50 ${reached50.size}/${n}, reincarnated ${reinc.size}/${n}`);
 console.log(`seed ${seed}: first Lv20 ${fmt(firsts.lv20)}, first Lv50 ${fmt(firsts.lv50)}, first Lv${config.formula.maxLevel} ${fmt(firsts.lv100)}, first reincarnation ${fmt(firsts.reinc)}; wall ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+const zs = (o: Record<string, number>) => config.zones.map((z) => `${zoneShort(z.id)} ${o[z.id] ?? 0}`).join(', ');
+const st = sim.world.stats;
+console.log(`seed ${seed}: deaths ${st.deaths} by zone [${zs(deathsByZone)}]; within 30 min of first entry [${zs(entryDeaths)}]`);
+console.log(`seed ${seed}: enhance ${st.enhanceSuccess}/${st.enhanceTries} = ${(st.enhanceSuccess / Math.max(1, st.enhanceTries)).toFixed(3)}`);
+deathGaps.sort((a, b) => a - b);
+const q = (p: number) => (deathGaps.length ? deathGaps[Math.floor(p * (deathGaps.length - 1))] : 0);
+console.log(`seed ${seed}: deaths by goal ${JSON.stringify(deathsByGoal)}; hunter level − zone top monster level at death: p10 ${q(0.1)} p50 ${q(0.5)} p90 ${q(0.9)}`);

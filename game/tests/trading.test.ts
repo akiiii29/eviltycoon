@@ -4,7 +4,7 @@ import { scoreGoals } from '../src/core/ai/utility';
 import { applyCommand } from '../src/core/commands';
 import type { FormulaParams, GameConfig } from '../src/core/config/types';
 import { EventBuffer, type SimEvent } from '../src/core/events';
-import { hunterPower, zoneFit, zonePower } from '../src/core/formulas';
+import { zoneScores } from '../src/core/formulas';
 import { rollHunter } from '../src/core/hunterFactory';
 import { NavGraph } from '../src/core/pathfinding';
 import { Rng } from '../src/core/rng';
@@ -217,9 +217,9 @@ describe('AI: prefer zones that drop requested materials', () => {
       const h = hunter(config);
       h.stats = { ...h.stats, atk: h.stats.atk * k, hp: h.stats.hp * k };
       h.needs.hp = h.stats.hp;
-      const p = hunterPower(config, h);
       const w = createWorld(config, 1);
-      const fits = ['zone.meadow', 'zone.ruins'].map((id) => zoneFit(p, zonePower(config, w, config.index.zones.get(id)!), config.formula));
+      const scores = zoneScores(config, w, h);
+      const fits = ['zone.meadow', 'zone.ruins'].map((id) => scores.find((z) => z.zone.id === id)!.fit);
       if (fits.every((f) => f > 0)) return h;
     }
     throw new Error('no stat scale fits both zones');

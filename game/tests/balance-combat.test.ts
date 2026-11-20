@@ -10,7 +10,14 @@ import { combatSystem } from '../src/core/systems/combat';
 import type { World } from '../src/core/world';
 import { testConfig } from './helpers';
 
-const base = testConfig();
+/**
+ * These tests check the combat system's RNG wiring (evade roll, then crit roll), so the crit chance cap is lifted
+ * (crit 100 must mean "always crits"), and `alwaysEvade` turns any EVA into a certain dodge. The caps and curves
+ * themselves are tested in formulas.test.ts.
+ */
+const shipped = testConfig();
+const base: GameConfig = { ...shipped, formula: { ...shipped.formula, critChanceCap: 1 } };
+const alwaysEvade = (cfg: GameConfig): GameConfig => ({ ...cfg, formula: { ...cfg.formula, dodgeCap: 1, dodgeHalf: 0 } });
 const ZONE = 'zone.meadow';
 const MON = 'mon.slime';
 
@@ -72,7 +79,9 @@ function normalDamage(cfg: GameConfig): number {
   world.hunters = [];
   world.monsters = [];
   setup(cfg, world, 0);
-  return mitigated(monsterStats(cfg, world.monsters[0]!).atk, hunterStats(cfg, world.hunters[0]!).def, cfg.formula);
+  const ms = monsterStats(cfg, world.monsters[0]!);
+  const h = world.hunters[0]!;
+  return mitigated(ms.atk, hunterStats(cfg, h).def, ms.level, h.level, cfg.formula);
 }
 
 type Hit = Extract<SimEvent, { type: 'hit' }>;
@@ -107,7 +116,7 @@ describe('balance: monster critical hits', () => {
   });
 
   it('evaded hits never crit and deal no damage, even at crit 100', () => {
-    const hits = run(withCrit(100), 100) as Hit[];
+    const hits = run(alwaysEvade(withCrit(100)), 100) as Hit[];
     expect(hits.length).toBeGreaterThan(2);
     for (const e of hits) {
       expect(e.evaded).toBe(true);

@@ -91,7 +91,8 @@ describe('M3 difficulty-scaled monsters', () => {
       const h = addHunter(ctx, 'class.vanguard', null);
       const tough = addMonster(ctx, 1, 0, diff);
       dmg[diff] = damageMonster(ctx, h, tough, 100, false);
-      expect(dmg[diff]).toBeCloseTo(mitigated(100, monsterStats(config, tough).def, config.formula));
+      const ts = monsterStats(config, tough);
+      expect(dmg[diff]).toBeCloseTo(mitigated(100, ts.def, h.level, ts.level, config.formula));
       const weak = addMonster(ctx, 1, 0, diff, 1);
       const g0 = h.gold;
       damageMonster(ctx, h, weak, 100, false);
@@ -133,7 +134,8 @@ describe('M3 combat skills', () => {
     const events = step(ctx);
     const cast = events.filter((e) => e.type === 'skillCast');
     expect(cast).toEqual([expect.objectContaining({ hunterId: h.id, skillId: sk.id, targets: 1 })]);
-    const expected = mitigated(hunterStats(config, h).atk * sk.value[1]!, monsterStats(config, m).def, config.formula);
+    const ms = monsterStats(config, m);
+    const expected = mitigated(hunterStats(config, h).atk * sk.value[1]!, ms.def, h.level, ms.level, config.formula);
     expect(1e6 - m.hp).toBeCloseTo(expected);
     expect(h.skillCdMs[sk.id]).toBe(sk.cooldownSec * 1000);
     expect(ctx.world.stats.skillCasts).toBe(1);

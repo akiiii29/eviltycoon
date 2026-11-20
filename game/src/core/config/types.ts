@@ -189,7 +189,6 @@ export interface ZoneDef {
   id: string;
   nameKey: string;
   entryNode: string;
-  recommendedPower: number;
   monsterCap: number;
   respawnSec: number;
   monsters: { monsterId: string; weight: number }[];
@@ -231,10 +230,33 @@ export interface FormulaParams {
   moveSpeed: number;
   roadSpeedMul: number;
   arriveEpsilon: number;
-  /** Combat (placeholder formulas, TECH_SPEC §7). */
+  /** Combat (TECH_SPEC §7.1; equations in formulas.ts). */
   attackRange: number;
-  defConstant: number;
+  /** DEF reduction R = min(defReductionCap, DEF / (DEF + defPerLevel × attacker level + defFlat)). */
+  defPerLevel: number;
+  defFlat: number;
+  defReductionCap: number;
+  /** Floor of a single hit after DEF. */
+  minDamage: number;
+  /** Level-gap damage penalty G = max(levelGapMin, 1 − levelGapStep × max(0, L_def − L_att − levelGapGrace)). */
+  levelGapGrace: number;
+  levelGapStep: number;
+  levelGapMin: number;
+  /** Hunter crit damage multiplier; chance = min(critChanceCap, crit%/100); crit% over the cap adds critOverflowMult per 1.0. */
   critMultiplier: number;
+  critChanceCap: number;
+  critOverflowMult: number;
+  /** Dodge chance = dodgeCap × EVA / (EVA + dodgeHalf). */
+  dodgeCap: number;
+  dodgeHalf: number;
+  /** Stacking caps (percent) per modifier category: traits and skill buffs. */
+  traitPctCap: number;
+  buffPctCap: number;
+  /** Fastest allowed attack interval in seconds. */
+  minAttackInterval: number;
+  /** Mood scales ATK/DEF: no penalty at mood ≥ moodPenaltyFrac × max, linear down to moodStatFloor at 0 (1 = off). */
+  moodPenaltyFrac: number;
+  moodStatFloor: number;
   monsterLeashRange: number;
   reviveSec: number;
   reviveHpFrac: number;
@@ -256,6 +278,19 @@ export interface FormulaParams {
   zoneFitMin: number;
   zoneFitBest: number;
   zoneFitEasy: number;
+  /** zoneFit at ratio = zoneFitMin (start of the ramp). */
+  zoneFitRampLow: number;
+  /** zoneFit lost per 1.0 of ratio above zoneFitEasy, down to zoneFitFloor. */
+  zoneFitDecay: number;
+  zoneFitFloor: number;
+  /** Tie-break: an easier comfortable zone scores this much less per tier below the hardest comfortable zone. */
+  zoneTierBonus: number;
+  /** Kills per full HP bar that count as power ratio 1 (ratio = √(killsPerLife / zoneRefKills)). */
+  zoneRefKills: number;
+  /** Spawn-pressure multiplier on HP lost per kill = zoneCrowdRespawnSec / zone.respawnSec. */
+  zoneCrowdRespawnSec: number;
+  /** Fit multiplier of a fully crowded zone (see formulas.zoneShare); 1 = ignore crowding. */
+  zoneShareFloor: number;
   wanderScore: number;
   /** Economy (M2). */
   bagCapacity: number;

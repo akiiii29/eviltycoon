@@ -58,9 +58,9 @@ describe('NavGraph', () => {
 describe('utility AI', () => {
   it('zone fit: 0 when too weak, best near 1.1×, lower when far too easy', () => {
     const f = config.formula;
-    expect(zoneFit(60, 100, f)).toBe(0);
-    expect(zoneFit(110, 100, f)).toBe(1);
-    expect(zoneFit(400, 100, f)).toBeLessThan(1);
+    expect(zoneFit(0.6, f)).toBe(0);
+    expect(zoneFit(1.1, f)).toBe(1);
+    expect(zoneFit(4, f)).toBeLessThan(1);
   });
 
   it('a fresh hunter in town goes hunting in the zone that fits', () => {

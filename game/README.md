@@ -15,7 +15,9 @@ npm run build                            # typecheck + build production
 npx vite-node tools/headless.ts 60 1 10  # chạy 60 phút game không render (seed 1), timeline mỗi 10 phút + thống kê để tuning
 ```
 
-Mọi công thức nằm ở `src/core/formulas.ts`, ngưỡng AI ở `config/formula_params.json`; tất cả là **placeholder** chờ design chốt.
+Mọi công thức nằm ở `src/core/formulas.ts`, hệ số và ngưỡng AI ở `config/formula_params.json`. Mô hình combat (DEF, chênh level, crit, né, cộng dồn, sức mạnh/độ hợp vùng): `TECH_SPEC.md` §5.3, §7.1. Số liệu vẫn là đề xuất chờ design chốt.
+
+`PACING_FP="key=value,..." npx vite-node tools/pacing.ts 900 1` chạy pacing với hệ số ghi đè (không sửa file).
 
 ## Cấu trúc
 

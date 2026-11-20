@@ -1,6 +1,6 @@
 /** Goal scoring (TECH_SPEC §5). Pure functions: given state, return scored candidates. */
 import { GEAR_SLOTS, NEED_KEYS, type GameConfig, type GearSlot, type ModStat, type NeedKey } from '../config/types';
-import { gearMainValue, hunterPower, needFrac, slotValue, urgentFrac, zoneFit, zonePower } from '../formulas';
+import { gearMainValue, needFrac, slotValue, urgentFrac, zoneScores, type ZoneScore } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
 import type { NavGraph } from '../pathfinding';
 import { canLearnTrait, nextSkillStudy } from '../systems/academy';
@@ -225,11 +225,11 @@ export function townCanBuyFrom(config: GameConfig, world: World, h: Hunter, dema
  * without requests (hunting vs. town goals is unchanged when the best zone is requested, slightly lower if not),
  * and a requested zone beats an unrequested one of similar fit. Zones the hunter cannot survive never get a bonus.
  */
-export function huntZoneMuls(config: GameConfig, power: number, world: World, demand: Demand): Map<string, number> {
+export function huntZoneMuls(config: GameConfig, scores: readonly ZoneScore[], demand: Demand): Map<string, number> {
   const raw = new Map<string, number>();
   let max = 0;
-  for (const z of config.zones) {
-    if (zoneFit(power, zonePower(config, world, z), config.formula) <= 0) continue;
+  for (const { zone: z, fit } of scores) {
+    if (fit <= 0) continue;
     const m = requestZoneMul(config, z, demand);
     raw.set(z.id, m);
     max = Math.max(max, m);
@@ -244,14 +244,14 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
   const out: Candidate[] = [];
   const zoneNow = currentZone(nav, h);
   const ok = needsOk(config, h, zoneNow !== null);
-  const power = hunterPower(config, h);
   const huntMul = personalityFactor(config, h, 'goal.hunt');
   const fill = bagFill(config, h);
   const demand = materialDemand(config, world);
 
-  const zoneMul = huntZoneMuls(config, power, world, demand);
-  for (const z of config.zones) {
-    let s = zoneFit(power, zonePower(config, world, z), f) * ok * huntMul;
+  const scores = zoneScores(config, world, h);
+  const zoneMul = huntZoneMuls(config, scores, demand);
+  for (const { zone: z, fit } of scores) {
+    let s = fit * ok * huntMul;
     if (s > 0) s *= zoneMul.get(z.id) ?? 1;
     if (s > 0 && h.ai.goal?.type === 'hunt' && h.ai.goal.zoneId === z.id) s += f.huntStickiness;
     if (s > 0) out.push({ goal: { type: 'hunt', zoneId: z.id }, score: s, label: `hunt ${z.id}` });
