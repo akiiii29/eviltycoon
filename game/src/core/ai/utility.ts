@@ -1,6 +1,8 @@
 /** Goal scoring (TECH_SPEC §5). Pure functions: given state, return scored candidates. */
 import { GEAR_SLOTS, NEED_KEYS, type GameConfig, type GearSlot, type ModStat, type NeedKey } from '../config/types';
-import { gearMainValue, needFrac, slotValue, urgentFrac, zoneScores, type ZoneScore } from '../formulas';
+import {
+  duel, gearMainValue, hunterStats, type EffectiveStats, monsterTypeStats, moveSpeed, needFrac, needMax, slotValue, urgentFrac, zoneCrowd, zoneScores, type ZoneScore,
+} from '../formulas';
 import { personalityFactor } from '../hunterFactory';
 import type { NavGraph } from '../pathfinding';
 import { canLearnTrait, nextSkillStudy } from '../systems/academy';
@@ -21,9 +23,16 @@ export function urgentThreshold(config: GameConfig, h: Hunter, need: NeedKey): n
   return urgentFrac(config.formula, need) * personalityFactor(config, h, `urgent.${need}`);
 }
 
-/** First need below its (personality-scaled) urgent threshold, if any. */
-export function urgentNeed(config: GameConfig, h: Hunter): NeedKey | null {
-  for (const n of NEED_KEYS) if (needFrac(config, h, n) < urgentThreshold(config, h, n)) return n;
+/**
+ * First need below its (personality-scaled) urgent threshold, if any.
+ * `hpFloor` (see retreatHpFloor) raises the HP threshold to what the trip home is expected to cost; it is never
+ * scaled by personality, so even a reckless hunter does not start a lethal walk home.
+ */
+export function urgentNeed(config: GameConfig, h: Hunter, hpFloor = 0): NeedKey | null {
+  for (const n of NEED_KEYS) {
+    const u = urgentThreshold(config, h, n);
+    if (needFrac(config, h, n) < (n === 'hp' ? Math.max(u, hpFloor) : u)) return n;
+  }
   return null;
 }
 
@@ -32,17 +41,169 @@ export function urgentNeed(config: GameConfig, h: Hunter): NeedKey | null {
  * The urgent threshold is scaled by the `urgent.<need>` personality factor (reckless HP ×0.5 → 0.125).
  * `inField`: the soft threshold is scaled too (never above softNeedFrac), so a reckless hunter keeps fighting
  * down to ~15 % HP; in town it stays unscaled so a revived (30 % HP) reckless hunter still heals before going out.
+ * `hpFloor` (retreatHpFloor): when it is above the HP urgent threshold, the whole HP band (urgent and soft) shifts
+ * up by the difference, so the hunter has the same HP margin to play with on top of the trip home.
  */
-export function needsOk(config: GameConfig, h: Hunter, inField = false): number {
+export function needsOk(config: GameConfig, h: Hunter, inField = false, hpFloor = 0): number {
   const f = config.formula;
   let worst = 1;
   for (const n of NEED_KEYS) {
     const k = personalityFactor(config, h, `urgent.${n}`);
-    const u = urgentFrac(f, n) * k;
-    const soft = Math.max(inField ? f.softNeedFrac * Math.min(k, 1) : f.softNeedFrac, u + 0.01);
+    const base = urgentFrac(f, n) * k;
+    const shift = n === 'hp' ? Math.max(0, hpFloor - base) : 0;
+    const u = base + shift;
+    const soft = Math.max(inField ? f.softNeedFrac * Math.min(k, 1) : f.softNeedFrac, base + 0.01) + shift;
     worst = Math.min(worst, clamp01((needFrac(config, h, n) - u) / (soft - u)));
   }
   return worst;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Retreat: HP the hunter needs to get home alive (TECH_SPEC §5.2 "Rút lui").
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Danger of a zone for one hunter, from the duel model (steady stats), × zoneCrowd. Absolute HP. */
+export interface ZoneDanger {
+  /** Spawn-weighted HP lost per second while monsters of this zone are on the hunter. */
+  dps: number;
+  /** Spawn-weighted HP lost per kill (what one more kill is expected to cost). */
+  dmgPerKill: number;
+}
+
+/**
+ * Per-call cache for one hunter: steady stats, current max HP and zone dangers. Pass one cache to several
+ * retreat functions in the same decision so hunterStats and the duels run once.
+ */
+export interface DangerCache {
+  stats: EffectiveStats;
+  maxHp: number;
+  zones: Map<string, ZoneDanger>;
+}
+
+export function dangerCache(config: GameConfig, h: Hunter): DangerCache {
+  return { stats: hunterStats(config, h, { steady: true }), maxHp: Math.max(needMax(config, h, 'hp'), 1), zones: new Map() };
+}
+
+export function zoneDanger(config: GameConfig, h: Hunter, zoneId: string, difficultyId: string, cache?: DangerCache): ZoneDanger {
+  const c = cache ?? dangerCache(config, h);
+  const hit = c.zones.get(zoneId);
+  if (hit) return hit;
+  const zone = config.index.zones.get(zoneId)!;
+  let w = 0, dps = 0, dmg = 0;
+  for (const e of zone.monsters) {
+    const d = duel(config, h, c.stats, monsterTypeStats(config, e.monsterId, difficultyId));
+    w += e.weight;
+    dps += e.weight * d.monsterDps;
+    dmg += e.weight * d.dmgPerKill;
+  }
+  const crowd = zoneCrowd(zone, config.formula);
+  const out = w > 0 ? { dps: (crowd * dps) / w, dmgPerKill: (crowd * dmg) / w } : { dps: 0, dmgPerKill: 0 };
+  c.zones.set(zoneId, out);
+  return out;
+}
+
+/** Path length per zone from a node to the town square (config geometry only), cached per NavGraph. */
+const legsCache = new WeakMap<NavGraph, Map<string, readonly (readonly [string, number])[]>>();
+
+function legsHome(config: GameConfig, nav: NavGraph, fromNode: string): readonly (readonly [string, number])[] {
+  let byNode = legsCache.get(nav);
+  if (!byNode) { byNode = new Map(); legsCache.set(nav, byNode); }
+  const hit = byNode.get(fromNode);
+  if (hit) return hit;
+  const len = new Map<string, number>();
+  const add = (z: string | undefined, d: number) => { if (z) len.set(z, (len.get(z) ?? 0) + d); };
+  const path = nav.path(fromNode, config.index.squareNode) ?? [];
+  for (let i = 1; i < path.length; i++) {
+    const a = nav.node(path[i - 1]!), b = nav.node(path[i]!);
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    add(a.zoneId, d / 2);
+    add(b.zoneId, d / 2);
+  }
+  const out = [...len];
+  byNode.set(fromNode, out);
+  return out;
+}
+
+/**
+ * Expected HP lost walking from `from` (a point standing at node `fromNode`) to the town square:
+ *   Σ_zones (path length inside the zone / moveSpeed) × zoneDanger.dps.
+ * Each path segment counts half for the zone of each end node (town nodes have no zone and cost nothing); the
+ * stretch from `from` to `fromNode` counts for fromNode's zone. The zones walked through are counted too (on the
+ * linear map, the whole way home), although with the level-gap rules lower zones cost almost nothing; in practice
+ * the zone being left dominates.
+ */
+export function tripHomeDamage(
+  config: GameConfig, nav: NavGraph, h: Hunter, from: { x: number; y: number }, fromNode: string, difficultyId: string, cache?: DangerCache,
+): number {
+  if (!nav.path(fromNode, config.index.squareNode)) return 0;
+  const c = cache ?? dangerCache(config, h);
+  const speed = Math.max(moveSpeed(config, h), 0.01);
+  const start = nav.node(fromNode);
+  let dmg = 0;
+  if (start.zoneId) dmg += (Math.hypot(start.x - from.x, start.y - from.y) / speed) * zoneDanger(config, h, start.zoneId, difficultyId, c).dps;
+  for (const [z, d] of legsHome(config, nav, fromNode)) dmg += (d / speed) * zoneDanger(config, h, z, difficultyId, c).dps;
+  return dmg;
+}
+
+/**
+ * HP fraction under which the hunter must head home from where it stands (0 in town):
+ *   min(retreatHpCap, retreatTripMul × tripHomeDamage / maxHp).
+ * retreatTripMul > 1 covers variance (crits, several monsters on the hunter, adds on the way out).
+ * `at` defaults to the hunter's position; scoreGoals uses a zone's entry node to judge a zone before going there.
+ */
+export function retreatHpFloor(
+  config: GameConfig, nav: NavGraph, world: World, h: Hunter,
+  at?: { pos: { x: number; y: number }; node: string }, cache?: DangerCache,
+): number {
+  const f = config.formula;
+  const node = at?.node ?? nav.nearest(h.position);
+  if (!nav.node(node).zoneId) return 0;
+  const c = cache ?? dangerCache(config, h);
+  const dmg = tripHomeDamage(config, nav, h, at?.pos ?? h.position, node, world.town.difficulty, c);
+  return Math.min(f.retreatHpCap, (f.retreatTripMul * dmg) / c.maxHp);
+}
+
+/**
+ * HP floor for the urgent backstop. Computed only when it could matter (in the field, HP between the
+ * personality HP threshold and retreatHpCap), so the per-tick backstop stays cheap.
+ */
+export function backstopHpFloor(config: GameConfig, nav: NavGraph, world: World, h: Hunter): number {
+  if (!currentZone(nav, h)) return 0;
+  const hp = needFrac(config, h, 'hp');
+  if (hp >= config.formula.retreatHpCap || hp < urgentThreshold(config, h, 'hp')) return 0;
+  return retreatHpFloor(config, nav, world, h);
+}
+
+/** One more kill in a zone, as a fraction of max HP, × retreatKillMul. */
+function killCostFrac(config: GameConfig, h: Hunter, zoneId: string, difficultyId: string, c: DangerCache): number {
+  return (config.formula.retreatKillMul * zoneDanger(config, h, zoneId, difficultyId, c).dmgPerKill) / c.maxHp;
+}
+
+/**
+ * HP fraction a hunter needs to start hunting a zone it is not in yet: the retreat line at the zone's entry node
+ * plus one kill there,  max(HP urgent threshold, retreatHpFloor(entry)) + retreatKillMul × dmgPerKill / maxHp.
+ * Same rule as shouldRetreatBeforeNextKill, so a hunter that sets out is not sent straight back.
+ */
+export function zoneEntryHpLine(config: GameConfig, nav: NavGraph, world: World, h: Hunter, zoneId: string, cache?: DangerCache): number {
+  const c = cache ?? dangerCache(config, h);
+  const entry = nav.node(config.index.zones.get(zoneId)!.entryNode);
+  const floor = retreatHpFloor(config, nav, world, h, { pos: entry, node: entry.id }, c);
+  return Math.max(urgentThreshold(config, h, 'hp'), floor) + killCostFrac(config, h, zoneId, world.town.difficulty, c);
+}
+
+/**
+ * Kill boundary: between two fights (nothing is attacking the hunter), head home now if one more kill in the
+ * current zone is expected to take HP under the retreat line:
+ *   hpFrac − retreatKillMul × dmgPerKill / maxHp < max(HP urgent threshold, retreatHpFloor).
+ * Leaving between fights is cheap (no monster is on the hunter), leaving mid-fight is what kills.
+ */
+export function shouldRetreatBeforeNextKill(config: GameConfig, nav: NavGraph, world: World, h: Hunter, zoneId: string): boolean {
+  const c = dangerCache(config, h);
+  const hp = h.needs.hp / c.maxHp;
+  const kill = killCostFrac(config, h, zoneId, world.town.difficulty, c);
+  if (hp - kill >= config.formula.retreatHpCap) return false;
+  const line = Math.max(urgentThreshold(config, h, 'hp'), retreatHpFloor(config, nav, world, h, undefined, c));
+  return hp - kill < line;
 }
 
 /** Zone the hunter is currently standing in, or null when in town. */
@@ -237,7 +398,11 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
   const f = config.formula;
   const out: Candidate[] = [];
   const zoneNow = currentZone(nav, h);
-  const ok = needsOk(config, h, zoneNow !== null);
+  const inField = zoneNow !== null;
+  const danger = dangerCache(config, h);
+  // Retreat floor where the hunter stands (0 in town): the needs band in the field sits on top of the trip home.
+  const hereFloor = inField ? retreatHpFloor(config, nav, world, h, undefined, danger) : 0;
+  const ok = needsOk(config, h, inField, hereFloor);
   const huntMul = personalityFactor(config, h, 'goal.hunt');
   const fill = bagFill(config, h);
   const demand = materialDemand(config, world);
@@ -245,7 +410,11 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
   const scores = zoneScores(config, world, h);
   const zoneMul = huntZoneMuls(config, scores, demand);
   for (const { zone: z, fit } of scores) {
-    let s = fit * ok * huntMul;
+    // Another zone is judged by the HP needed to start a kill there (zoneEntryHpLine): a hunter does not set out
+    // for a zone it would have to leave again at the first kill boundary.
+    let zoneOk = ok;
+    if (fit > 0 && z.id !== zoneNow) zoneOk = needsOk(config, h, inField, zoneEntryHpLine(config, nav, world, h, z.id, danger));
+    let s = fit * zoneOk * huntMul;
     if (s > 0) s *= zoneMul.get(z.id) ?? 1;
     if (s > 0 && h.ai.goal?.type === 'hunt' && h.ai.goal.zoneId === z.id) s += f.huntStickiness;
     if (s > 0) out.push({ goal: { type: 'hunt', zoneId: z.id }, score: s, label: `hunt ${z.id}` });

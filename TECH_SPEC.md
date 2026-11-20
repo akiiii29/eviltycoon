@@ -124,8 +124,28 @@ Chỉ số cuối = base theo `gearId` × hệ số quality (GDD §6) × đườ
 | `Train` | Hunter sợ săn (Coward…) hoặc chênh level lớn | theo GDD §5 Training Ground |
 | `Wander` | fallback | hằng số nhỏ (0.05) |
 
-**Nhu cầu khẩn cấp** (bỏ qua utility, ép `ReturnTown` ngay) **[ĐỀ XUẤT]**: HP < 25%, Satiety < 10%, Stamina < 10%.
-**Nhu cầu mềm** (cộng điểm `ReturnTown`): bất kỳ nhu cầu < 40%.
+**Nhu cầu khẩn cấp** (bỏ qua utility, ép `ReturnTown` ngay) **[ĐỀ XUẤT]**: HP < max(25% × tính cách, sàn rút lui), Satiety < 10%, Stamina < 10%.
+**Nhu cầu mềm** (cộng điểm `ReturnTown`): bất kỳ nhu cầu < 40%; với HP, cả dải khẩn cấp→mềm dời lên đúng phần sàn rút lui vượt ngưỡng khẩn cấp.
+
+Điểm goal ở Town (`shop`, `sell`, `enhance`, `learn`, dịch vụ, nghỉ) dùng hệ số trong `formula_params.json` (`shopBaseScore`, `enhanceBaseScore`, `learnSkillScore`, `serviceLowBase`…), xem chú thích trong `src/core/config/types.ts`.
+
+**Rút lui** **[ĐỀ XUẤT]** (`src/core/ai/utility.ts`). Hunter chết chủ yếu lúc rút khỏi vùng khi quái đang đánh, không phải ở các vùng dưới trên đường về; rút giữa hai trận gần như không mất máu.
+
+```
+zoneDanger(z)   = zoneCrowd × Σ_w (monsterDps, dmgPerKill) / Σ_w        (duel §5.3, chỉ số steady)
+tripHome        = Σ_vùng trên đường về (độ dài đường trong vùng / moveSpeed) × zoneDanger.dps
+                  (mỗi đoạn tính nửa cho vùng của mỗi đầu; node Town không có vùng → 0)
+sàn rút lui     = min(retreatHpCap, retreatTripMul × tripHome / HP tối đa)   (0 ở Town)
+ranh giới kill  : không quái nào đang đánh hunter, chọn mục tiêu mới →
+                  về ngay nếu HP − retreatKillMul × dmgPerKill/HP tối đa < max(ngưỡng khẩn cấp HP, sàn rút lui)
+chọn vùng khác  : needsOk tính với ngưỡng = max(ngưỡng khẩn cấp HP, sàn rút lui ở entryNode) + retreatKillMul × dmgPerKill/HP tối đa
+                  → không đi tới vùng mà phải quay về ngay ở ranh giới kill đầu tiên
+```
+
+- `retreatTripMul` = 3 phủ phương sai đo được (HP mất / dự đoán: p50 ≈ 1, p90 ≈ 1,9, p99 ≈ 2,7). Sàn **không** nhân hệ số tính cách: Liều lĩnh vẫn đánh tới 12,5% ở vùng dễ, nhưng không bắt đầu một chuyến về chết người.
+- Ranh giới kill không áp dụng cho lệnh Move của người chơi (`ai.forced`); backstop khẩn cấp (kèm sàn) vẫn áp dụng.
+- Backstop chạy mỗi tick nên sàn chỉ được tính khi HP nằm giữa ngưỡng khẩn cấp theo tính cách và `retreatHpCap`; độ dài đường theo vùng được cache theo NavGraph.
+- `retreatHpCap` = 0 và `retreatKillMul` = 0 tắt hẳn rút lui (hành vi như trước).
 
 ### 5.3 Chấm điểm vùng săn
 

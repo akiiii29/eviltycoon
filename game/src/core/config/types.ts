@@ -371,6 +371,13 @@ export interface FormulaParams {
   bagReturnScore: number;
   /** Idling in town (wander/rest) = max(wanderScore, restScoreWeight × (1 − needsOk)). */
   restScoreWeight: number;
+  /**
+   * Retreat (TECH_SPEC §5.2): HP floor to head home = min(retreatHpCap, retreatTripMul × expected HP lost on the
+   * way home / maxHp); between fights the hunter also leaves if one more kill (× retreatKillMul) would cross it.
+   */
+  retreatTripMul: number;
+  retreatKillMul: number;
+  retreatHpCap: number;
   [key: string]: number;
 }
 

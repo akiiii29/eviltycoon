@@ -104,5 +104,8 @@
  "serviceWeight": 0.5,
  "econMulFloor": 0.5,
  "bagReturnScore": 1.2,
- "restScoreWeight": 0.5
+ "restScoreWeight": 0.5,
+ "retreatTripMul": 3,
+ "retreatKillMul": 1,
+ "retreatHpCap": 0.6
 }
