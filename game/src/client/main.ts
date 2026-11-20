@@ -1,7 +1,8 @@
 import { loadConfig, ConfigError } from '../core/config/load';
 import type { GameConfig } from '../core/config/types';
-import { advanceJourneys } from '../core/systems/journey';
-import { applyOffline, estimateOffline, offlineJourneyMs, recordSample, type OfflineReport, type OfflineTracker } from '../core/offline';
+import {
+  advanceOfflineWallClock, applyOffline, estimateOffline, offlineWallClockMs, recordSample, type OfflineReport, type OfflineTracker,
+} from '../core/offline';
 import { deserialize, serialize, SaveError } from '../core/save/save';
 import { IndexedDbStorage } from '../core/save/storage';
 import { createWorld, Simulation } from '../core/simulation';
@@ -44,9 +45,11 @@ async function boot(): Promise<void> {
     const now = Date.now();
     const r = estimateOffline(config, sim.world, tracker, since, now);
     if (!r.skipped) applyOffline(config, sim.world, r, tracker);
-    // Journeys run on wall-clock time, independent of the rate estimate (TECH_SPEC §5.11).
-    r.journeys = sim.runBetweenTicks((ctx) => advanceJourneys(ctx, offlineJourneyMs(since, now), true));
-    return r.skipped && r.journeys.length === 0 ? null : r;
+    // Journeys, constructions and arrivals run on wall-clock time, independent of the rate estimate (TECH_SPEC §9).
+    const wall = sim.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, offlineWallClockMs(since, now)));
+    Object.assign(r, wall);
+    const anyTimer = wall.journeys.length > 0 || wall.buildings.length > 0 || wall.arrivals.length > 0;
+    return r.skipped && !anyTimer ? null : r;
   }
 
   function showReport(r: OfflineReport | null): void {

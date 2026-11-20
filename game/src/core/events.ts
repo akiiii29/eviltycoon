@@ -55,8 +55,10 @@ export interface JourneyRewards {
   gold: number;
   /** EXP given to EACH member. */
   exp: number;
-  /** Materials added to Town storage. */
+  /** Materials added to Town storage (the requested part, Trading Post rule §5.7). */
   materials: Record<string, number>;
+  /** Reward materials nobody requested: exported at surplusPrice, the gold is inside `gold`. Absent when none. */
+  exported?: Record<string, number>;
   /** Rare finds: listed in the shop (`uid`) or sold at the markdown floor (`soldFor`) when the shop was full. */
   items: { gearId: string; qualityId: string; uid?: string; soldFor?: number }[];
 }

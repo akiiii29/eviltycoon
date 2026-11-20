@@ -10,6 +10,7 @@ import { deserialize, SAVE_FORMAT, serialize } from '../src/core/save/save';
 import { createWorld, Simulation } from '../src/core/simulation';
 import type { SystemContext } from '../src/core/system';
 import { advanceJourneys, journeyOfHunter, townHunterCount } from '../src/core/systems/journey';
+import { surplusPrice } from '../src/core/systems/trading';
 import { WORLD_SCHEMA_VERSION, type Hunter, type World } from '../src/core/world';
 import { readRawConfig } from './helpers';
 
@@ -200,6 +201,11 @@ describe('journey lifecycle', () => {
     const lv = s.world.hunters.slice(0, 3).map((h) => h.level);
     send(s, { type: 'journey.start', journeyId: 'j.test', hunterIds: team });
     s.world.journeys[0]!.successChance = 1; // force the outcome (the roll is rng.next() < chance)
+    // Only a player request for 3 ore: the reward's 5 ore = 3 stored (request filled) + 2 exported (Trading Post rule).
+    s.world.town.autoCraft = false;
+    s.world.town.autoInvest = false;
+    s.world.town.investPlan = null;
+    s.world.town.requests = { 'mat.ore': 3 };
     const gold = s.world.town.gold;
     const ore = s.world.town.storage['mat.ore'] ?? 0;
     const shop = s.world.town.shop.length;
@@ -207,11 +213,13 @@ describe('journey lifecycle', () => {
     const done = ev.find((e) => e.type === 'journeyCompleted') as Extract<SimEvent, { type: 'journeyCompleted' }>;
     expect(done).toMatchObject({ success: true, offline: false, hunterIds: team });
     const mul = config.index.difficulties.get(s.world.town.difficulty)!.rewardMul;
-    expect(done.rewards.gold).toBe(Math.round(300 * mul));
+    expect(done.rewards.gold).toBe(Math.round(300 * mul) + 2 * surplusPrice(config, 'mat.ore', s.world));
     expect(done.rewards.exp).toBe(Math.round(500 * mul));
-    expect(done.rewards.materials).toEqual({ 'mat.ore': 5 });
+    expect(done.rewards.materials).toEqual({ 'mat.ore': 3 });
+    expect(done.rewards.exported).toEqual({ 'mat.ore': 2 });
+    expect(s.world.town.requests['mat.ore']).toBeUndefined();
     expect(done.rewards.items).toHaveLength(1);
-    expect(s.world.town.storage['mat.ore']).toBe(ore + 5);
+    expect(s.world.town.storage['mat.ore']).toBe(ore + 3);
     expect(s.world.town.shop.length).toBe(shop + 1);
     expect(s.world.town.shop.find((i) => i.uid === done.rewards.items[0]!.uid)).toMatchObject({ gearId: 'gear.w.iron', qualityId: 'q.rare' });
     // Town gold also moves through services/shop that tick; the journey part is exact in the stat.
@@ -262,7 +270,28 @@ describe('journey lifecycle', () => {
     const g = config.index.gear.get('gear.w.iron')!;
     const sold = Math.round(Math.round(g.basePrice * config.index.qualities.get('q.rare')!.priceMult) * config.formula.shopMarkdownFloor);
     expect(done.rewards.items).toEqual([{ gearId: 'gear.w.iron', qualityId: 'q.rare', soldFor: sold }]);
-    expect(done.rewards.gold).toBe(Math.round(300 * config.index.difficulties.get(s.world.town.difficulty)!.rewardMul) + sold);
+    // + the exported (unrequested) part of the 5 ore, at surplusPrice.
+    const exported = (done.rewards.exported?.['mat.ore'] ?? 0) * surplusPrice(config, 'mat.ore', s.world);
+    expect((done.rewards.materials['mat.ore'] ?? 0) + (done.rewards.exported?.['mat.ore'] ?? 0)).toBe(5);
+    expect(done.rewards.gold).toBe(Math.round(300 * config.index.difficulties.get(s.world.town.difficulty)!.rewardMul) + sold + exported);
+  });
+
+  it('reward materials follow the Trading Post request rule: requested → storage, the rest exported for Town gold', () => {
+    const s = townSim();
+    s.world.town.gold = 10_000;
+    s.world.town.autoCraft = false;
+    s.world.town.autoInvest = false;
+    s.world.town.investPlan = null;
+    s.world.town.requests = {};
+    send(s, { type: 'journey.start', journeyId: 'j.test', hunterIds: ids(s, 1) });
+    s.world.journeys[0]!.successChance = 1;
+    const ore = s.world.town.storage['mat.ore'] ?? 0;
+    // Resolve directly (no tick in between) so nothing else touches storage/RNG.
+    s.world.journeys[0]!.remainingMs = 1;
+    const [done] = s.runBetweenTicks((ctx) => advanceJourneys(ctx, 1));
+    expect(done!.rewards.materials).toEqual({});
+    expect(done!.rewards.exported).toEqual({ 'mat.ore': 5 });
+    expect(s.world.town.storage['mat.ore'] ?? 0).toBe(ore);
   });
 
   it('recall brings the team home now with no reward', () => {

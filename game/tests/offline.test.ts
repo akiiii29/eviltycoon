@@ -2,8 +2,12 @@ import { loadConfig } from '../src/core/config/load';
 import type { GameConfig } from '../src/core/config/types';
 import { expToNext, needMax } from '../src/core/formulas';
 import {
-  applyOffline, estimateOffline, measureRates, newTracker, offlineGap, recordSample, type OfflineTracker,
+  advanceOfflineWallClock, applyOffline, estimateOffline, measureRates, newTracker, offlineGap, offlineWallClockMs, recordSample,
+  type OfflineTracker,
 } from '../src/core/offline';
+import { EventBuffer } from '../src/core/events';
+import { gainExp } from '../src/core/progress';
+import type { SystemContext } from '../src/core/system';
 import { deserialize, serialize } from '../src/core/save/save';
 import { createWorld, Simulation } from '../src/core/simulation';
 import { materialDemand } from '../src/core/systems/trading';
@@ -19,6 +23,8 @@ function configWith(over: Record<string, number>): GameConfig {
   Object.assign(raw.formula_params as Record<string, number>, over);
   return loadConfig(raw);
 }
+/** Flat-rate estimate (the pre-growth-model behaviour). */
+const flat = configWith({ offlineGrowthModel: 0 });
 
 /** Run a seeded game for `minutes`, sampling every tick like the client does every frame. */
 function play(cfg: GameConfig, seed: number, minutes: number, sim?: Simulation, tracker?: OfflineTracker | null) {
@@ -83,7 +89,34 @@ describe('offline estimate', () => {
     expect(estimateOffline(config, w, { ...clone(base.tracker), seed: w.seed + 1 }, T0, T0 + HOUR).skipped).toBe('noRates');
   });
 
-  it('is deterministic, scales with time and never negative', () => {
+  it('flat model (offlineGrowthModel 0): linear in time', () => {
+    const w = base.sim.world;
+    const r1 = estimateOffline(flat, w, base.tracker, T0, T0 + HOUR);
+    const r2 = estimateOffline(flat, w, base.tracker, T0, T0 + 2 * HOUR);
+    expect(r1.hunters.length).toBeGreaterThan(0);
+    expect(Math.abs(r2.kills - 2 * r1.kills)).toBeLessThanOrEqual(2 * r1.hunters.length);
+    for (const g of r1.hunters) expect(g.reincarnations).toBe(0);
+  });
+
+  it('does not mutate the world or the tracker', () => {
+    const w = clone(base.sim.world);
+    const t = clone(base.tracker);
+    const before = JSON.stringify(w);
+    const tb = JSON.stringify(t);
+    estimateOffline(config, w, t, T0, T0 + 8 * HOUR);
+    expect(JSON.stringify(w)).toBe(before);
+    expect(JSON.stringify(t)).toBe(tb);
+  });
+
+  it('growth model: hunters that out-level their zone move on, so 8 h earn more levels than the flat rate', () => {
+    const w = base.sim.world;
+    const g = estimateOffline(config, w, base.tracker, T0, T0 + 8 * HOUR);
+    const l = estimateOffline(flat, w, base.tracker, T0, T0 + 8 * HOUR);
+    const lv = (r: typeof g) => r.hunters.reduce((a, h) => a + h.levelAfter - h.levelBefore, 0);
+    expect(lv(g)).toBeGreaterThan(lv(l));
+  });
+
+  it('is deterministic, grows with time and never negative', () => {
     const w = base.sim.world;
     const r1 = estimateOffline(config, w, base.tracker, T0, T0 + HOUR);
     const r1b = estimateOffline(config, w, base.tracker, T0, T0 + HOUR);
@@ -91,7 +124,7 @@ describe('offline estimate', () => {
     expect(r1b).toEqual(r1);
     expect(r1.skipped).toBeNull();
     expect(r1.hunters.length).toBeGreaterThan(0);
-    expect(r2.kills).toBeGreaterThanOrEqual(2 * r1.kills - r1.hunters.length);
+    expect(r2.kills).toBeGreaterThan(r1.kills);
     for (const h of [...r1.hunters, ...r2.hunters]) {
       expect(h.gold).toBeGreaterThanOrEqual(0);
       expect(h.kills).toBeGreaterThanOrEqual(0);
@@ -107,9 +140,12 @@ describe('offline estimate', () => {
   });
 
   it('offlineEfficiency scales gains; 0 credits nothing', () => {
-    const half = configWith({ offlineEfficiency: 0.5 });
+    // Efficiency scales the projected time; with flat rates that is exactly the gains.
+    const half = configWith({ offlineEfficiency: 0.5, offlineGrowthModel: 0 });
     const w = base.sim.world;
-    const full = estimateOffline(config, w, base.tracker, T0, T0 + 2 * HOUR);
+    const full = estimateOffline(flat, w, base.tracker, T0, T0 + 2 * HOUR);
+    const g = estimateOffline(configWith({ offlineEfficiency: 0.5 }), w, base.tracker, T0, T0 + 2 * HOUR);
+    expect(g.kills).toBeLessThan(estimateOffline(config, w, base.tracker, T0, T0 + 2 * HOUR).kills);
     const r = estimateOffline(half, w, base.tracker, T0, T0 + 2 * HOUR);
     const k = full.hunters.reduce((a, h) => a + h.kills, 0);
     expect(Math.abs(r.kills - k / 2)).toBeLessThanOrEqual(full.hunters.length);
@@ -220,6 +256,121 @@ describe('offline apply', () => {
   });
 });
 
+describe('offline reincarnation (progression rules)', () => {
+  /** Base world with the first rated hunter pushed to just below max level. */
+  function nearMax(patch: (w: World) => void = () => {}) {
+    const w = clone(base.sim.world);
+    const t = clone(base.tracker);
+    const id = Object.keys(measureRates(t).hunters)[0]!;
+    const h = w.hunters.find((x) => x.id === id)!;
+    const ctx = { world: w, config, events: new EventBuffer() } as unknown as SystemContext;
+    while (h.level < config.formula.maxLevel - 1) gainExp(ctx, h, expToNext(h.level, config.formula));
+    patch(w);
+    return { w, t, h };
+  }
+
+  it('auto-reincarnates at max level and keeps levelling; apply replays the same path', () => {
+    const { w, t, h } = nearMax();
+    const reinc0 = h.reincarnation;
+    const r = estimateOffline(config, w, t, T0, T0 + 8 * HOUR);
+    const g = r.hunters.find((x) => x.id === h.id)!;
+    expect(g.reincarnations).toBeGreaterThanOrEqual(1);
+    expect(g.lives).toHaveLength(g.reincarnations + 1);
+    expect(g.exp).toBe(g.lives.reduce((a, n) => a + n, 0));
+    expect(g.lives[1]!).toBeGreaterThan(0);
+    const stats0 = w.stats.reincarnations;
+    applyOffline(config, w, r, t);
+    expect(h.reincarnation).toBe(reinc0 + g.reincarnations);
+    expect(h.level).toBe(g.levelAfter);
+    expect(w.stats.reincarnations).toBe(stats0 + g.reincarnations);
+    // Base stats = rolled stats + per-level gains of the new life (progression.reincarnate reset them).
+    expect(h.stats.hp).toBe(h.rollStats.hp + (h.level - 1) * config.formula.levelHpGain);
+    // Reincarnation happens in Town: on the square, fresh AI.
+    expect(h.nodeId).toBe(config.index.squareNode);
+    expect(h.insideBuildingId).toBeNull();
+    // And the sim keeps running.
+    const sim = new Simulation(config, w);
+    for (let i = 0; i < 300; i++) sim.step();
+    expect(sim.world.hunters.find((x) => x.id === h.id)!.reincarnation).toBe(reinc0 + g.reincarnations);
+  });
+
+  it('no reincarnation with auto-reincarnate off or at the cap: EXP at max level is lost', () => {
+    for (const patch of [
+      (w: World) => { w.town.autoReincarnate = false; },
+      (w: World) => { for (const h of w.hunters) h.reincarnation = config.formula.maxReincarnation; },
+    ]) {
+      const { w, t, h } = nearMax(patch);
+      const reinc0 = h.reincarnation;
+      const r = estimateOffline(config, w, t, T0, T0 + 8 * HOUR);
+      const g = r.hunters.find((x) => x.id === h.id)!;
+      expect(g.reincarnations).toBe(0);
+      expect(g.levelAfter).toBe(config.formula.maxLevel);
+      applyOffline(config, w, r, t);
+      expect(h.reincarnation).toBe(reinc0);
+      expect(h.level).toBe(config.formula.maxLevel);
+      expect(h.exp).toBe(0);
+    }
+  });
+});
+
+describe('offline wall-clock timers (constructions, arrivals)', () => {
+  const sec = 1000;
+  function withUpgrade(remainingMs: number) {
+    const w = clone(base.sim.world);
+    const s = w.town.buildings.find((b) => b.buildingId !== undefined && !b.upgrade && b.level >= 1)!;
+    s.upgrade = { toLevel: s.level + 1, remainingMs, totalMs: remainingMs, gold: 0, materials: {}, importGold: 0, importedUnits: 0, auto: false };
+    return { sim: new Simulation(config, w), s };
+  }
+
+  it('finishes constructions/upgrades whose time ran out during the gap (wall clock, not capped)', () => {
+    const { sim, s } = withUpgrade(10 * HOUR); // longer than offlineMaxHours: still finishes
+    const level = s.level;
+    const ups = sim.world.stats.buildingUpgrades ?? 0;
+    const res = sim.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, offlineWallClockMs(T0, T0 + 11 * HOUR)));
+    const b = sim.world.town.buildings.find((x) => x.id === s.id)!;
+    expect(b.level).toBe(level + 1);
+    expect(b.upgrade).toBeNull();
+    expect(res.buildings).toEqual([{ instanceId: s.id, buildingId: s.buildingId, level: level + 1 }]);
+    expect(sim.world.stats.buildingUpgrades).toBe(ups + 1);
+    expect(sim.drainEvents().some((e) => e.type === 'buildingCompleted' && e.instanceId === s.id)).toBe(true);
+  });
+
+  it('a shorter gap only counts the timer down; unknown save time does nothing', () => {
+    const { sim, s } = withUpgrade(60 * sec);
+    expect(sim.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, 20 * sec)).buildings).toEqual([]);
+    expect(sim.world.town.buildings.find((x) => x.id === s.id)!.upgrade!.remainingMs).toBe(40 * sec);
+    const before = JSON.stringify(sim.world);
+    sim.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, offlineWallClockMs(0, T0)));
+    expect(JSON.stringify(sim.world)).toBe(before);
+  });
+
+  it('new hunters arrive while Town slots are free (one per arrivalIntervalSec, up to the free slots)', () => {
+    const interval = config.formula.arrivalIntervalSec * sec;
+    const slots = config.formula.hunterSlots;
+    const make = () => {
+      const w = clone(base.sim.world);
+      w.hunters = w.hunters.slice(0, slots - 3);
+      w.town.arrivalTimerMs = 0;
+      return new Simulation(config, w);
+    };
+    const a = make();
+    const ra = a.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, 2 * interval + interval / 2));
+    expect(ra.arrivals).toHaveLength(2);
+    expect(a.world.hunters).toHaveLength(slots - 1);
+    expect(a.world.town.arrivalTimerMs).toBe(interval / 2);
+    for (const id of ra.arrivals) expect(a.world.hunters.find((h) => h.id === id)!.nodeId).toBe(config.index.squareNode);
+    const b = make();
+    expect(b.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, 5 * HOUR)).arrivals).toHaveLength(3);
+    expect(b.world.hunters).toHaveLength(slots);
+    expect(b.world.town.arrivalTimerMs).toBe(0);
+    // Full town: nobody arrives, the RNG is untouched.
+    const c = new Simulation(config, clone(base.sim.world));
+    const rng = JSON.stringify(c.world.rng);
+    expect(c.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, 5 * HOUR)).arrivals).toEqual([]);
+    expect(JSON.stringify(c.world.rng)).toBe(rng);
+  });
+});
+
 describe('save envelope', () => {
   it('old saves without samples load with offline = null', () => {
     const w = createWorld(config, 3);
@@ -270,8 +421,8 @@ describe('offline estimate vs. real fast-forward (60 min)', () => {
     return { killErr, estLv, actLv };
   }
 
-  // Measured with tools-style runs (seeds 1-3, warm 30/60/150/240 min): kills -43..+26 %, worst while the sim is
-  // accelerating (60-120 min: gear/zone upgrades double the kill rate). See TECH_SPEC §9.
+  // Full table: `npx vite-node tools/offline-accuracy.ts` (seeds 1-3, warm 30/60/150/240 min). Growth model: kills
+  // -26..+28 %, levels -45..+18 %, worst right before the gear-gated zone jump at 60-120 min. See TECH_SPEC §9.
   it('estimates kills and levels within loose bounds (seed 1, after 30 min of play)', () => {
     for (const seed of [1]) {
       const r = compare(seed, 30);

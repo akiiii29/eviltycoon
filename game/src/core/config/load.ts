@@ -316,6 +316,7 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'taxRate', 'taxMinRate', 'taxMaxRate', 'taxMoodFreeRate', 'taxMoodPerKill',
   'journeyTeamMax', 'journeyMaxActive', 'journeySuccessAtRec', 'journeySuccessExp', 'journeySuccessMin', 'journeySuccessMax',
   'journeyReturnNeedFrac',
+  'offlineGrowthModel', 'offlineModelStepSec', 'offlineModelCalMin', 'offlineModelCalMax', 'offlineHuntDuty', 'offlineTripSec',
 ];
 
 export class ConfigError extends Error {
@@ -437,6 +438,12 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     if (typeof o.journeySuccessMin === 'number' && typeof o.journeySuccessMax === 'number' && o.journeySuccessMin > o.journeySuccessMax) {
       issues.push({ path: 'formula_params.journeySuccessMin', message: 'must be <= journeySuccessMax' });
     }
+    range('offlineGrowthModel', 0, 1);
+    range('offlineModelStepSec', 10, 3600);
+    range('offlineModelCalMin', 0, 1);
+    range('offlineModelCalMax', 1, 100);
+    range('offlineHuntDuty', 0.01, 1);
+    range('offlineTripSec', 0, 3600);
   }
 
   const grades = raw.stat_grade;

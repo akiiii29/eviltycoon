@@ -14,6 +14,7 @@ npm test                                 # unit + integration test
 npm run config:check                     # kiểm tra config/*.json
 npm run build                            # typecheck + build production
 npx vite-node tools/headless.ts 60 1 10  # chạy 60 phút game không render (seed 1), timeline mỗi 10 phút + thống kê để tuning
+npx vite-node tools/offline-accuracy.ts 1,2,3   # sai số ước lượng offline 60 phút so với chạy thật (sau 30/60/150/240 phút chơi)
 ```
 
 Mọi công thức nằm ở `src/core/formulas.ts`, hệ số và ngưỡng AI ở `config/formula_params.json`. Mô hình combat (DEF, chênh level, crit, né, cộng dồn, sức mạnh/độ hợp vùng): `TECH_SPEC.md` §5.3, §7.1. Số liệu vẫn là đề xuất chờ design chốt.
@@ -33,7 +34,7 @@ Mọi công thức nằm ở `src/core/formulas.ts`, hệ số và ngưỡng AI 
 | `src/core/commands.ts` | Command của người chơi/debug; command sai sinh event `commandRejected`. |
 | `src/core/save/` | Serialize, migration theo `schemaVersion`, storage IndexedDB/memory. |
 | `src/core/systems/journey.ts` | Journey (TECH_SPEC §5.11): đội tối đa 3 hunter đi xa theo `config/journey.json`, sức mạnh đội từ mô hình combat, chạy cả offline. |
-| `src/core/offline.ts` | Tiến trình offline: đo tốc độ khi chơi (mẫu lưu trong envelope save), ước lượng + áp dụng lúc mở lại, trần 8 giờ (TECH_SPEC §9). |
+| `src/core/offline.ts` | Tiến trình offline: đo tốc độ khi chơi (mẫu lưu trong envelope save), ước lượng + áp dụng lúc mở lại, mô hình tăng trưởng theo vùng/level + tái sinh, trần 8 giờ; journey/công trình/hunter mới đến chạy theo thời gian thực (TECH_SPEC §9). |
 | `src/client/` | Render Three.js (pipeline pixel: render target thấp + nearest), debug overlay, autosave 30 s. |
 | `tests/` | Vitest. |
 
