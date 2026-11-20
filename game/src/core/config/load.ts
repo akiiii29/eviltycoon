@@ -237,9 +237,9 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'bagCapacity', 'townStartingGold', 'spendRatio', 'minUpgradeGain', 'enhanceStatPerLevel', 'enhanceGoldReserveMul',
   'craftLevelAhead', 'bagReturnFrac',
   'maxLevel', 'maxReincarnation', 'reincStatBonus', 'traitPointsPerReinc', 'traitPointLevelStep',
-  'craftGoldFrac', 'feeTownShare', 'shopStaleSec', 'shopMarkdownPct', 'shopMarkdownFloor', 'shopScrapSec', 'monsterCritMultiplier',
+  'craftGoldFrac', 'feeTownShare', 'shopStaleSec', 'shopMarkdownPct', 'shopMarkdownFloor', 'shopFloorHoldSec', 'monsterCritMultiplier',
   'requestMaxCopies', 'requestZoneBonus', 'requestMaxUnits', 'tradeSaleTax', 'servicePriceLevelPct',
-  'tradeSurplusPriceFrac', 'tradeSurplusFloorMul', 'craftAffordFrac',
+  'tradeSurplusPriceFrac', 'tradeSurplusFloorMul', 'craftAffordFrac', 'craftMinSellChance',
 ];
 
 export class ConfigError extends Error {
@@ -286,6 +286,16 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('tradeSurplusPriceFrac', 0, 1);
     range('tradeSurplusFloorMul', 0, 1000);
     range('craftAffordFrac', 0, 10);
+    range('craftMinSellChance', 0, 1);
+    // Shop markdown schedule: the floor must be reachable (and offered) before an item is scrapped.
+    // The scrap age is derived from it (crafting.shopScrapAgeSec), so only the inputs need checking.
+    range('shopStaleSec', 1, 1e6);
+    range('shopMarkdownPct', 1e-6, 100);
+    range('shopMarkdownFloor', 0.01, 1);
+    range('shopFloorHoldSec', -1, 1e6);
+    if ('shopScrapSec' in o) {
+      issues.push({ path: 'formula_params.shopScrapSec', message: 'removed: scrap age = markdown steps to the floor × shopStaleSec + shopFloorHoldSec' });
+    }
   }
 
   const grades = raw.stat_grade;
