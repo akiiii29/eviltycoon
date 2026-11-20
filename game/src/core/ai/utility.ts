@@ -4,6 +4,8 @@ import { gearMainValue, hunterPower, needFrac, slotValue, urgentFrac, zoneFit, z
 import { personalityFactor } from '../hunterFactory';
 import type { NavGraph } from '../pathfinding';
 import { canLearnTrait, nextSkillStudy } from '../systems/academy';
+import { servicePrice } from '../systems/services';
+import { bagHasSellable, bagUnrequested, materialDemand, requestZoneMul, type Demand } from '../systems/trading';
 import { bagCount, type Goal, type Hunter, type ShopItem, type World } from '../world';
 
 export interface Candidate {
@@ -209,14 +211,31 @@ export function bestLearn(config: GameConfig, h: Hunter): { kind: 'skill' | 'tra
   return trait ? { kind: 'trait', id: trait.id, cost: trait.cost } : null;
 }
 
-/** True when the bag holds at least one unit the town can afford to buy (avoids a sell goal that sells nothing). */
-export function townCanBuyFrom(config: GameConfig, world: World, h: Hunter): boolean {
-  for (const id in h.bag) {
-    if ((h.bag[id] ?? 0) <= 0) continue;
-    const price = config.index.materials.get(id)?.price ?? Infinity;
-    if (world.town.gold >= price) return true;
+/**
+ * True when the bag holds at least one REQUESTED unit the town can afford to buy (avoids a sell goal that sells nothing).
+ * `demand` defaults to the current Trading Post requests (materialDemand).
+ */
+export function townCanBuyFrom(config: GameConfig, world: World, h: Hunter, demand: Demand = materialDemand(config, world)): boolean {
+  return bagHasSellable(config, world, h.bag, demand);
+}
+
+/**
+ * Trading Post requests steer zone CHOICE only: each viable zone (zoneFit > 0) gets
+ * requestZoneMul / (max requestZoneMul over viable zones), so the hunt score never rises above what it was
+ * without requests (hunting vs. town goals is unchanged when the best zone is requested, slightly lower if not),
+ * and a requested zone beats an unrequested one of similar fit. Zones the hunter cannot survive never get a bonus.
+ */
+export function huntZoneMuls(config: GameConfig, power: number, world: World, demand: Demand): Map<string, number> {
+  const raw = new Map<string, number>();
+  let max = 0;
+  for (const z of config.zones) {
+    if (zoneFit(power, zonePower(config, world, z), config.formula) <= 0) continue;
+    const m = requestZoneMul(config, z, demand);
+    raw.set(z.id, m);
+    max = Math.max(max, m);
   }
-  return false;
+  if (max > 0) for (const [id, m] of raw) raw.set(id, m / max);
+  return raw;
 }
 
 /** Scores every available goal (without noise), highest first. */
@@ -228,24 +247,29 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
   const power = hunterPower(config, h);
   const huntMul = personalityFactor(config, h, 'goal.hunt');
   const fill = bagFill(config, h);
+  const demand = materialDemand(config, world);
 
+  const zoneMul = huntZoneMuls(config, power, world, demand);
   for (const z of config.zones) {
     let s = zoneFit(power, zonePower(config, world, z), f) * ok * huntMul;
+    if (s > 0) s *= zoneMul.get(z.id) ?? 1;
     if (s > 0 && h.ai.goal?.type === 'hunt' && h.ai.goal.zoneId === z.id) s += f.huntStickiness;
     if (s > 0) out.push({ goal: { type: 'hunt', zoneId: z.id }, score: s, label: `hunt ${z.id}` });
   }
 
-  const sellable = townCanBuyFrom(config, world, h);
+  const sellable = townCanBuyFrom(config, world, h, demand);
+  // A full bag holding unrequested materials blocks requested drops; the post discards those, so the trip clears room.
+  const dump = fill >= f.bagReturnFrac && bagUnrequested(h.bag, demand) > 0;
   if (zoneNow) {
     // In the field: services are only reachable by going home first; a full bag also sends the hunter home,
-    // but only if the trading post can actually buy something (otherwise hunters would shuttle back and forth).
-    const bagScore = fill >= f.bagReturnFrac && sellable ? 1.2 : 0;
+    // but only if the trading post will buy or discard something (otherwise hunters would shuttle back and forth).
+    const bagScore = fill >= f.bagReturnFrac && (sellable || dump) ? 1.2 : 0;
     out.push({ goal: { type: 'returnTown' }, score: Math.max(1 - ok, bagScore), label: 'returnTown' });
   } else {
     for (const b of config.buildings) {
       if (b.kind !== 'service' || !b.need || b.price === undefined) continue;
       const frac = needFrac(config, h, b.need);
-      if (frac >= 0.98 || h.gold < b.price) continue;
+      if (frac >= 0.98 || h.gold < servicePrice(config, h, b)) continue;
       const base = frac < f.softNeedFrac ? 0.6 + 0.4 * (1 - frac) : 0.5 * (1 - frac);
       const s = base * personalityFactor(config, h, `goal.service.${b.need}`);
       out.push({ goal: { type: 'service', buildingId: b.id }, score: s, label: `service ${b.need}` });
@@ -253,7 +277,7 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
 
     // Economy (M2): damped when needs are low so services still win.
     const econMul = Math.max(ok, 0.5);
-    if (sellable) {
+    if (sellable || dump) {
       out.push({ goal: { type: 'sell' }, score: (0.4 + 1.0 * fill) * econMul, label: 'sell' });
     }
     const buy = bestShopPurchase(config, world, h);

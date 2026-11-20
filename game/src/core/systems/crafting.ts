@@ -1,7 +1,8 @@
 import type { GameConfig, GearDef, GearQualityDef } from '../config/types';
 import { gearMainValue, slotValue } from '../formulas';
+import { personalityFactor } from '../hunterFactory';
 import type { System, SystemContext } from '../system';
-import type { World } from '../world';
+import type { ShopItem, World } from '../world';
 
 /** Max items on sale (from the shop building). */
 export function shopCapacity(config: GameConfig): number {
@@ -95,17 +96,22 @@ export function referenceQuality(config: GameConfig): GearQualityDef | undefined
  * shopMarkdownPct% of listPrice, never below round(listPrice × shopMarkdownFloor);
  * after shopScrapSec unsold the item is scrapped (removed, no refund).
  * The price is derived from the item's age each tick, so it is idempotent and save-safe.
+ * Returns the items scrapped this call (the crafting system reports them as gearScrapped).
  */
-export function updateShopTurnover(world: World, config: GameConfig): void {
+export function updateShopTurnover(world: World, config: GameConfig): ShopItem[] {
   const f = config.formula;
   const staleMs = f.shopStaleSec * 1000;
   const scrapMs = f.shopScrapSec * 1000;
   const shop = world.town.shop;
+  const scrapped: ShopItem[] = [];
   let w = 0;
   for (let r = 0; r < shop.length; r++) {
     const it = shop[r]!;
     const age = world.timeMs - it.listedAtMs;
-    if (scrapMs > 0 && age >= scrapMs) continue; // scrapped
+    if (scrapMs > 0 && age >= scrapMs) {
+      scrapped.push(it);
+      continue;
+    }
     if (staleMs > 0) {
       const steps = Math.max(0, Math.floor(age / staleMs));
       const floor = Math.round(it.listPrice * f.shopMarkdownFloor);
@@ -115,14 +121,14 @@ export function updateShopTurnover(world: World, config: GameConfig): void {
     shop[w++] = it;
   }
   shop.length = w;
+  return scrapped;
 }
 
 /**
  * Best value a same-slot item already on sale (actual quality) or being crafted (reference quality)
  * offers, counting only items whose gear level ≤ this recipe's (usable no later than the new item).
  */
-function coveredValue(ctx: SystemContext, gear: GearDef, refQualityId: string): number {
-  const { world, config } = ctx;
+function coveredValue(config: GameConfig, world: World, gear: GearDef, refQualityId: string): number {
   let v = 0;
   for (const it of world.town.shop) {
     const d = config.index.gear.get(it.gearId);
@@ -139,20 +145,36 @@ function coveredValue(ctx: SystemContext, gear: GearDef, refQualityId: string): 
 }
 
 /**
- * Number of hunters (level ≥ gear.level − craftLevelAhead) for whom this recipe at reference quality
+ * Number of hunters (level ≥ gear.level − craftLevelAhead, shop budget ≥ craftAffordFrac × basePrice) for whom this recipe at reference quality
  * would be an upgrade of ≥ minUpgradeGain over max(their slot value, what is already covered).
  * Gain uses the same formula as the AI's shop purchase: (new − ref) / max(ref, 1).
  */
 export function recipeBeneficiaries(ctx: SystemContext, gear: GearDef): number {
-  const { world, config } = ctx;
+  return countUpgrades(ctx.config, ctx.world, gear, true);
+}
+
+/**
+ * Like recipeBeneficiaries but ignoring what is already on sale or being crafted: how many hunters this
+ * recipe would upgrade at all. Drives the Trading Post's automatic material requests, so materials for
+ * the next copies are bought while the current one is still on the shelf.
+ */
+export function recipeWanters(config: GameConfig, world: World, gear: GearDef): number {
+  return countUpgrades(config, world, gear, false);
+}
+
+function countUpgrades(config: GameConfig, world: World, gear: GearDef, useCovered: boolean): number {
   const f = config.formula;
   const refQ = referenceQuality(config);
   if (!refQ) return 0;
   const value = gearMainValue(config, { uid: '', gearId: gear.id, qualityId: refQ.id, enhance: 0 });
-  const covered = coveredValue(ctx, gear, refQ.id);
+  const covered = useCovered ? coveredValue(config, world, gear, refQ.id) : 0;
+  // Only hunters who could plausibly pay for it count (shop budget ≥ craftAffordFrac × basePrice): crafting
+  // gear nobody can afford just gets it scrapped later, wasting the craft gold and the materials bought for it.
+  const minBudget = (f.craftAffordFrac ?? 0) * gear.basePrice;
   let n = 0;
   for (const h of world.hunters) {
     if (h.level < gear.level - f.craftLevelAhead) continue;
+    if (minBudget > 0 && h.gold * f.spendRatio * personalityFactor(config, h, 'spendRatio') < minBudget) continue;
     const ref = Math.max(slotValue(config, h, gear.slot), covered);
     if ((value - ref) / Math.max(ref, 1) >= f.minUpgradeGain) n++;
   }
@@ -188,7 +210,10 @@ export const craftingSystem: System = {
   name: 'crafting',
   update(ctx) {
     const { world, config, dtMs } = ctx;
-    updateShopTurnover(world, config);
+    for (const it of updateShopTurnover(world, config)) {
+      world.stats.gearScrapped = (world.stats.gearScrapped ?? 0) + 1;
+      ctx.events.emit(world.tick, { type: 'gearScrapped', itemUid: it.uid, gearId: it.gearId, qualityId: it.qualityId, price: it.price });
+    }
     const cap = shopCapacity(config);
     for (const b of config.buildings) {
       if (b.kind !== 'craft') continue;

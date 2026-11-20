@@ -257,7 +257,7 @@ export class DebugOverlay {
       tick <b>${world.tick}</b> · time <b>${fmtTime(world.timeMs)}</b> · ${this.sim.paused ? '<b>PAUSED</b>' : `x${this.sim.speed}`}<br>
       hunters ${world.hunters.length}/${config.formula.hunterSlots} · next arrival ${Math.max(0, config.formula.arrivalIntervalSec - world.town.arrivalTimerMs / 1000).toFixed(0)}s<br>
       town gold <b>${world.town.gold}</b> · monsters ${world.monsters.length} · kills ${world.stats.kills} · deaths ${world.stats.deaths} · services ${world.stats.serviceUses}<br>
-      bán NL ${world.stats.materialsSold} · chế ${world.stats.crafted} · mua ${world.stats.gearBought} · cường hóa ${world.stats.enhanceSuccess}/${world.stats.enhanceTries}<br>
+      bán NL ${world.stats.materialsSold} · bỏ NL ${world.stats.materialsDiscarded ?? 0} · bỏ đồ ${world.stats.gearScrapped ?? 0} · shop ${world.town.shop.length} · chế ${world.stats.crafted} · mua ${world.stats.gearBought} · cường hóa ${world.stats.enhanceSuccess}/${world.stats.enhanceTries}<br>
       kỹ năng ${world.stats.skillCasts} · chuyển nghề ${world.stats.jobChanges} · tái sinh ${world.stats.reincarnations} · học ${world.stats.learned}
       ${this.status ? `<br><span class="debug-status">${esc(this.status)}</span>` : ''}`;
 
@@ -304,6 +304,8 @@ export class DebugOverlay {
 function economyLine(config: GameConfig, e: SimEvent): string | null {
   switch (e.type) {
     case 'materialsSold': return `${e.hunterId} bán ${e.units} NL +${e.gold}g`;
+    case 'materialsDiscarded': return `${e.hunterId} bỏ ${e.units} NL không được yêu cầu`;
+    case 'gearScrapped': return `cửa hàng bỏ ${gearName(config, e.gearId)} [${qualityName(config, e.qualityId)}] (ế)`;
     case 'craftStarted': return `${buildingName(config, e.buildingId)} bắt đầu chế ${gearName(config, e.gearId)}`;
     case 'gearCrafted': return `${buildingName(config, e.buildingId)} chế xong ${gearName(config, e.gearId)} [${qualityName(config, e.qualityId)}]`;
     case 'gearBought': return `${e.hunterId} mua ${gearName(config, e.gearId)} -${e.price}g`;

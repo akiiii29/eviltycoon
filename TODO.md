@@ -3,21 +3,23 @@
 Tình trạng hiện tại: đã xong M0–M3 và một lượt cân bằng (xem `game/README.md`, `TECH_SPEC.md`).
 Mọi công thức và số liệu đều là **placeholder** chờ design chốt.
 
-Ký hiệu: 🔴 lỗi/cần sửa sớm · 🟡 cân bằng/cải thiện · ⚪ chưa làm (tính năng)
+Ký hiệu: 🔴 lỗi/cần sửa sớm · 🟡 cân bằng/cải thiện · ⚪ chưa làm (tính năng) · ✅ đã xong
 
 ---
 
 ## 1. Kinh tế
 
-- 🔴 **Kinh tế cuối game sụp:** sau ~6–8 giờ game, vàng Town còn 48–1.800, cửa hàng gần trống, trong khi mỗi hunter giữ ~3.000–6.000 vàng không có chỗ tiêu.
-  - Nguyên nhân: Trạm Thu Mua mua **mọi** nguyên liệu, trả hết vàng Town cho hunter; craft món cấp cao cần vàng dự trữ lớn (`autoCraftReserve` = 3 × giá nguyên liệu đắt nhất của tier).
-  - Hướng sửa đề xuất (giống GDD §5 "Trading Post: yêu cầu vật liệu"): Trạm Thu Mua chỉ mua theo **yêu cầu** (tự sinh từ auto-craft hoặc người chơi đặt), AI ưu tiên vùng rơi nguyên liệu đang được yêu cầu. Phương án phụ: thuế khi bán, giá giảm khi kho dư, dịch vụ đắt dần theo level.
-- 🟡 **Không có chỗ tiêu vàng phía hunter** (vàng hunter phình to cuối game).
-- 🟡 **Kho Town dư nguyên liệu** (hàng trăm gel/quặng/lõi đá không dùng).
-- 🟡 **~25% đồ craft bị bỏ** (crafted ~160 so với bought ~120 sau 4 giờ) → phí vàng craft. Xem lại tỷ lệ chất lượng hoặc `shopScrapSec`.
+- ✅ **Kinh tế cuối game sụp — đã sửa** (Trạm Thu Mua theo yêu cầu vật liệu, `src/core/systems/trading.ts`, TECH_SPEC §5.7, world v6).
+  - Trước: sau ~6–8 giờ game vàng Town còn 22–1.831, shop 0–2 món, kho 2.000–2.400 NL, mỗi hunter giữ ~3.800–6.800 vàng (tb).
+  - Sửa: Trạm Thu Mua chỉ mua NL **được yêu cầu** (tự sinh từ nhu cầu auto-craft + lệnh `town.requestMaterial` của người chơi); phần vượt yêu cầu không vào kho, Town chỉ mua "để xuất đi" với giá 60% khi vàng Town trên sàn (`tradeSurplusFloorMul × autoCraftReserve`), còn lại hunter bỏ. AI ưu tiên vùng rơi NL đang được yêu cầu (chỉ đổi lựa chọn vùng, không tăng điểm săn). Đòn bẩy phụ: giá dịch vụ tăng 1%/level (`servicePriceLevelPct`), chỉ tính hunter đủ tiền ≥ 20% giá món là người hưởng lợi khi chọn công thức (`craftAffordFrac`), thuế bán `tradeSaleTax` (đang 0).
+  - Sau (headless 8 giờ, seed 1–5): vàng Town 10.000–22.800, shop 11–12 món, kho 112–175 NL, vàng hunter tb 2.300–3.500; Lv tb lúc 2 giờ 17–24 (trước 20–25), lúc 8 giờ 75–82 (trước 73–84).
+  - Còn lại: sau ~9–12 giờ (sau tái sinh) vàng Town có thể giảm về vài nghìn (vẫn > 0, shop còn hàng) vì hunter tái sinh trả dịch vụ rẻ lại trong khi auto-craft và mua NL đắt vẫn chạy; cần theo dõi khi làm offline/Bounty. Chưa có UI để người chơi đặt yêu cầu (chỉ có command).
+- 🟡 **Không có chỗ tiêu vàng phía hunter** — đỡ hơn (vàng hunter tb lúc 8 giờ 2.300–3.500, trước 3.800–6.800, và vẫn tăng dần sau đó); cần thêm chỗ tiêu thật (potion, Bank, upgrade tier…).
+- ✅ **Kho Town dư nguyên liệu** — kho chỉ nhận phần được yêu cầu (≈100–200 NL thay vì 2.000+). Save cũ vẫn giữ kho đã chất đống (migration không xóa).
+- 🟡 **~40% đồ craft bị bỏ** (8 giờ: crafted 207–240, bought 116–133, `gearScrapped` 80–102) → phí vàng craft. `craftAffordFrac` 0,5 làm shop trống vì hunter không bao giờ đủ tiền; 0,2 đang dùng. Xem lại tỷ lệ chất lượng, `shopScrapSec`, hoặc tính "người hưởng lợi" theo khả năng mua.
 - 🟡 **Sàn giảm giá không bao giờ chạm:** với `shopStaleSec` 600, `shopMarkdownPct` 10, `shopScrapSec` 1800 thì giá chỉ xuống 80% trước khi bị bỏ; `shopMarkdownFloor` 0,5 vô dụng.
-- 🟡 **Quy tắc "đã có hàng" khi auto-craft** tính 1 món/slot cho mọi hunter → mỗi slot chỉ cung cấp từng món một. Đổi sang tính theo số bản nếu thấy craft bị nghẽn.
-- 🟡 Thiếu event/stat `gearScrapped`; `tools/headless.ts` chưa in số món trong shop.
+- 🟡 **Quy tắc "đã có hàng" khi auto-craft** tính 1 món/slot cho mọi hunter → mỗi slot chỉ cung cấp từng món một. Đổi sang tính theo số bản nếu thấy craft bị nghẽn. (Yêu cầu NL tự động đã bỏ qua quy tắc này để mua sẵn NL cho bản tiếp theo.)
+- ✅ Event/stat `gearScrapped` (và `materialsDiscarded`); `tools/headless.ts` in timeline gồm số món trong shop, kho, yêu cầu, vàng hunter và sổ thu/chi vàng Town.
 
 ## 2. AI hunter
 
@@ -42,7 +44,7 @@ Ký hiệu: 🔴 lỗi/cần sửa sớm · 🟡 cân bằng/cải thiện · �
 
 ### M4
 - ⚪ Bounty (GDD §9): Town đặt bounty, hunter nhận thưởng theo kill, Town nhận vàng khi xong; Torment tăng tỉ lệ rơi.
-- ⚪ Trading Post theo yêu cầu vật liệu (xem mục 1).
+- ✅ Trading Post theo yêu cầu vật liệu (xem mục 1; còn thiếu UI đặt yêu cầu).
 - ⚪ Journey (GDD §9): 3 NPC, chạy offline, team power, tỉ lệ thành công.
 - ⚪ Tiến trình offline (TECH_SPEC §9): ước lượng theo tốc độ trung bình, trần 8 giờ, popup tổng kết.
 - ⚪ Kiểm thử theo checklist GDD §13.

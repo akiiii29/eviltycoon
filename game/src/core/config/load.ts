@@ -235,6 +235,8 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'craftLevelAhead', 'bagReturnFrac',
   'maxLevel', 'maxReincarnation', 'reincStatBonus', 'traitPointsPerReinc', 'traitPointLevelStep',
   'craftGoldFrac', 'feeTownShare', 'shopStaleSec', 'shopMarkdownPct', 'shopMarkdownFloor', 'shopScrapSec', 'monsterCritMultiplier',
+  'requestMaxCopies', 'requestZoneBonus', 'requestMaxUnits', 'tradeSaleTax', 'servicePriceLevelPct',
+  'tradeSurplusPriceFrac', 'tradeSurplusFloorMul', 'craftAffordFrac',
 ];
 
 export class ConfigError extends Error {
@@ -268,6 +270,19 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     for (const [k, v] of Object.entries(o)) {
       if (typeof v !== 'number' || !Number.isFinite(v)) issues.push({ path: `formula_params.${k}`, message: 'expected number' });
     }
+    // Trading Post requests / price levers: ranges that would break the economy if wrong.
+    const range = (k: string, min: number, max: number) => {
+      const v = o[k];
+      if (typeof v === 'number' && (v < min || v > max)) issues.push({ path: `formula_params.${k}`, message: `expected ${min}..${max}` });
+    };
+    range('requestMaxCopies', 0, 100);
+    range('requestZoneBonus', 0, 10);
+    range('requestMaxUnits', 1, 1e6);
+    range('tradeSaleTax', 0, 0.99);
+    range('servicePriceLevelPct', 0, 100);
+    range('tradeSurplusPriceFrac', 0, 1);
+    range('tradeSurplusFloorMul', 0, 1000);
+    range('craftAffordFrac', 0, 10);
   }
 
   const grades = raw.stat_grade;

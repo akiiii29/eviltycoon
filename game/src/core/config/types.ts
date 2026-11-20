@@ -286,6 +286,25 @@ export interface FormulaParams {
   shopScrapSec: number;
   /** Damage multiplier of a monster critical hit (chance = MonsterDef.crit %). */
   monsterCritMultiplier: number;
+  /** Trading Post material requests (GDD §5). The post buys only requested units; the rest is discarded. */
+  /** Auto-request: per useful recipe, keep materials for min(hunters it would upgrade, requestMaxCopies) crafts. */
+  requestMaxCopies: number;
+  /** Hunt score × (1 + requestZoneBonus × requested share of the zone's drop value). */
+  requestZoneBonus: number;
+  /** Max units a player request (town.requestMaterial) may ask for per material. */
+  requestMaxUnits: number;
+  /** Hunter receives round(price × (1 − tradeSaleTax)) per unit; the town pays the same (the tax is simply not paid out). */
+  tradeSaleTax: number;
+  /**
+   * Unrequested materials: the post buys them at round(price × tradeSurplusPriceFrac × (1 − tradeSaleTax)) for export
+   * (never stored), paid only from town gold above tradeSurplusFloorMul × autoCraftReserve; the rest is discarded.
+   */
+  tradeSurplusPriceFrac: number;
+  tradeSurplusFloorMul: number;
+  /** A hunter only counts as a recipe beneficiary (auto-craft, auto-requests) with shop budget ≥ craftAffordFrac × basePrice. */
+  craftAffordFrac: number;
+  /** Service price = round(base × (1 + servicePriceLevelPct / 100 × (level − 1))). */
+  servicePriceLevelPct: number;
   [key: string]: number;
 }
 

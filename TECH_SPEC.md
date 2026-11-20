@@ -119,7 +119,7 @@ Chỉ số cuối = base theo `gearId` × hệ số quality (GDD §6) × đườ
 | `Rest` (Inn) | như trên | `1 − stamina/max` |
 | `BuyGear(slot)` | Shop có món tốt hơn và đủ tiền | `upgradeGain × affordability` |
 | `BuyPotion` | Thiếu potion, đủ tiền | `1 − potionCount/potionTarget` |
-| `SellMaterials` | Bag có nguyên liệu | `bagFill` (tăng mạnh khi > 80%) |
+| `SellMaterials` | Trạm Thu Mua sẽ trả tiền cho ít nhất 1 đơn vị trong bag (xem §5.7), hoặc bag ≥ `bagReturnFrac` và có NL không được yêu cầu (đi bỏ) | `bagFill` (tăng mạnh khi > 80%) |
 | `Enhance/Upgrade` | Đủ tiền và vật liệu | `gain × affordability × riskTolerance` |
 | `Train` | Hunter sợ săn (Coward…) hoặc chênh level lớn | theo GDD §5 Training Ground |
 | `Wander` | fallback | hằng số nhỏ (0.05) |
@@ -136,7 +136,7 @@ ratio      = power / zonePower
 zoneFit    = 0 nếu ratio < 0.7; tối đa ở ratio ≈ 1.1; giảm dần khi ratio > 2 (quá dễ, ít EXP)
 ```
 
-Ngưỡng 0.7 / 1.1 / 2 là **[ĐỀ XUẤT]**. Chief dùng lệnh Move để ghi đè: goal `Hunt(zoneChỉĐịnh)` được giữ cho đến khi xong hoặc có nhu cầu khẩn cấp.
+Ngưỡng 0.7 / 1.1 / 2 là **[ĐỀ XUẤT]**. Yêu cầu vật liệu (§5.7) chỉ đổi **lựa chọn vùng**: mỗi vùng khả dụng (zoneFit > 0) nhân `(1 + requestZoneBonus × tỉ lệ giá trị rơi đang được yêu cầu) / max(hệ số đó của các vùng khả dụng)`, nên điểm săn cao nhất không bao giờ tăng so với khi không có yêu cầu và vùng hunter không sống nổi không bao giờ được cộng. Chief dùng lệnh Move để ghi đè: goal `Hunt(zoneChỉĐịnh)` được giữ cho đến khi xong hoặc có nhu cầu khẩn cấp.
 
 ### 5.4 Mua đồ
 
@@ -161,6 +161,19 @@ Tên và danh sách personality do team tự đặt; schema ở §8.
 ### 5.6 Gợi ý từ Chief (lời nhắc)
 
 Lệnh "nhắc" của người chơi là một **utility bonus có thời hạn**: ví dụ `BuyGear +0.5 trong 60 s`. Không ép, trừ lệnh Move/Activities (ép).
+
+### 5.7 Trạm Thu Mua theo yêu cầu vật liệu (GDD §5) **[ĐÃ LÀM]**
+
+Code: `src/core/systems/trading.ts`, `economy.ts` (`doSell`), tham số trong `formula_params.json`.
+
+- **Yêu cầu tự động** (không lưu trong save, tính lại mỗi lần): với mỗi công thức mà `recipeWanters` ≥ 1 (số hunter mà món ở chất lượng tham chiếu là nâng cấp, level ≥ gear.level − `craftLevelAhead`, và ngân sách shop ≥ `craftAffordFrac × basePrice`; khác `recipeBeneficiaries` ở chỗ không trừ đồ đang bán/đang chế), giữ trong kho đủ NL cho `min(wanters, requestMaxCopies)` lần chế. Yêu cầu = phần kho còn thiếu. Tắt auto-craft → không có yêu cầu tự động.
+- **Yêu cầu của người chơi**: `town.requests` (world v6), đặt bằng lệnh `town.requestMaterial { materialId, count }` (đặt lại số, 0 = hủy; từ chối NL lạ, count không phải số nguyên ≥ 0, count > `requestMaxUnits`). Cộng thêm vào yêu cầu tự động và được lấp trước; giảm dần khi hunter bán.
+- **Khi bán** (theo thứ tự materialId, yêu cầu tính lại cho từng hunter nên 2 hunter cùng tick không lấp trùng):
+  - đơn vị được yêu cầu: Town mua giá `round(price × (1 − tradeSaleTax))` khi còn đủ vàng, vào kho; phần được yêu cầu mà Town chưa đủ vàng thì **giữ lại trong bag**;
+  - đơn vị vượt yêu cầu: **không vào kho**. Nếu vàng Town > `tradeSurplusFloorMul × autoCraftReserve` thì Town mua "để xuất đi" với giá `round(price × tradeSurplusPriceFrac × (1 − tradeSaleTax))`, chỉ dùng phần vàng trên sàn đó; còn lại hunter **bỏ** tại Trạm (event `materialsDiscarded`, stat `materialsDiscarded`).
+  - Ý đồ: Town giàu thì chảy vàng lại cho hunter (giữ nhịp đầu game), Town nghèo thì chỉ chi cho thứ nó dùng; kho không còn chất đống.
+- **Đòn bẩy phụ**: `servicePriceLevelPct` (giá dịch vụ = `round(base × (1 + pct/100 × (level − 1)))`, một hàm `servicePrice` dùng chung cho system, AI và lệnh), `tradeSaleTax` (mặc định 0), `craftAffordFrac`. Giá giảm khi kho dư không cần nữa vì kho chỉ nhận phần được yêu cầu.
+- Shop: món bị bỏ sau `shopScrapSec` sinh event/stat `gearScrapped`.
 
 ## 6. Di chuyển và pathfinding
 
@@ -271,7 +284,7 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 
 - Overlay debug: state AI, goal và điểm utility của hunter đang chọn, path, needs.
 - Log sự kiện kinh tế (nguồn và đích của gold) để cân bằng.
-- Chế độ headless: chạy core 24 giờ game trong vài giây, xuất CSV (gold, level, thời gian trong từng state) để tuning.
+- Chế độ headless: chạy core 24 giờ game trong vài giây, xuất CSV (gold, level, thời gian trong từng state) để tuning. Hiện có `tools/headless.ts [phút] [seed] [phút/snapshot]`: in timeline vàng Town, số món trong shop, kho, bag, yêu cầu, vàng hunter (tb/max), level tb và sổ thu/chi vàng Town theo từng khoảng (chưa xuất CSV).
 
 ## 12. Lộ trình triển khai
 

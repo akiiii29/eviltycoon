@@ -12,7 +12,7 @@ npm run dev                              # http://localhost:5173
 npm test                                 # unit + integration test
 npm run config:check                     # kiểm tra config/*.json
 npm run build                            # typecheck + build production
-npx vite-node tools/headless.ts 60 1     # chạy 60 phút game không render, in thống kê để tuning
+npx vite-node tools/headless.ts 60 1 10  # chạy 60 phút game không render (seed 1), timeline mỗi 10 phút + thống kê để tuning
 ```
 
 Mọi công thức nằm ở `src/core/formulas.ts`, ngưỡng AI ở `config/formula_params.json`; tất cả là **placeholder** chờ design chốt.

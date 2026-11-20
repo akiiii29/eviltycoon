@@ -4,7 +4,7 @@ import type { GearSlot, ModStat, NeedKey, StatKey } from './config/types';
 export type { GearSlot, NeedKey } from './config/types';
 
 /** Bump when the World shape changes and add a migration in save/migrations.ts. */
-export const WORLD_SCHEMA_VERSION = 5;
+export const WORLD_SCHEMA_VERSION = 6;
 
 export type Grade = 'normal' | 'high' | 'highest';
 export type HunterTier = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
@@ -20,7 +20,7 @@ export type Goal =
   | { type: 'returnTown' }
   | { type: 'wander'; nodeId: string }
   | { type: 'dead' }
-  /** M2: sell every bag material at the trading post. */
+  /** M2: sell requested bag materials at the trading post (unrequested ones are discarded there). */
   | { type: 'sell' }
   /** M2: buy a specific shop item (re-validated on arrival). */
   | { type: 'shop'; itemUid: string }
@@ -150,6 +150,11 @@ export interface World {
     difficulty: string;
     unlockedDifficulties: string[];
     autoReincarnate: boolean;
+    /**
+     * v6: player-placed Trading Post requests, materialId → units still wanted (on top of the automatic
+     * requests derived from auto-craft needs, see systems/trading.ts). Decremented as hunters sell.
+     */
+    requests: Record<string, number>;
   };
   /** Arrays (not maps) so iteration order is stable and deterministic. */
   hunters: Hunter[];
@@ -168,6 +173,10 @@ export interface World {
     jobChanges: number;
     reincarnations: number;
     learned: number;
+    /** v6: unrequested material units hunters threw away at the Trading Post. */
+    materialsDiscarded: number;
+    /** v6: shop items removed unsold after shopScrapSec. */
+    gearScrapped: number;
   };
 }
 

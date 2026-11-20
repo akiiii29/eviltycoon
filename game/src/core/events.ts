@@ -11,6 +11,10 @@ export type SimEvent =
   | { type: 'hunterRevived'; tick: number; hunterId: string }
   | { type: 'levelUp'; tick: number; hunterId: string; level: number }
   | { type: 'materialsSold'; tick: number; hunterId: string; units: number; gold: number }
+  /** Unrequested materials thrown away at the Trading Post (it only buys requested ones). */
+  | { type: 'materialsDiscarded'; tick: number; hunterId: string; units: number }
+  /** A shop item left unsold for shopScrapSec was removed (no refund). */
+  | { type: 'gearScrapped'; tick: number; itemUid: string; gearId: string; qualityId: string; price: number }
   | { type: 'craftStarted'; tick: number; buildingId: string; gearId: string }
   | { type: 'gearCrafted'; tick: number; buildingId: string; itemUid: string; gearId: string; qualityId: string }
   | { type: 'gearBought'; tick: number; hunterId: string; itemUid: string; gearId: string; price: number }

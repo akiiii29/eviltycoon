@@ -118,6 +118,24 @@ describe('save/load', () => {
     expect(r.world.town.shop[0]).toMatchObject({ price: 60, listPrice: 60, listedAtMs: 5000 });
   });
 
+  it('migrates v5 saves: empty Trading Post requests and zeroed discard/scrap stats, keeps storage', () => {
+    const w = JSON.parse(JSON.stringify(createWorld(config, 3)));
+    delete w.town.requests;
+    delete w.stats.materialsDiscarded;
+    delete w.stats.gearScrapped;
+    w.town.storage = { 'mat.gel': 300 };
+    w.schemaVersion = 5;
+    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 5, configVersion: config.version, savedAt: 0, world: w }), config.version);
+    expect(r.migratedFrom).toBe(5);
+    expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
+    expect(r.world.town.requests).toEqual({});
+    expect(r.world.town.storage).toEqual({ 'mat.gel': 300 });
+    expect(r.world.stats.materialsDiscarded).toBe(0);
+    expect(r.world.stats.gearScrapped).toBe(0);
+    const s2 = new Simulation(config, r.world);
+    for (let i = 0; i < 600; i++) s2.step();
+  });
+
   it('rejects garbage, foreign files and future schema versions', () => {
     expect(() => deserialize('{', config.version)).toThrow(SaveError);
     expect(() => deserialize('{"a":1}', config.version)).toThrow(/not a save file/);

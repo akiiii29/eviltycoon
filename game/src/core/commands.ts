@@ -4,6 +4,7 @@ import { findHunter, isAlive } from './world';
 import { spawnHunter } from './systems/arrivals';
 import { setGoal } from './systems/ai';
 import { startCraft } from './systems/crafting';
+import { servicePrice } from './systems/services';
 import { reincarnate } from './systems/progression';
 
 /** Player/debug commands. Queued by UI, applied at the start of the next tick (TECH_SPEC §3.1). */
@@ -24,7 +25,12 @@ export type Command =
   /** GDD §8: switch to an unlocked difficulty (affects new monster spawns only). */
   | { type: 'town.setDifficulty'; difficultyId: string }
   /** GDD §8: toggle automatic reincarnation of max-level hunters in town. */
-  | { type: 'town.setAutoReincarnate'; on: boolean };
+  | { type: 'town.setAutoReincarnate'; on: boolean }
+  /**
+   * GDD §5: place a Trading Post request — the post buys up to `count` more units of the material
+   * (on top of the automatic requests). Sets (does not add to) the outstanding count; 0 cancels it.
+   */
+  | { type: 'town.requestMaterial'; materialId: string; count: number };
 
 type Handler<C extends Command> = (ctx: SystemContext, cmd: C) => string | null;
 
@@ -52,7 +58,7 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     const h = findHunter(ctx.world, cmd.hunterId)!;
     const b = ctx.config.index.buildings.get(cmd.buildingId);
     if (!b || b.kind !== 'service') return 'unknown service building';
-    if (h.gold < (b.price ?? 0)) return 'not enough gold';
+    if (h.gold < servicePrice(ctx.config, h, b)) return 'not enough gold';
     return setGoal(ctx, h, { type: 'service', buildingId: b.id }, 'order', true) ? null : 'no path';
   },
   'debug.spawnHunter': (ctx) => {
@@ -98,6 +104,16 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
   },
   'town.setAutoReincarnate': (ctx, cmd) => {
     ctx.world.town.autoReincarnate = !!cmd.on;
+    return null;
+  },
+  'town.requestMaterial': (ctx, cmd) => {
+    if (!ctx.config.index.materials.has(cmd.materialId)) return 'unknown material';
+    const n = cmd.count;
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < 0) return 'invalid count';
+    if (n > ctx.config.formula.requestMaxUnits) return 'count too large';
+    const req = ctx.world.town.requests ?? (ctx.world.town.requests = {});
+    if (n === 0) delete req[cmd.materialId];
+    else req[cmd.materialId] = n;
     return null;
   },
 };

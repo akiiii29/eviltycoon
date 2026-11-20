@@ -1,6 +1,17 @@
+import type { BuildingDef, GameConfig } from '../config/types';
 import { needMax } from '../formulas';
 import type { System } from '../system';
-import { isAlive } from '../world';
+import { isAlive, type Hunter } from '../world';
+
+/**
+ * Price a hunter pays for a service: round(base × (1 + servicePriceLevelPct / 100 × (level − 1))).
+ * Scales with level so late-game hunter gold flows back to the town. Single source for the system, AI and commands.
+ */
+export function servicePrice(config: GameConfig, h: Hunter, b: BuildingDef): number {
+  const base = b.price ?? 0;
+  const pct = config.formula.servicePriceLevelPct ?? 0;
+  return Math.round(base * (1 + (pct / 100) * Math.max(0, h.level - 1)));
+}
 
 /**
  * Town services (GDD §5): a hunter at the door pays once, goes inside, recovers the need,
@@ -29,7 +40,7 @@ export const servicesSystem: System = {
 
       if (goal?.type !== 'service' || h.ai.phase !== 'act') continue;
       const b = config.index.buildings.get(goal.buildingId)!;
-      const price = b.price ?? 0;
+      const price = servicePrice(config, h, b);
       if (h.gold < price) {
         h.ai.goal = null;
         continue;

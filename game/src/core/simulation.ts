@@ -58,11 +58,12 @@ export function createWorld(config: GameConfig, seed: number): World {
       difficulty: config.difficulties[0]!.id,
       unlockedDifficulties: [config.difficulties[0]!.id],
       autoReincarnate: true,
+      requests: {},
     },
     hunters: [],
     monsters: [],
     zones: {},
-    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0 },
+    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0 },
   };
 }
 

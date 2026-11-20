@@ -77,4 +77,14 @@ export const MIGRATIONS: Record<number, Migration> = {
     const shop = (Array.isArray(town.shop) ? town.shop : []) as Record<string, any>[];
     return { ...w, town: { ...town, shop: shop.map((i) => ({ listPrice: i.price, listedAtMs: now, ...i })) } };
   },
+  // v5 → v6 (Trading Post requests): player material requests, discard/scrap stats.
+  5: (w) => {
+    const town = (w.town ?? {}) as Record<string, unknown>;
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    return {
+      ...w,
+      town: { requests: {}, ...town },
+      stats: { materialsDiscarded: 0, gearScrapped: 0, ...stats },
+    };
+  },
 };

@@ -2,6 +2,7 @@ import type { GameConfig, GearSlot } from '../config/types';
 import { hunterStats } from '../formulas';
 import type { System, SystemContext } from '../system';
 import { isAlive, type GearInstance, type Hunter, type ShopItem } from '../world';
+import { materialDemand, salePrice, surplusBudget, surplusPrice } from './trading';
 
 /** Gold cost of the next enhance step for this gear, or null when it is already at max (or unknown). */
 export function enhanceCost(config: GameConfig, g: GearInstance): number | null {
@@ -28,15 +29,27 @@ function done(h: Hunter): void {
   h.ai.forced = false;
 }
 
+/**
+ * Trading Post (GDD §5, material requests). Per material in id order, with demand computed fresh
+ * (so two hunters in the same tick never fill the same request twice):
+ *  - requested units (≤ demand) are sold while town gold lasts, at salePrice; player requests are filled first;
+ *  - requested units the town cannot afford yet stay in the bag;
+ *  - units beyond the request are bought for export at surplusPrice while the surplus budget lasts
+ *    (town gold above surplusFloor; never stored), the rest is discarded.
+ */
 function doSell(ctx: SystemContext, h: Hunter): void {
   const { world, config } = ctx;
+  const demand = materialDemand(config, world);
+  const requests = world.town.requests ?? (world.town.requests = {});
   let units = 0;
   let paid = 0;
+  let discarded = 0;
+  let budget = surplusBudget(config, world);
   for (const matId of Object.keys(h.bag).sort()) {
     const have = h.bag[matId]!;
-    const price = config.index.materials.get(matId)?.price ?? 0;
-    let n = have;
-    if (price > 0) n = Math.min(have, Math.floor(world.town.gold / price));
+    const wanted = Math.min(have, demand[matId] ?? 0);
+    const price = salePrice(config, matId);
+    const n = price > 0 ? Math.min(wanted, Math.floor(world.town.gold / price)) : wanted;
     if (n > 0) {
       const gold = n * price;
       world.town.gold -= gold;
@@ -44,13 +57,33 @@ function doSell(ctx: SystemContext, h: Hunter): void {
       paid += gold;
       units += n;
       world.town.storage[matId] = (world.town.storage[matId] ?? 0) + n;
-      h.bag[matId] = have - n;
+      const left = (requests[matId] ?? 0) - n;
+      if (left > 0) requests[matId] = left;
+      else delete requests[matId];
     }
-    if (h.bag[matId]! <= 0) delete h.bag[matId];
+    const extra = have - wanted;
+    const sp = surplusPrice(config, matId);
+    const x = sp > 0 ? Math.min(extra, Math.floor(budget / sp)) : 0;
+    if (x > 0) {
+      const gold = x * sp;
+      world.town.gold -= gold;
+      budget -= gold;
+      h.gold += gold;
+      paid += gold;
+      units += x;
+    }
+    discarded += extra - x;
+    const keep = wanted - n;
+    if (keep > 0) h.bag[matId] = keep;
+    else delete h.bag[matId];
   }
   if (units > 0) {
     world.stats.materialsSold += units;
     ctx.events.emit(world.tick, { type: 'materialsSold', hunterId: h.id, units, gold: paid });
+  }
+  if (discarded > 0) {
+    world.stats.materialsDiscarded = (world.stats.materialsDiscarded ?? 0) + discarded;
+    ctx.events.emit(world.tick, { type: 'materialsDiscarded', hunterId: h.id, units: discarded });
   }
 }
 
@@ -94,7 +127,7 @@ function doEnhance(ctx: SystemContext, h: Hunter, slot: GearSlot): void {
 }
 
 /**
- * Economy actions on arrival (GDD §6): sell at the trading post, buy at the shop, enhance at the forge.
+ * Economy actions on arrival (GDD §6): sell requested materials at the trading post, buy at the shop, enhance at the forge.
  * The AI walks the hunter to the door; this system acts once and clears the goal either way.
  */
 export const economySystem: System = {

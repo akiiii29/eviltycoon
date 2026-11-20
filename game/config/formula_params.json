@@ -55,5 +55,13 @@
  "shopMarkdownPct": 10,
  "shopMarkdownFloor": 0.5,
  "shopScrapSec": 1800,
- "monsterCritMultiplier": 2
+ "monsterCritMultiplier": 2,
+ "requestMaxCopies": 2,
+ "requestZoneBonus": 0.3,
+ "requestMaxUnits": 999,
+ "tradeSaleTax": 0,
+ "servicePriceLevelPct": 1,
+ "tradeSurplusPriceFrac": 0.6,
+ "tradeSurplusFloorMul": 5,
+ "craftAffordFrac": 0.2
 }

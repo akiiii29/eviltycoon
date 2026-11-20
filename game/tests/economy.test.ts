@@ -49,17 +49,20 @@ function shopItem(world: World, gearId: string, price: number): ShopItem {
 }
 
 describe('selling', () => {
-  it('sells in materialId order limited by town gold and moves materials to storage', () => {
-    const ctx = makeCtx();
+  it('sells requested units in materialId order limited by town gold and moves them to storage', () => {
+    const ctx = makeCtx({ ...config, formula: { ...config.formula, tradeSaleTax: 0 } });
+    ctx.world.town.autoCraft = false; // only the player requests below
+    ctx.world.town.requests = { 'mat.gel': 5, 'mat.hide': 3 };
     const h = addHunter(ctx, { gold: 0, bag: { 'mat.hide': 3, 'mat.gel': 5 } }); // gel 4g, hide 8g
     ctx.world.town.gold = 30;
     arrive(h, { type: 'sell' });
     economySystem.update(ctx);
-    // gel first: 5×4 = 20, then 10 left → 1 hide (8).
+    // gel first: 5×4 = 20, then 10 left → 1 hide (8); the 2 unaffordable hides are requested, so they stay in the bag.
     expect(h.gold).toBe(28);
     expect(ctx.world.town.gold).toBe(2);
     expect(h.bag).toEqual({ 'mat.hide': 2 });
     expect(ctx.world.town.storage).toEqual({ 'mat.gel': 5, 'mat.hide': 1 });
+    expect(ctx.world.town.requests).toEqual({ 'mat.hide': 2 });
     expect(ctx.world.stats.materialsSold).toBe(6);
     expect(ofType(ctx.events.drain(), 'materialsSold')).toMatchObject([{ hunterId: h.id, units: 6, gold: 28 }]);
     expect(h.ai.goal).toBeNull();
@@ -251,7 +254,7 @@ describe('crafting', () => {
 
   it('auto-craft respects the level cap and autoCraft=false', () => {
     const ctx = makeCtx();
-    addHunter(ctx, { level: 1 });
+    addHunter(ctx, { level: 1, gold: 1000 }); // enough gold to count as a buyer (craftAffordFrac)
     ctx.world.town.storage = { 'mat.ore': 10, 'mat.core': 5 }; // only level 8-9 recipes
     craftingSystem.update(ctx);
     expect(ctx.world.town.crafting['bld.smithy']).toBeNull();
