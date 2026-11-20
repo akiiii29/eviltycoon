@@ -25,6 +25,14 @@ export type SimEvent =
   | { type: 'learned'; tick: number; hunterId: string; kind: 'skill' | 'trait'; id: string; level: number; cost: number }
   | { type: 'difficultyUnlocked'; tick: number; difficultyId: string }
   | { type: 'difficultyChanged'; tick: number; difficultyId: string }
+  /** Bounties (TECH_SPEC §5.9). `reward` was moved from Town gold into escrow. */
+  | { type: 'bountyPosted'; tick: number; bountyId: string; targetKind: 'monster' | 'zone'; targetId: string; kills: number; reward: number; auto: boolean }
+  /** A target kill: `gold` paid from escrow to the killer. */
+  | { type: 'bountyProgress'; tick: number; bountyId: string; hunterId: string; progress: number; kills: number; gold: number }
+  /** Last kill done; the Town received `kingdomGold` (round(reward × bountyCompletionFrac)) from the kingdom. */
+  | { type: 'bountyCompleted'; tick: number; bountyId: string; hunterId: string; reward: number; kingdomGold: number }
+  /** Cancelled by the player or an expired auto-bounty; `refund` (remaining escrow) went back to Town gold. */
+  | { type: 'bountyCancelled'; tick: number; bountyId: string; refund: number; reason: 'cancelled' | 'expired' }
   | { type: 'commandRejected'; tick: number; command: string; reason: string };
 
 export type SimEventInput = SimEvent extends infer E ? (E extends { tick: number } ? Omit<E, 'tick'> : never) : never;

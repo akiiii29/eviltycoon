@@ -41,6 +41,9 @@ function skillName(config: GameConfig, id: string): string {
 function traitName(config: GameConfig, id: string): string {
   return name(config, config.index.traits.get(id)?.nameKey, id);
 }
+function bountyTargetName(config: GameConfig, kind: 'monster' | 'zone', id: string): string {
+  return kind === 'zone' ? name(config, config.index.zones.get(id)?.nameKey, id) : name(config, config.index.monsters.get(id)?.nameKey, id);
+}
 function difficultyName(config: GameConfig, id: string): string {
   return name(config, config.index.difficulties.get(id)?.nameKey, id);
 }
@@ -135,6 +138,8 @@ export class DebugOverlay {
       case 'autocraft': sim.enqueue({ type: 'town.setAutoCraft', on: !sim.world.town.autoCraft }); break;
       case 'difficulty': sim.enqueue({ type: 'town.setDifficulty', difficultyId: el.dataset.d! }); break;
       case 'autoreinc': sim.enqueue({ type: 'town.setAutoReincarnate', on: !sim.world.town.autoReincarnate }); break;
+      case 'autobounty': sim.enqueue({ type: 'town.setAutoBounty', on: !sim.world.town.autoBounty }); break;
+      case 'cancelbounty': sim.enqueue({ type: 'town.cancelBounty', bountyId: el.dataset.id! }); break;
       case 'reincarnate': sim.enqueue({ type: 'hunter.reincarnate', hunterId: el.dataset.id! }); break;
     }
     this.render();
@@ -147,7 +152,7 @@ export class DebugOverlay {
   pushEvents(events: SimEvent[]): void {
     const config = this.sim.config;
     for (const e of events) {
-      if (e.type === 'hit' || e.type === 'monsterKilled') continue; // too noisy for the log
+      if (e.type === 'hit' || e.type === 'monsterKilled' || e.type === 'bountyProgress') continue; // too noisy for the log
       const line = economyLine(config, e) ?? progressLine(config, e);
       if (line) {
         this.log.unshift(`#${e.tick} ${line}`);
@@ -193,7 +198,22 @@ export class DebugOverlay {
       <div class="debug-row"><button data-a="autocraft">auto-craft: ${town.autoCraft ? 'BẬT' : 'TẮT'}</button></div>
       <div class="debug-sub">Cửa hàng ${town.shop.length}/${cap}</div>
       <div class="shop-list">${shop}</div>
+      ${this.renderBounties()}
       ${this.renderDifficulty()}`;
+  }
+
+  /** Bounty block (TECH_SPEC §5.9): active bounties with progress, escrow and a cancel button; auto-bounty toggle. */
+  private renderBounties(): string {
+    const { world, config } = this.sim;
+    const town = world.town;
+    const list = (town.bounties ?? []).map((b) =>
+      `<div class="bounty">${b.auto ? '[tự động] ' : ''}${esc(bountyTargetName(config, b.targetKind, b.targetId))} ` +
+      `${b.progress}/${b.kills} · thưởng ${b.reward}g (còn ${b.escrow}g) ` +
+      `<button data-a="cancelbounty" data-id="${esc(b.id)}">hủy</button></div>`).join('') || '<div class="bounty">—</div>';
+    return `
+      <div class="debug-sub">Bounty ${(town.bounties ?? []).length}/${config.formula.bountyMaxActive} · xong ${world.stats.bountiesCompleted ?? 0} · trả ${world.stats.bountyGoldPaid ?? 0}g</div>
+      ${list}
+      <div class="debug-row"><button data-a="autobounty">bounty tự động: ${town.autoBounty ? 'BẬT' : 'TẮT'}</button></div>`;
   }
 
   /** M3 difficulty block: current, one button per difficulty (locked ones show their requirement), auto-reincarnate. */
@@ -327,6 +347,9 @@ function progressLine(config: GameConfig, e: SimEvent): string | null {
       const n = e.kind === 'skill' ? skillName(config, e.id) : traitName(config, e.id);
       return `${e.hunterId} học ${n} Lv${e.level} -${e.cost}${e.kind === 'skill' ? 'g' : ' điểm'}`;
     }
+    case 'bountyPosted': return `${e.auto ? 'bounty tự động' : 'đặt bounty'}: ${bountyTargetName(config, e.targetKind, e.targetId)} ×${e.kills} -${e.reward}g`;
+    case 'bountyCompleted': return `bounty ${e.bountyId} xong (${e.hunterId}) · vương quốc trả Town +${e.kingdomGold}g`;
+    case 'bountyCancelled': return `bounty ${e.bountyId} ${e.reason === 'expired' ? 'hết hạn' : 'bị hủy'} · hoàn ${e.refund}g`;
     case 'difficultyUnlocked': return `mở khóa độ khó ${difficultyName(config, e.difficultyId)}`;
     case 'difficultyChanged': return `độ khó → ${difficultyName(config, e.difficultyId)}`;
     default: return null;

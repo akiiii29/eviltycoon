@@ -7,6 +7,7 @@ import type { SimDebug, System, SystemContext } from './system';
 import { aiSystem, urgentBackstopSystem } from './systems/ai';
 import { arrivalsSystem } from './systems/arrivals';
 import { academySystem } from './systems/academy';
+import { bountySystem } from './systems/bounty';
 import { combatSystem } from './systems/combat';
 import { craftingSystem } from './systems/crafting';
 import { economySystem } from './systems/economy';
@@ -37,6 +38,7 @@ export const DEFAULT_SYSTEMS: readonly System[] = [
   economySystem,
   academySystem,
   craftingSystem,
+  bountySystem,
   needsSystem,
   progressionSystem,
   spawnSystem,
@@ -62,11 +64,13 @@ export function createWorld(config: GameConfig, seed: number): World {
       unlockedDifficulties: [config.difficulties[0]!.id],
       autoReincarnate: true,
       requests: {},
+      bounties: [],
+      autoBounty: true,
     },
     hunters: [],
     monsters: [],
     zones: {},
-    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0 },
+    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0 },
   };
 }
 

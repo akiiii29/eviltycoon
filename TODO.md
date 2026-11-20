@@ -57,7 +57,9 @@ Số liệu hiện tại (headless 12 giờ `tools/headless.ts 720 <seed> 120`, 
 ## 4. Tính năng chưa làm (theo TECH_SPEC §12 và GDD)
 
 ### M4
-- ⚪ Bounty (GDD §9): Town đặt bounty, hunter nhận thưởng theo kill, Town nhận vàng khi xong; Torment tăng tỉ lệ rơi.
+- ✅ **Bounty** (GDD §9, TECH_SPEC §5.9, `src/core/systems/bounty.ts`, world v7): lệnh `town.postBounty` (quái hoặc vùng, số kill, thưởng; ký quỹ từ vàng Town), `town.cancelBounty`, `town.setAutoBounty`; thưởng chia theo từng kill; xong thì vương quốc trả Town 25% thưởng; Torment tăng tỉ lệ rơi của mục tiêu (+25%/bậc); AI ưu tiên vùng có mục tiêu (cùng chuẩn hóa với yêu cầu vật liệu); bounty tự động khi vàng Town trên mục tiêu ngân khố (10% phần vượt, 30 kill, hết hạn 30 phút).
+  - Headless 12 giờ seed 1–5 (trước → sau): vàng Town 22,3–27,6k → 23,0–26,5k, vàng hunter tb 5,5–6,8k → 6,0–6,7k, Lv tb 83,1–86,6 → 82,1–85,9, shop 6–9 → 3–11 món, chết tổng 6 → 11 (seed 6–10: 9 → 4, cộng 10 seed 15 → 15) — trong nhiễu. Tắt auto-bounty: giống từng byte với trước.
+  - 🟡 Còn lại: bounty tự động **không** phải chỗ tiêu vàng Town hiệu quả — quy tắc ngân khố bù lại, vàng Town gần như không đổi, phần chênh chảy sang hunter (với thưởng 0,2 vàng hunter tb cao hơn ở 4/5 seed). Nếu cần chỗ tiêu vàng Town thật thì phải là chi phí **ra khỏi** nền kinh tế (xây/nâng building), không phải chuyển cho hunter. Chưa có UI đặt bounty (chỉ command + nút hủy/bật-tắt trong debug overlay). Hiệu ứng Torment chưa đo trong mô phỏng dài (cần ≥ 5 lần tái sinh). Bounty tự động chỉ nhắm quái hunter đang săn nên ít đổi lựa chọn vùng; `bountyZoneBonus` chưa được tune.
 - ✅ Trading Post theo yêu cầu vật liệu (xem mục 1; còn thiếu UI đặt yêu cầu).
 - ⚪ Journey (GDD §9): 3 NPC, chạy offline, team power, tỉ lệ thành công.
 - ✅ Tiến trình offline (TECH_SPEC §9): `src/core/offline.ts` ước lượng theo tốc độ trung bình 10 phút gần nhất (mẫu lưu trong envelope save, không đổi schema), trần `offlineMaxHours` 8, `offlineEfficiency` 1, chặn đồng hồ lùi/save không có thời gian; client áp dụng lúc boot và khi tab hiện lại, save ngay, popup tổng kết. Test `tests/offline.test.ts` (kể cả so với chạy thật 60 phút).

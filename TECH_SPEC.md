@@ -78,7 +78,7 @@ Quy ước: **[CHỐT]** là quyết định kỹ thuật; **[ĐỀ XUẤT]** l�
 | `events` | Event bus một chiều sim → UI/render (hit, kill, levelUp, purchase…) để chơi VFX/âm thanh/toast. Sim không bao giờ đọc lại. |
 | `config/` | Schema DSL (`schema.ts`), `TABLE_SPECS` + kiểm tra chéo + index (`load.ts`), kiểu (`types.ts`). |
 
-Bounty, thuế, invitation, build/upgrade building chưa làm (M4+).
+Bounty: `systems/bounty` (§5.9). Thuế, invitation, build/upgrade building chưa làm (M4+).
 
 ### 3.2 Vòng lặp **[CHỐT]**
 
@@ -267,6 +267,20 @@ Code: `src/core/systems/crafting.ts`, tham số trong `formula_params.json`.
 - **Người hưởng lợi**: hunter level ≥ gear.level − `craftLevelAhead`; với mỗi chất lượng q, bản q được tính nếu là nâng cấp ≥ `minUpgradeGain` (công thức như AI mua đồ) **và** ngân sách shop ≥ `craftAffordFrac × round(basePrice × q.priceMult)`; hunter được tính khi tổng `craftChance` (chuẩn hóa) của các bản đó ≥ `craftMinSellChance` (0,65 = Uncommon trở lên phải bán được; 0,35 = chỉ cần Rare, gần quy tắc cũ — trùng hẳn khi `craftAffordFrac` = 0). Ngưỡng so với tỷ lệ cộng dồn của `craftChance`, nên đổi `gear_quality.json` thì phải xem lại.
 - **Đồ đã có**: món cùng slot, level ≤ công thức đang bán (chất lượng thật) hoặc đang chế (chất lượng tham chiếu Rare) tính theo **số bản**: hunter vẫn được nâng cấp so với món tốt nhất trong số đó luôn được tính; hunter mà món có sẵn đã phục vụ chỉ được tính phần vượt quá số bản.
 
+### 5.9 Bounty (GDD §9) **[ĐÃ LÀM — số liệu ĐỀ XUẤT]**
+
+Code: `src/core/systems/bounty.ts` (hook duy nhất trong combat: `grantKill` gọi `bountyOnKill`), lệnh trong `commands.ts`, tham số `bounty*` ở cuối `formula_params.json`. World v7: `town.bounties` (theo thứ tự đặt), `town.autoBounty`, stat `bountiesPosted` / `bountiesCompleted` / `bountyGoldPaid` / `bountyKingdomGold`.
+
+- **Đặt bounty** (`town.postBounty { targetKind: 'monster' | 'zone', targetId, kills, reward }`): mục tiêu là một loại quái (giết ở đâu cũng tính) hoặc một vùng (mọi kill trong vùng). Từ chối: quái lạ / quái không sinh ở vùng nào, vùng lạ, `targetKind` sai, `kills` không phải số nguyên 1..`bountyMaxKills`, `reward` không nguyên hoặc < `kills` (≥ 1 vàng/kill), `reward` > vàng Town, đã có `bountyMaxActive` bounty. `town.cancelBounty { bountyId }` hủy và hoàn phần ký quỹ còn lại; `town.setAutoBounty { on }`.
+- **Ký quỹ**: `reward` rời vàng Town ngay khi đặt và nằm trên bounty (`escrow`), nên vàng Town + ký quỹ + vàng hunter bảo toàn trong lúc chạy.
+- **Thưởng theo kill**: kill thứ k của mục tiêu trả cho người giết `floor(reward·k/kills) − floor(reward·(k−1)/kills)` (tổng đúng bằng `reward`). Một kill chỉ tính cho bounty khớp **đầu tiên** (không trả đôi).
+- **Hoàn thành** — "Town nhận vàng" nghĩa là: vương quốc trả Town `round(reward × bountyCompletionFrac)` (0,25) — vàng mới, nhỏ hơn `reward`, nên mỗi bounty là khoản chi ròng `(1 − 0,25) × reward` của Town chảy sang hunter. Event `bountyCompleted { kingdomGold }`.
+- **Torment**: kill mục tiêu bounty có quái sinh ở độ khó `order ≥ bountyTormentFromOrder` (5 = Torment 1) tung tỉ lệ rơi `min(1, chance × (1 + bountyTormentDropBonus × tier))`, `tier = order − bountyTormentFromOrder + 1` (0,25 → T1 ×1,25, T3 ×1,75). Dùng độ khó lúc quái sinh (`m.difficultyId`). Số lần rút RNG không đổi.
+- **AI** (§5.3): trong `huntZoneMuls`, hệ số thô của mỗi vùng khả dụng nhân thêm `1 + bountyZoneBonus × tỉ lệ trọng số spawn là mục tiêu` (1 cho bounty vùng) **trước** bước chia cho max, nên điểm săn cao nhất không bao giờ tăng và vùng fit = 0 không bao giờ được cộng.
+- **Bounty tự động** (`town.autoBounty`, mặc định bật; một cái một lúc): mỗi `bountyAutoIntervalSec` (60 s, theo `world.tick`), nếu vàng Town > `bountyAutoGoldMul × townGoldTarget` (§5.7) thì đặt bounty `bountyAutoKills` (30) kill với thưởng `round(bountyAutoRewardFrac × (vàng − mục tiêu))` (0,1) lên loại quái mà hunter đang săn (goal `hunt`) có giá trị NL rơi đang được yêu cầu cao nhất (hòa: vùng nhiều hunter hơn, trọng số spawn cao hơn, thứ tự config); bỏ qua mục tiêu đã có bounty. Hết `bountyAutoExpireSec` (1.800 s) thì hết hạn và hoàn ký quỹ (`bountyCancelled { reason: 'expired' }`). Bounty của người chơi không hết hạn. Không rút RNG; tắt auto-bounty thì mô phỏng giống từng byte như trước khi có bounty.
+- **Event**: `bountyPosted`, `bountyProgress` (mỗi kill, kèm vàng trả), `bountyCompleted`, `bountyCancelled`. Debug overlay hiện bounty đang chạy (tiến độ, ký quỹ, nút hủy) và nút bật/tắt tự động; `tools/headless.ts` in sổ bounty mỗi mốc (đặt / xong / ký quỹ / hoàn / trả / vương quốc / đang giữ), tính ký quỹ vào `total`, và in bounty đang chạy cuối run.
+- **Số đo** (headless 12 giờ, seed 1–5, trước → sau, `bountyAutoRewardFrac` 0,1): vàng Town lúc 12 giờ 22,3–27,6k → 23,0–26,5k; vàng hunter tb 5,5–6,8k → 6,0–6,7k; shop 6–9 → 3–11 món; Lv tb 83,1–86,6 → 82,1–85,9; chết (tổng 5 seed) 6 → 11, nhưng seed 6–10 là 9 → 4, tức 15 → 15 trên 10 seed (`bountyZoneBonus` 0: 5 trên seed 1–5); 45–61 bounty xong / 12 giờ, trả hunter 21–33k, vương quốc 4,7–7,9k. Các khác biệt nằm trong nhiễu giữa các seed (mỗi seed chạy 1 lần, phân kỳ hỗn loạn); tắt auto-bounty thì timeline và hunter cuối run giống từng dòng với trước. Với 0,2: vàng hunter tb lúc 12 giờ 5,9–7,8k (4/5 seed cao hơn), nên chọn 0,1. Bounty **không** kéo vàng Town xuống thấp hơn đáng kể: quy tắc ngân khố (§5.7) bù lại (Town nghèo hơn → giữ nhiều phí hơn), nên tác dụng thực là chuyển phần phí lẽ ra bị đốt sang hunter + một chút vàng vương quốc. Torment cần 5 lần tái sinh (~13 giờ+), headless 12 giờ không tới; chỉ có unit test.
+
 ## 6. Di chuyển và pathfinding
 
 - Map là **waypoint graph**: node (vị trí, zoneId, loại: road/field/building-door) và cạnh (khoảng cách).
@@ -354,7 +368,7 @@ Bảng dưới là **thiết kế đích**. Đã có trong `game/config/` (trư�
 | `relic` | id, nameKey, maxLevel, value[], upgradeCost[] |
 | `growth_property` | id, stat, valuePerLevel, maxLevel, cost[] |
 | `exp_curve` | level, expByReincarnation[6] |
-| `bounty`, `raid`, `journey`, `trading_request` | Theo GDD §9; tạo schema khi đặc tả mode chi tiết. |
+| `raid`, `journey`, `trading_request` | Theo GDD §9; tạo schema khi đặc tả mode chi tiết. Bounty không có bảng riêng: tham số `bounty*` trong `formula_params` (§5.9). |
 | `formula_params` | key → number (hệ số công thức combat, ngưỡng AI, tốc độ giảm nhu cầu) |
 | `loc` | key, vi, en, … |
 

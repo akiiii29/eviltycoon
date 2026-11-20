@@ -7,6 +7,7 @@ import { personalityFactor } from '../hunterFactory';
 import type { NavGraph } from '../pathfinding';
 import { canLearnTrait, nextSkillStudy } from '../systems/academy';
 import { servicePrice } from '../systems/services';
+import { bountyZoneMul } from '../systems/bounty';
 import { bagHasSellable, bagUnrequested, materialDemand, requestZoneMul, type Demand } from '../systems/trading';
 import { bagCount, type Goal, type Hunter, type ShopItem, type World } from '../world';
 
@@ -379,13 +380,15 @@ export function townCanBuyFrom(config: GameConfig, world: World, h: Hunter, dema
  * requestZoneMul / (max requestZoneMul over viable zones), so the hunt score never rises above what it was
  * without requests (hunting vs. town goals is unchanged when the best zone is requested, slightly lower if not),
  * and a requested zone beats an unrequested one of similar fit. Zones the hunter cannot survive never get a bonus.
+ * With `world`, active bounties multiply in bountyZoneMul before the normalisation.
  */
-export function huntZoneMuls(config: GameConfig, scores: readonly ZoneScore[], demand: Demand): Map<string, number> {
+export function huntZoneMuls(config: GameConfig, scores: readonly ZoneScore[], demand: Demand, world?: World): Map<string, number> {
   const raw = new Map<string, number>();
   let max = 0;
   for (const { zone: z, fit } of scores) {
     if (fit <= 0) continue;
-    const m = requestZoneMul(config, z, demand);
+    // Bounty targets (systems/bounty.ts) steer zone choice the same way, inside the same normalisation.
+    const m = requestZoneMul(config, z, demand) * (world ? bountyZoneMul(config, world, z) : 1);
     raw.set(z.id, m);
     max = Math.max(max, m);
   }
@@ -408,7 +411,7 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
   const demand = materialDemand(config, world);
 
   const scores = zoneScores(config, world, h);
-  const zoneMul = huntZoneMuls(config, scores, demand);
+  const zoneMul = huntZoneMuls(config, scores, demand, world);
   for (const { zone: z, fit } of scores) {
     // Another zone is judged by the HP needed to start a kill there (zoneEntryHpLine): a hunter does not set out
     // for a zone it would have to leave again at the first kill boundary.

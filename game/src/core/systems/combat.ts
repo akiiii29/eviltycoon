@@ -4,6 +4,7 @@ import { gainExp } from '../progress';
 import { SpatialHash } from '../spatial';
 import type { System, SystemContext } from '../system';
 import { bagCount, dist, findHunter, findMonster, isAlive, newAiState, type Hunter, type Monster } from '../world';
+import { bountyOnKill } from './bounty';
 import { stepTowards } from './movement';
 
 /**
@@ -56,9 +57,11 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
   h.gold += ms.gold;
   world.stats.kills += 1;
   ctx.events.emit(world.tick, { type: 'monsterKilled', hunterId: h.id, monsterId: m.id, defId: m.defId });
+  // Bounty payout; a bounty target killed under Torment drops more (one RNG draw per drop either way).
+  const dropMul = bountyOnKill(ctx, h, m);
   // M2: material drops go into the hunter's bag while there is room.
   for (const d of def.drops) {
-    if (!ctx.rng.chance(d.chance)) continue;
+    if (!ctx.rng.chance(dropMul === 1 ? d.chance : Math.min(1, d.chance * dropMul))) continue;
     if (bagCount(h) >= config.formula.bagCapacity) break;
     h.bag[d.materialId] = (h.bag[d.materialId] ?? 0) + 1;
   }

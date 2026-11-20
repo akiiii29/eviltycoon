@@ -4,7 +4,7 @@ import type { GearSlot, ModStat, NeedKey, StatKey } from './config/types';
 export type { GearSlot, NeedKey } from './config/types';
 
 /** Bump when the World shape changes and add a migration in save/migrations.ts. */
-export const WORLD_SCHEMA_VERSION = 6;
+export const WORLD_SCHEMA_VERSION = 7;
 
 export type Grade = 'normal' | 'high' | 'highest';
 export type HunterTier = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
@@ -127,6 +127,25 @@ export interface Monster {
   difficultyId: string;
 }
 
+export type BountyTargetKind = 'monster' | 'zone';
+
+/** v7: a Town bounty (systems/bounty.ts, TECH_SPEC §5.9). */
+export interface Bounty {
+  id: string;
+  /** 'monster' = kills of that monster type anywhere; 'zone' = any kill in that zone. */
+  targetKind: BountyTargetKind;
+  targetId: string;
+  /** Kills required and kills so far. */
+  kills: number;
+  progress: number;
+  /** Total reward (taken from Town gold when posted) and the part not yet paid out. */
+  reward: number;
+  escrow: number;
+  /** Posted by the auto-bounty rule (expires after bountyAutoExpireSec) rather than by the player. */
+  auto: boolean;
+  postedAtMs: number;
+}
+
 export interface World {
   schemaVersion: number;
   configVersion: string;
@@ -155,6 +174,10 @@ export interface World {
      * requests derived from auto-craft needs, see systems/trading.ts). Decremented as hunters sell.
      */
     requests: Record<string, number>;
+    /** v7: active bounties in posting order (a kill counts toward the first matching one). */
+    bounties: Bounty[];
+    /** v7: post bounties automatically when Town gold is above its treasury target. */
+    autoBounty: boolean;
   };
   /** Arrays (not maps) so iteration order is stable and deterministic. */
   hunters: Hunter[];
@@ -177,6 +200,11 @@ export interface World {
     materialsDiscarded: number;
     /** v6: shop items removed unsold (age ≥ shopScrapAgeSec). */
     gearScrapped: number;
+    /** v7: bounties posted / completed, gold paid to hunters, completion gold the Town got from the kingdom. */
+    bountiesPosted: number;
+    bountiesCompleted: number;
+    bountyGoldPaid: number;
+    bountyKingdomGold: number;
   };
 }
 

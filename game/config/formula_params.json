@@ -118,5 +118,16 @@
  "offlineSampleSec": 30,
  "offlineWindowMin": 10,
  "offlineMinWindowSec": 120,
- "offlineMinAwaySec": 60
+ "offlineMinAwaySec": 60,
+ "bountyMaxActive": 3,
+ "bountyMaxKills": 1000,
+ "bountyCompletionFrac": 0.25,
+ "bountyZoneBonus": 0.3,
+ "bountyTormentFromOrder": 5,
+ "bountyTormentDropBonus": 0.25,
+ "bountyAutoIntervalSec": 60,
+ "bountyAutoGoldMul": 1,
+ "bountyAutoRewardFrac": 0.1,
+ "bountyAutoKills": 30,
+ "bountyAutoExpireSec": 1800
 }

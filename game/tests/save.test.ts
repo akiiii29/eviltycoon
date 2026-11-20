@@ -139,6 +139,26 @@ describe('save/load', () => {
     for (let i = 0; i < 600; i++) s2.step();
   });
 
+  it('migrates a v6 save (no bounties) and keeps running', () => {
+    const w = JSON.parse(JSON.stringify(createWorld(config, 4)));
+    delete w.town.bounties;
+    delete w.town.autoBounty;
+    for (const k of ['bountiesPosted', 'bountiesCompleted', 'bountyGoldPaid', 'bountyKingdomGold']) delete w.stats[k];
+    w.town.requests = { 'mat.ore': 7 };
+    w.schemaVersion = 6;
+    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 6, configVersion: config.version, savedAt: 0, world: w }), config);
+    expect(r.migratedFrom).toBe(6);
+    expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
+    expect(WORLD_SCHEMA_VERSION).toBe(7);
+    expect(r.world.town.bounties).toEqual([]);
+    expect(r.world.town.autoBounty).toBe(true);
+    expect(r.world.town.requests).toEqual({ 'mat.ore': 7 });
+    expect(r.world.stats).toMatchObject({ bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0 });
+    const s2 = new Simulation(config, r.world);
+    s2.enqueue({ type: 'debug.spawnHunter' });
+    for (let i = 0; i < 600; i++) s2.step();
+  });
+
   describe('config-derived migration values', () => {
     /** Current config with the square renamed/moved and non-default level gains. */
     function altConfig(): GameConfig {
