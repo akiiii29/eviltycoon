@@ -3,7 +3,7 @@
 Tiêu chí xong của M4 (TECH_SPEC §12) là "QA checklist GDD §13 đạt", nhưng **GDD không có trong repo**. Checklist này dựng từ TECH_SPEC (§5.7–§5.12, §9, §12, §12.1) và TODO. **Phải đối chiếu lại với GDD §13 gốc khi có**: thêm mục còn thiếu, sửa mục lệch luật.
 
 - Commit kiểm: nhánh `fix/economy-and-formulas` @ `958da52` cộng các thay đổi của lượt QA này.
-- Ngày chạy: 2026-11-20/21. Máy: Windows 10, Node 22, trình duyệt pane của Claude desktop (Chromium).
+- Ngày chạy: 2026-11-20/21. Máy: Windows 10, Node 24.11, trình duyệt pane của Claude desktop (Chromium).
 - Cách kiểm:
   - **A** = test tự động. `tests/m4-acceptance.test.ts` (mới, ~3–6 s) chạy kịch bản liên hệ thống. Test đơn vị có sẵn được ghi theo tên file.
   - **M** = kiểm tay trong trình duyệt: `npm run dev -- --port 5199 --strictPort`, dùng nút của debug overlay và `window.sim` trong console.
@@ -15,7 +15,7 @@ Tiêu chí xong của M4 (TECH_SPEC §12) là "QA checklist GDD §13 đạt", nh
 |---|---|---|---|
 | QA-INV | Mọi world M4 giữ bất biến: vàng Town/hunter/kho là số nguyên ≥ 0; needs hữu hạn trong [0, max]; level trong [1, maxLevel]; không hunter trùng id hoặc vừa đi xa vừa ở field; số hunter (kể cả đi xa) ≤ slot; ký quỹ bounty = thưởng − phần đã trả; số bounty/journey/công trình đang chạy ≤ giới hạn; building ≤ maxLevel và ≤ Town Hall; shop ≤ sức chứa; thuế trong [min, max] | A: `violations()` trong `m4-acceptance`, chạy mỗi phút game của phiên 20 phút, sau offline và sau migration | ✅ |
 | QA-LOOP | Một phiên 20 phút có đủ mọi hệ thống M4. Seed 4, 6 hunter cộng hunter tự đến, thuế 20%, 2 bounty, Town Hall 1→3, hủy nâng shop, xây Nhà Kho, 2 chuyến journey (1 bị gọi về), bật tự đầu tư lúc 10 phút. Chỉ bị từ chối đúng 2 lệnh cố ý sai | A: `QA-LOOP` (6 test) | ✅ |
-| QA-SAVE | Save → load giữa lúc journey đang đi, bounty đang chạy, thuế khác mặc định; chạy tiếp giống từng byte (world và event) với bản không save | A: `QA-SAVE` | ✅ |
+| QA-SAVE | Save → load lúc 5,5 phút, khi journey đang đi, bounty đang chạy, Nhà Kho đang xây và thuế khác mặc định; chạy tiếp giống từng byte (world và event) với bản không save | A: `QA-SAVE` | ✅ |
 | QA-CMD | Mỗi lệnh M4 khi sai trả `commandRejected` với lý do (hợp đồng với UI) | A: `QA-CMD` (14 trường hợp). Thêm `bounty`/`tax`/`journey`/`town`/`trading.test.ts` | ✅ |
 | QA-DET | Tất định: cùng seed và cùng lệnh cho cùng kết quả | A: `QA-SAVE`, `bounty`/`tax`/`journey`/`town.test.ts` (determinism) | ✅ |
 
@@ -40,7 +40,7 @@ Tiêu chí xong của M4 (TECH_SPEC §12) là "QA checklist GDD §13 đạt", nh
 | BO-3 | Trả theo từng kill, tổng đúng bằng thưởng; ký quỹ còn lại = thưởng − phần đã trả | A: `bounty.test.ts`, QA-INV. M: 7/10 kill thì ký quỹ còn 30 | ✅ |
 | BO-4 | Hoàn thành: vương quốc trả Town round(thưởng × 0,25) | A: `QA-LOOP`. M: log "bounty b103 xong · vương quốc trả Town +25g" | ✅ |
 | BO-5 | Hủy hoàn phần ký quỹ còn lại | A: `QA-LOOP`. M: nút hủy b104 thì vàng Town +100 (đúng ký quỹ), log "bị hủy · hoàn 100g" | ✅ |
-| BO-6 | Bounty tự động: đặt khi vàng Town trên mục tiêu; hết hạn thì hoàn tiền; nút bật/tắt | A: `bounty.test.ts`; `QA-LOOP` (Town giàu có bounty tự động). M: nút "bounty tự động: BẬT → TẮT" đổi `town.autoBounty` | ✅ |
+| BO-6 | Bounty tự động: đặt khi vàng Town trên mục tiêu; hết hạn thì hoàn tiền; nút bật/tắt | A: `bounty.test.ts`. M: nút "bounty tự động: BẬT → TẮT" đổi `town.autoBounty` | ✅ |
 | BO-7 | Torment tăng tỉ lệ rơi của mục tiêu, không đổi số lần rút RNG | A: `bounty.test.ts` (chưa đo trong mô phỏng dài) | ⚠️ |
 | BO-8 | UI đặt bounty | M: overlay mới có nút đặt bounty vùng (10 kill / 100g) cho từng vùng, chỉ để debug. UI thật là việc của M6 | ⚠️ |
 
@@ -78,9 +78,9 @@ Ghi chú TX-3: bấm 2 lần trong một khung 200 ms (trước khi overlay vẽ
 | BU-2 | Nâng cấp trả vàng + NL kho ngay; giữ level cũ tới khi xong; xong thì Lv+1 | A: `town.test.ts`, `QA-LOOP`. M: nâng Town Hall trừ 400g và quặng ×4, "→ Lv2 3%", 60 s sau thành Lv2 | ✅ |
 | BU-3 | Từ chối: thiếu NL ("missing materials"), thiếu vàng, bị Town Hall khóa, đủ slot xây, max level, ô bị khóa | A: `town.test.ts`, `QA-LOOP`, `QA-CMD`. M: nâng khi kho trống thì "missing materials"; building khác hiện "locked by Town Hall level" | ✅ |
 | BU-4 | Hủy hoàn đủ vàng + NL đã lấy từ kho; hủy xây lần đầu thì trả ô | A: `town.test.ts`, `QA-LOOP`. M: hủy → +400g, quặng ×4 trở lại, vẫn Lv1 | ✅ |
-| BU-5 | Xây loại mới (Nhà Kho) trên ô mở bằng Town Hall | A: `QA-LOOP` (TH3 → Nhà Kho ở `plot.ne`). M: chưa xây trong trình duyệt (cần TH3) | ✅ (A) |
+| BU-5 | Xây loại mới (Nhà Kho) trên ô mở bằng Town Hall; hủy lần xây đầu thì trả ô | A: `QA-LOOP` (TH3 → Nhà Kho ở `plot.ne`), `town.test.ts`. M: nâng Town Hall lên 3 (thêm vàng/NL qua console, chạy bằng `sim.step()`), nút "xây Nhà Kho" ở `plot.ne` trừ 2000g và tro ×6, Lv0 đang xây. Hủy thì ô trống lại, hoàn đủ vàng và tro. Xây lại thì 180 s sau Lv1, log "Nhà Kho xong → Lv1" | ✅ |
 | BU-6 | Hiệu ứng theo level: trần tier đồ, sức chứa shop, dịch vụ, Lò, Học Viện, Trạm, Nhà Kho | A: `town.test.ts` (per-level effects) | ✅ |
-| BU-7 | Tự đầu tư: tiêu vàng trên mục tiêu, bước gấp khi hunter sắp chạm trần tier, nhập NL sau 15 phút | A: `town.test.ts`, `QA-LOOP` (bật lúc 10 phút thì có `buildingStarted` auto) | ✅ |
+| BU-7 | Tự đầu tư: tiêu vàng trên mục tiêu, bước gấp khi hunter sắp chạm trần tier, nhập NL sau 15 phút | A: `town.test.ts`. `QA-LOOP` chỉ bật nó lúc 10 phút và kiểm bất biến | ✅ |
 | BU-8 | Log overlay cho building | M: trước khi sửa, log chỉ hiện "buildingStarted" / "buildingCancelled", không có tên. **Đã sửa:** dòng đọc được (tên, level, vàng, NL, hoàn) | ✅ (đã sửa) |
 | BU-9 | Thời gian xây không chạy khi offline | A: `QA-OFFLINE`. M: upgrade còn 119,9 s trước và sau khi vắng 30 phút. Giới hạn đã biết (TODO §4), không phải lỗi | ⚠️ |
 
@@ -94,8 +94,8 @@ Ghi chú TX-3: bấm 2 lần trong một khung 200 ms (trước khi overlay vẽ
 | OF-4 | Load lần hai không cộng dồn (save ngay sau khi áp dụng) | A: `offline.test.ts`. M: reload ngay sau popup thì không có popup, kill/level giữ nguyên | ✅ |
 | OF-5 | Journey xong trong lúc vắng được roll lúc load và hiện trong popup | A: `QA-OFFLINE`. M: gửi h84 đi Lối Rêu Cũ, lùi 30 phút, reload. Popup có mục "Hành trình: Lối Rêu Cũ (h84): THẤT BẠI · EXP +250/người", `journeys` rỗng, h84 ở quảng trường | ✅ |
 | OF-6 | NL offline chỉ vào kho tới mức Trạm Thu Mua yêu cầu | A: `offline.test.ts`, `QA-OFFLINE` | ✅ |
-| OF-7 | Vàng hunter offline | M: mọi hunter "vàng +0" trong cả 3 popup. Đúng spec (gold ròng sàn 0: đầu game hunter tiêu hết vào dịch vụ/đồ), nhưng người chơi dễ thấy vô lý. Cần design xem lại | ⚠️ |
-| OF-8 | Hunter vừa về từ journey (< 120 s mẫu) không được cộng | M: h81/h82 không có trong popup. Đúng spec (cần đủ cửa sổ đo) | ⚠️ |
+| OF-7 | Vàng hunter offline | M: mọi hunter "vàng +0" trong cả 3 popup. Có vẻ khớp spec (vàng ròng sàn 0; đầu game hunter tiêu vào dịch vụ/đồ), nhưng **chưa kiểm** tốc độ vàng đo được của từng hunter. Người chơi dễ thấy vô lý, cần design xem lại | ⚠️ |
+| OF-8 | Hunter vừa về từ journey không được cộng | M: h81/h82 không có trong popup. Giả thuyết **chưa kiểm**: họ về ~61 s trước khi save, dưới `offlineMinWindowSec` 120 s | ⚠️ |
 
 ## 7. Save và migration v0 → v9 (§9)
 
@@ -111,8 +111,8 @@ Ghi chú TX-3: bấm 2 lần trong một khung 200 ms (trước khi overlay vẽ
 | ID | Mục | Cách kiểm | KQ |
 |---|---|---|---|
 | PO-1 | Log `skillCast` không spam: gộp 1 dòng / 5 s game ("kỹ năng ×N (M mục tiêu, 5s): h1 ×a, h2 ×b, +k hunter") | A: `tests/client.test.ts`. M: log hiện dòng gộp | ✅ |
-| PO-2 | Mỗi vùng một màu nền riêng; quái chưa có màu thì không còn đỏ báo lỗi | A: `client.test.ts`. M: ảnh chụp có 7 vùng 7 màu | ✅ |
-| PO-3 | Lệnh tái sinh thủ công chỉ khi ở Town (từ chối "hunter is not in town"); nút trong overlay bị disable ở field | A: `progression.test.ts`, `QA-CMD` | ✅ |
+| PO-2 | Mỗi vùng một màu nền riêng; 13 loại quái đều có màu; quái lạ dùng màu xám thay cho đỏ | A: `client.test.ts` (màu vùng). M: ảnh chụp có 7 vùng 7 màu | ✅ |
+| PO-3 | Lệnh tái sinh thủ công chỉ khi ở Town (từ chối "hunter is not in town"); nút trong overlay bị disable ở field | A: `progression.test.ts`, `QA-CMD`. M: hunter max level ở field thì nút disable (tooltip "phải ở Town"), lệnh gửi từ console bị từ chối; đưa về quảng trường thì nút bật, bấm thì tái sinh lần 1, Lv1 | ✅ |
 | PO-4 | Test Học Viện: thêm bản chặt (mọi hunter đủ vàng ở Town đều học trong 1 phút, seed 1/3/7). Bản chạy tự do vẫn "≥ một nửa", lý do ghi trong test | A: `academy.test.ts` | ✅ |
 
 ## Lỗi tìm thấy
@@ -125,10 +125,13 @@ Ghi chú TX-3: bấm 2 lần trong một khung 200 ms (trước khi overlay vẽ
 | 4 | Overlay không có cách đặt bounty (checklist cần) | Thêm nút debug đặt bounty theo vùng |
 | — | Không tìm thấy lỗi luật/logic trong core M4 | — |
 
+**Tổng kết:** 59 mục. 0 ❌, 53 ✅ (2 trong đó đã sửa trong lượt này), 5 ⚠️ (đạt nhưng có ghi chú hoặc giới hạn đã biết), 1 ⏭️ (TP-7: chưa có UI).
+
 ## Ghi chú / việc mở (không phải lỗi)
 
 - Offline không đếm thời gian xây (BU-9), không craft/mua/tái sinh. Vàng hunter offline sàn 0 nên đầu game hiện "+0" (OF-7).
 - Kiểm tay trong pane bị ẩn: `requestAnimationFrame` dừng nên sim đứng. Phần offline có journey được chạy bằng `sim.step()` trong console. Đây không phải lỗi game.
 - Dòng log gộp `skillCast` mang tick đầu cửa sổ nhưng được chèn lúc đóng cửa sổ (5 s sau), nên có thể nằm trên dòng có tick lớn hơn.
-- Chưa kiểm trong trình duyệt: xây Nhà Kho (cần Town Hall 3), Torment, journey thành công (đội Lv thấp chỉ 13%), tái sinh thủ công (cần max level). Các mục này có test tự động.
+- Chưa kiểm trong trình duyệt: Torment, journey thành công (đội Lv thấp chỉ 13%), UI đặt yêu cầu NL (TP-7, chưa có). Hai mục đầu có test tự động.
+- Pane trình duyệt bị ẩn: có lần trang không boot xong (không có canvas, `window.sim` không có) cho tới khi pane được chụp ảnh. Save vẫn được ghi đúng (offline đã áp dụng, epoch +1). Cùng save đó boot bình thường khi pane hiện. Ghi nhận là do môi trường (trang chạy nền), không phải lỗi game; nếu gặp lại ở trình duyệt thường thì phải xem lại.
 - Phải đối chiếu lại toàn bộ checklist với GDD §13 khi có file GDD.

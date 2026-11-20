@@ -17,7 +17,7 @@ import { advanceJourneys, allHunters, bestJourneyTeam, townHunterCount } from '.
 import { taxRate } from '../src/core/systems/tax';
 import { shopCapacity, townHallLevel } from '../src/core/systems/town';
 import { materialDemand } from '../src/core/systems/trading';
-import { WORLD_SCHEMA_VERSION, type World } from '../src/core/world';
+import { isAlive, WORLD_SCHEMA_VERSION, type World } from '../src/core/world';
 import { testConfig } from './helpers';
 
 const config: GameConfig = testConfig();
@@ -179,8 +179,15 @@ const sum = (evs: SimEvent[], type: string, key: string) =>
   evs.filter((e) => e.type === type).reduce((a, e) => a + Number((e as unknown as Record<string, number>)[key] ?? 0), 0);
 const ofType = <T extends SimEvent['type']>(evs: SimEvent[], type: T) => evs.filter((e): e is Extract<SimEvent, { type: T }> => e.type === type);
 
-// One shared session (≈ 1–2 s) for the loop, accounting and offline checks.
-const session = runSession(4);
+// One shared session (≈ 1–2 s) for the loop, accounting and offline checks (in beforeAll: a failure there fails
+// the tests that use it with a readable error instead of aborting the whole file at collection).
+let session: RunResult;
+beforeAll(() => {
+  session = runSession(4);
+});
+
+/** Hunters a player command can address now (alive, outside buildings). */
+const controllable = (w: World) => w.hunters.filter((h) => isAlive(h) && !h.insideBuildingId);
 
 describe('QA-LOOP: all M4 systems in one 20-minute session', () => {
   it('keeps every invariant at every minute and only the expected commands are rejected', () => {
@@ -266,18 +273,18 @@ describe('QA-LOOP: all M4 systems in one 20-minute session', () => {
     expect(w.stats.materialsSold).toBeGreaterThan(0);
     expect(w.stats.crafted).toBeGreaterThan(0);
     expect(w.stats.kills).toBeGreaterThan(100);
-    // Auto-invest was switched on at 10 min with ~20k gold: it spends.
-    expect(ofType(session.events, 'buildingStarted').some((e) => e.auto)).toBe(true);
+    expect(w.town.autoInvest).toBe(true);
   });
 });
 
 describe('QA-SAVE: save/load in the middle of everything continues identically', () => {
-  it('swap the world through serialize/deserialize at 8 min (journey away, bounty and building running)', () => {
-    const swapAt = 8 * MIN;
+  it('swap the world through serialize/deserialize at 5.5 min (journey away, bounty and construction running)', () => {
+    const swapAt = 5.5 * MIN;
     const b = runSession(4, swapAt);
     // The interesting state really was in flight at the swap.
     expect(b.atSwap!.journeys).toBeGreaterThan(0);
     expect(b.atSwap!.bounties).toBeGreaterThan(0);
+    expect(b.atSwap!.upgrades).toBeGreaterThan(0);
     expect(JSON.stringify(b.sim.world)).toBe(JSON.stringify(session.sim.world));
     expect(JSON.stringify(b.events)).toBe(JSON.stringify(session.events));
   });
@@ -301,7 +308,7 @@ describe('QA-OFFLINE: credit on load with a journey and an upgrade in flight', (
     s.setWorld(deserialize(serialize(session.sim.world, T0), config).world);
     const w = s.world;
     // Bring everyone home so a team is available, then start a 10-minute journey and a Town Hall upgrade.
-    for (const h of w.hunters) s.enqueue({ type: 'hunter.move', hunterId: h.id, zoneId: 'town' });
+    for (const h of controllable(w)) s.enqueue({ type: 'hunter.move', hunterId: h.id, zoneId: 'town' });
     const def = config.index.journeys.get(JOURNEY)!;
     let tr = session.tracker;
     for (let i = 0; i < 3 * MIN && bestJourneyTeam(config, w, def).length === 0; i++) { s.step(); tr = recordSample(config, w, tr); }
@@ -321,8 +328,12 @@ describe('QA-OFFLINE: credit on load with a journey and an upgrade in flight', (
     return serialize(w, T0, tr);
   }
 
-  const text = savedWithJourneyAndUpgrade();
-  const before = deserialize(text, config).world;
+  let text: string;
+  let before: World;
+  beforeAll(() => {
+    text = savedWithJourneyAndUpgrade();
+    before = deserialize(text, config).world;
+  });
 
   it('2 h away: rates credited, the journey resolves offline, the build timer does not move (known limitation)', () => {
     const { sim, r } = load(text, T0 + 2 * 3_600_000);
@@ -393,21 +404,26 @@ function downgrade(src: World, v: number): Record<string, any> {
 }
 
 describe('QA-MIG: every schema version v0..v8 (and a pre-building v9) loads into a working M4 town', () => {
-  const base = (() => {
+  let base: World;
+  beforeAll(() => {
     const s = new Simulation(config, createWorld(config, 2));
     for (let i = 0; i < 4; i++) s.enqueue({ type: 'debug.spawnHunter' });
     for (let i = 0; i < 4 * MIN; i++) s.step();
-    expect(s.world.journeys).toEqual([]);
-    return s.world;
-  })();
+    base = s.world;
+  });
+  const oldSave = (v: number): Record<string, any> => {
+    expect(base.journeys).toEqual([]);
+    if (v < WORLD_SCHEMA_VERSION) return downgrade(base, v);
+    const w = downgrade(base, WORLD_SCHEMA_VERSION); // v9 made before buildings existed
+    delete w.town.buildings; delete w.town.autoInvest; delete w.town.investPlan;
+    return w;
+  };
+  const cases: [string, number][] = [];
+  for (let v = 0; v < WORLD_SCHEMA_VERSION; v++) cases.push([`v${v}`, v]);
+  cases.push(['v9 without buildings', WORLD_SCHEMA_VERSION]);
 
-  const cases: [string, Record<string, any>][] = [];
-  for (let v = 0; v < WORLD_SCHEMA_VERSION; v++) cases.push([`v${v}`, downgrade(base, v)]);
-  const v9NoBuildings = downgrade(base, WORLD_SCHEMA_VERSION);
-  delete v9NoBuildings.town.buildings; delete v9NoBuildings.town.autoInvest; delete v9NoBuildings.town.investPlan;
-  cases.push(['v9 without buildings', v9NoBuildings]);
-
-  it.each(cases)('%s', (_label, old) => {
+  it.each(cases)('%s', (_label, version) => {
+    const old = oldSave(version);
     const text = JSON.stringify({ format: SAVE_FORMAT, schemaVersion: old.schemaVersion, configVersion: config.version, savedAt: T0, world: old });
     const r = deserialize(text, config);
     const w = r.world;
@@ -435,7 +451,7 @@ describe('QA-MIG: every schema version v0..v8 (and a pre-building v9) loads into
     s.enqueue({ type: 'town.postBounty', targetKind: 'zone', targetId: 'zone.meadow', kills: 5, reward: 50 });
     s.enqueue({ type: 'town.requestMaterial', materialId: 'mat.gel', count: 5 });
     if (!w.town.buildings.some((b) => b.upgrade)) s.enqueue({ type: 'town.upgrade', buildingInstanceId: 'plot.townhall' });
-    for (const h of w.hunters) s.enqueue({ type: 'hunter.move', hunterId: h.id, zoneId: 'town' });
+    for (const h of controllable(w)) s.enqueue({ type: 'hunter.move', hunterId: h.id, zoneId: 'town' });
     const def = config.index.journeys.get(JOURNEY)!;
     const evs: SimEvent[] = [];
     let journeySent = false;

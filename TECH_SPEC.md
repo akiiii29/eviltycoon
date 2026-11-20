@@ -548,7 +548,7 @@ Mọi hệ thống nhắc trong GDD hoặc có bảng ở §8 phải nằm trong
 | Journey (GDD §9, bảng `journey`) | M4 | ✅ (§5.11; chưa có AI/tự gửi, chưa có UI ngoài debug) |
 | Town Hall, xây/nâng/đặt building, slot, cấp shop giới hạn tier (GDD §5, bảng `building`, `building_plot`) | M4 | ✅ (§5.12; building M5 dùng ô trống) |
 | Thuế (§3.1, §5.10) | M4 | ✅ |
-| QA checklist (GDD §13) | M4 | 🟡 `docs/QA_M4.md` dựng từ TECH_SPEC, mọi mục đạt (tự động: `tests/m4-acceptance.test.ts`; tay: trình duyệt); phải đối chiếu lại với GDD §13 gốc |
+| QA checklist (GDD §13) | M4 | 🟡 `docs/QA_M4.md` dựng từ TECH_SPEC: 59 mục, 0 ❌, 5 ⚠️, 1 ⏭️ (tự động: `tests/m4-acceptance.test.ts`; tay: trình duyệt); phải đối chiếu lại với GDD §13 gốc |
 | Invitation, `hunter_tier`, Donate/Banish (GDD §4.1–4.2) | M5 | ⚪ (tier hunter đã có) |
 | 9 bậc nghề, 7 slot đồ (GDD §6) | M5 | ⚪ |
 | Nâng tier đồ, `gear_option`, `gear_set`, `gear_skill` | M5 | ⚪ |

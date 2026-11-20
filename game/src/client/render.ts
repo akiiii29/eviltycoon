@@ -53,7 +53,7 @@ export function zoneColor(config: GameConfig, zoneId: string): number {
 
 /** Monsters spawned under higher difficulties are drawn darker (order 0 = untinted). */
 function monsterColor(config: GameConfig, defId: string, difficultyId: string): THREE.Color {
-  const c = new THREE.Color(MONSTER_COLORS[defId] ?? 0xff0000);
+  const c = new THREE.Color(MONSTER_COLORS[defId] ?? 0xc0c0c0);
   const order = config.index.difficulties.get(difficultyId)?.order ?? 0;
   return c.multiplyScalar(Math.max(0.4, 1 - order * 0.15));
 }
