@@ -1,4 +1,4 @@
-import { currentZone, sameGoal, scoreGoals, urgentNeed } from '../ai/utility';
+import { backstopHpFloor, currentZone, sameGoal, scoreGoals, shouldRetreatBeforeNextKill, urgentNeed } from '../ai/utility';
 import type { System, SystemContext } from '../system';
 import { dist, findMonster, isAlive, type Goal, type Hunter } from '../world';
 
@@ -91,6 +91,13 @@ function huntAct(ctx: SystemContext, h: Hunter, zoneId: string): void {
   const ai = h.ai;
   let target = ai.targetMonsterId ? findMonster(world, ai.targetMonsterId) : undefined;
   if (!target || target.hp <= 0 || target.zoneId !== zoneId) {
+    // Kill boundary: with nothing on the hunter, leave now if the next kill would take HP under the retreat line
+    // (not for player orders; the urgent backstop still applies to those).
+    if (!ai.forced && !world.monsters.some((m) => m.targetHunterId === h.id && m.hp > 0)
+      && shouldRetreatBeforeNextKill(config, ctx.nav, world, h, zoneId)) {
+      setGoal(ctx, h, { type: 'returnTown' }, 'retreat hp');
+      return;
+    }
     target = undefined;
     let bestD = Infinity;
     for (const m of world.monsters) {
@@ -122,7 +129,7 @@ function huntAct(ctx: SystemContext, h: Hunter, zoneId: string): void {
 export function applyUrgentBackstop(ctx: SystemContext, h: Hunter): boolean {
   if (!isAlive(h) || h.insideBuildingId) return false;
   if (!currentZone(ctx.nav, h) || h.ai.goal?.type === 'returnTown') return false;
-  const need = urgentNeed(ctx.config, h);
+  const need = urgentNeed(ctx.config, h, backstopHpFloor(ctx.config, ctx.nav, ctx.world, h));
   if (!need) return false;
   setGoal(ctx, h, { type: 'returnTown' }, `urgent ${need}`);
   return true;

@@ -1,10 +1,11 @@
-import { bestEnhance, bestShopPurchase, ENHANCE_BASE_SCORE, ENHANCE_GAIN_WEIGHT, enhanceReserveMul, scoreGoals } from '../src/core/ai/utility';
+import { bestEnhance, bestShopPurchase, enhanceReserveMul, scoreGoals } from '../src/core/ai/utility';
 import { NavGraph } from '../src/core/pathfinding';
 import { createWorld, Simulation } from '../src/core/simulation';
 import type { Hunter, ShopItem, World } from '../src/core/world';
 import { testConfig } from './helpers';
 
 const config = testConfig();
+const { enhanceBaseScore: ENHANCE_BASE_SCORE, enhanceGainWeight: ENHANCE_GAIN_WEIGHT } = config.formula;
 const nav = new NavGraph(config);
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 

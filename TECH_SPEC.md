@@ -149,15 +149,35 @@ Theo `scoreGoals` trong `src/core/ai/utility.ts`. Điểm không chuẩn hóa v�
 | `service(building)` — Heal/Eat/Fun/Rest | Ở Town, nhu cầu < 98%, đủ vàng cho `servicePrice` | `frac < softNeedFrac ? 0.6 + 0.4 × (1 − frac) : 0.5 × (1 − frac)`, × `personality(goal.service.<need>)` |
 | `sell` | Trạm Thu Mua sẽ trả tiền cho ít nhất 1 đơn vị trong bag (xem §5.7), hoặc bag ≥ `bagReturnFrac` và có NL không được yêu cầu (đi bỏ) | `(0.4 + bagFill) × econMul` |
 | `shop(item)` | `bestShopPurchase` (§5.4) | `(1.1 + 0.5 × min(gain, 1)) × econMul` |
-| `enhance(slot)` | `bestEnhance` (§5.4) | `(ENHANCE_BASE_SCORE + ENHANCE_GAIN_WEIGHT × expectedRelGain) × econMul` |
+| `enhance(slot)` | `bestEnhance` (§5.4) | `(enhanceBaseScore + enhanceGainWeight × expectedRelGain) × econMul` |
 | `learn(skill/trait)` | `bestLearn`: skill rẻ nhất học được khi vàng dư ≥ phí × `enhanceGoldReserveMul` (level 1 giữ lại vàng khởi điểm); không có thì trait theo thứ tự ưu tiên | skill `1.15 × econMul`, trait `1.2 × econMul` |
 | `wander` | Ở Town (fallback) | `max(wanderScore, 0.5 × (1 − needsOk))`; rảnh trong Town hồi nhu cầu chậm miễn phí (`townIdleRegenPerSec`) nên hunter hết tiền không bị kẹt |
 | `dead` | Gán khi chết, không chấm điểm | |
 
 Chưa làm: `BuyPotion` (chưa có potion), `Train` (chưa có Training Ground).
 
-**Nhu cầu khẩn cấp** (backstop cứng, ép `returnTown`) **[ĐỀ XUẤT]**: nhu cầu < `urgentHpFrac`/`urgentSatietyFrac`/`urgentMoodFrac`/`urgentStaminaFrac` (hiện 25% / 10% / 10% / 10%), mỗi ngưỡng × `personality(urgent.<need>)` (ví dụ liều lĩnh ×0.5 HP). **[CHỐT]** `applyUrgentBackstop` chỉ bắn khi hunter còn sống, ở field (node có zone), không ở trong building và chưa có goal `returnTown`; nó **ghi đè cả lệnh của người chơi** (`forced`). Chạy ở đầu pass AI và chạy lại trong `urgentBackstopSystem` ngay sau combat + skills (§3.2).
-**Nhu cầu mềm** (`softNeedFrac`, hiện 40%): kéo `needsOk` xuống, tức giảm điểm `hunt` và tăng `returnTown`. Ở field, ngưỡng mềm cũng nhân hệ số personality (tối đa `softNeedFrac`) để hunter liều lĩnh đánh tiếp; ở Town thì không, để hunter vừa hồi sinh vẫn đi chữa trước.
+**Nhu cầu khẩn cấp** (backstop cứng, ép `returnTown`) **[ĐỀ XUẤT]**: nhu cầu < `urgentHpFrac`/`urgentSatietyFrac`/`urgentMoodFrac`/`urgentStaminaFrac` (hiện 25% / 10% / 10% / 10%), mỗi ngưỡng × `personality(urgent.<need>)` (ví dụ liều lĩnh ×0.5 HP); với HP, ngưỡng = max(ngưỡng theo tính cách, sàn rút lui) — xem **Rút lui** bên dưới. **[CHỐT]** `applyUrgentBackstop` chỉ bắn khi hunter còn sống, ở field (node có zone), không ở trong building và chưa có goal `returnTown`; nó **ghi đè cả lệnh của người chơi** (`forced`). Chạy ở đầu pass AI và chạy lại trong `urgentBackstopSystem` ngay sau combat + skills (§3.2).
+**Nhu cầu mềm** (`softNeedFrac`, hiện 40%): kéo `needsOk` xuống, tức giảm điểm `hunt` và tăng `returnTown`; với HP, cả dải khẩn cấp→mềm dời lên đúng phần sàn rút lui vượt ngưỡng khẩn cấp. Ở field, ngưỡng mềm cũng nhân hệ số personality (tối đa `softNeedFrac`) để hunter liều lĩnh đánh tiếp; ở Town thì không, để hunter vừa hồi sinh vẫn đi chữa trước.
+
+Điểm goal ở Town (`shop`, `sell`, `enhance`, `learn`, dịch vụ, nghỉ) dùng hệ số trong `formula_params.json` (`shopBaseScore`, `enhanceBaseScore`, `learnSkillScore`, `serviceLowBase`…), xem chú thích trong `src/core/config/types.ts`.
+
+**Rút lui** **[ĐỀ XUẤT]** (`src/core/ai/utility.ts`). Hunter chết chủ yếu lúc rút khỏi vùng khi quái đang đánh, không phải ở các vùng dưới trên đường về; rút giữa hai trận gần như không mất máu.
+
+```
+zoneDanger(z)   = zoneCrowd × Σ_w (monsterDps, dmgPerKill) / Σ_w        (duel §5.3, chỉ số steady)
+tripHome        = Σ_vùng trên đường về (độ dài đường trong vùng / moveSpeed) × zoneDanger.dps
+                  (mỗi đoạn tính nửa cho vùng của mỗi đầu; node Town không có vùng → 0)
+sàn rút lui     = min(retreatHpCap, retreatTripMul × tripHome / HP tối đa)   (0 ở Town)
+ranh giới kill  : không quái nào đang đánh hunter, chọn mục tiêu mới →
+                  về ngay nếu HP − retreatKillMul × dmgPerKill/HP tối đa < max(ngưỡng khẩn cấp HP, sàn rút lui)
+chọn vùng khác  : needsOk tính với ngưỡng = max(ngưỡng khẩn cấp HP, sàn rút lui ở entryNode) + retreatKillMul × dmgPerKill/HP tối đa
+                  → không đi tới vùng mà phải quay về ngay ở ranh giới kill đầu tiên
+```
+
+- `retreatTripMul` = 3 phủ phương sai đo được (HP mất / dự đoán: p50 ≈ 1, p90 ≈ 1,9, p99 ≈ 2,7). Sàn **không** nhân hệ số tính cách: Liều lĩnh vẫn đánh tới 12,5% ở vùng dễ, nhưng không bắt đầu một chuyến về chết người.
+- Ranh giới kill không áp dụng cho lệnh Move của người chơi (`ai.forced`); backstop khẩn cấp (kèm sàn) vẫn áp dụng.
+- Backstop chạy mỗi tick nên sàn chỉ được tính khi HP nằm giữa ngưỡng khẩn cấp theo tính cách và `retreatHpCap`; độ dài đường theo vùng được cache theo NavGraph.
+- `retreatHpCap` = 0 và `retreatKillMul` = 0 tắt hẳn rút lui (hành vi như trước).
 
 ### 5.3 Chấm điểm vùng săn
 

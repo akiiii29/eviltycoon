@@ -240,6 +240,10 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'craftGoldFrac', 'feeTownShare', 'shopStaleSec', 'shopMarkdownPct', 'shopMarkdownFloor', 'shopFloorHoldSec', 'monsterCritMultiplier',
   'requestMaxCopies', 'requestZoneBonus', 'requestMaxUnits', 'tradeSaleTax', 'servicePriceLevelPct',
   'tradeSurplusPriceFrac', 'tradeSurplusFloorMul', 'craftAffordFrac', 'craftMinSellChance',
+  'enhanceRiskExp', 'enhanceMinSuccess', 'upgradeSavingsFrac', 'aiTypicalQualityMult', 'enhanceBaseScore', 'enhanceGainWeight',
+  'shopBaseScore', 'shopGainWeight', 'sellBaseScore', 'sellFillWeight', 'learnSkillScore', 'learnTraitScore', 'econMulFloor',
+  'serviceFullFrac', 'serviceLowBase', 'serviceLowWeight', 'serviceWeight', 'bagReturnScore', 'restScoreWeight',
+  'retreatTripMul', 'retreatKillMul', 'retreatHpCap',
 ];
 
 export class ConfigError extends Error {
@@ -296,6 +300,16 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     if ('shopScrapSec' in o) {
       issues.push({ path: 'formula_params.shopScrapSec', message: 'removed: scrap age = markdown steps to the floor × shopStaleSec + shopFloorHoldSec' });
     }
+    // AI enhance / town goal scores.
+    range('enhanceRiskExp', 0, 5);
+    range('enhanceMinSuccess', 0, 1);
+    range('upgradeSavingsFrac', 0, 10);
+    range('aiTypicalQualityMult', 0.01, 10);
+    range('econMulFloor', 0, 1);
+    range('serviceFullFrac', 0, 1);
+    range('retreatTripMul', 0, 100);
+    range('retreatKillMul', 0, 100);
+    range('retreatHpCap', 0, 0.95);
   }
 
   const grades = raw.stat_grade;
