@@ -25,12 +25,16 @@ export const spawnSystem: System = {
   name: 'spawn',
   update(ctx) {
     const { world, config, dtMs } = ctx;
+    // Monsters per zone in one pass (spawning only ever adds to the zone being processed, kept in sync).
+    const counts = new Map<string, number>();
+    for (const m of world.monsters) counts.set(m.zoneId, (counts.get(m.zoneId) ?? 0) + 1);
     for (const z of config.zones) {
-      const count = world.monsters.reduce((n, m) => n + (m.zoneId === z.id ? 1 : 0), 0);
+      const count = counts.get(z.id) ?? 0;
       let state = world.zones[z.id];
       if (!state) {
         state = world.zones[z.id] = { respawnMs: z.respawnSec * 1000 };
         for (let i = count; i < z.monsterCap; i++) spawnMonster(ctx, z);
+        counts.set(z.id, Math.max(count, z.monsterCap));
         continue;
       }
       if (count >= z.monsterCap) {
@@ -40,6 +44,7 @@ export const spawnSystem: System = {
       state.respawnMs -= dtMs;
       if (state.respawnMs <= 0) {
         spawnMonster(ctx, z);
+        counts.set(z.id, count + 1);
         state.respawnMs = z.respawnSec * 1000;
       }
     }

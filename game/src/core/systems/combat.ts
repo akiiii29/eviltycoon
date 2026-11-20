@@ -1,9 +1,32 @@
 import { critChance, critMultiplier, dodgeChance, hunterStats, mitigated, monsterStats } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
 import { gainExp } from '../progress';
+import { SpatialHash } from '../spatial';
 import type { System, SystemContext } from '../system';
 import { bagCount, dist, findHunter, findMonster, isAlive, newAiState, type Hunter, type Monster } from '../world';
 import { stepTowards } from './movement';
+
+/**
+ * Per-tick aggro index (TECH_SPEC §10), derived data rebuilt in combatSystem.update after revives: every
+ * hunter that monsters could target (alive, outside), keyed by its index in world.hunters, plus the zones
+ * those hunters stand in. Hunters do not move while monsters act, so it stays exact for the whole pass.
+ */
+const aggroGrid = new SpatialHash();
+const aggroZones = new Set<string>();
+const aggroScratch: number[] = [];
+
+function buildAggroIndex(ctx: SystemContext): void {
+  aggroGrid.clear();
+  aggroZones.clear();
+  const hs = ctx.world.hunters;
+  for (let i = 0; i < hs.length; i++) {
+    const h = hs[i]!;
+    if (!isAlive(h) || h.insideBuildingId) continue;
+    aggroGrid.insert(i, h.position.x, h.position.y);
+    const zone = ctx.nav.node(h.nodeId).zoneId;
+    if (zone) aggroZones.add(zone);
+  }
+}
 
 function killHunter(ctx: SystemContext, h: Hunter): void {
   h.needs.hp = 0;
@@ -94,10 +117,15 @@ function monsterActs(ctx: SystemContext, m: Monster): void {
     target = undefined;
     m.targetHunterId = null;
     let bestD = def.aggroRange;
-    for (const h of world.hunters) {
-      if (!valid(h)) continue;
-      const d = dist(h.position, m.position);
-      if (d <= bestD) { bestD = d; target = h; }
+    // Spatial query instead of scanning every hunter; candidates come back in world.hunters order, so the
+    // `<=` tie-break (last nearest wins) is unchanged. No eligible hunter in this zone → nothing can be valid.
+    if (aggroZones.has(m.zoneId)) {
+      for (const i of aggroGrid.candidates(m.position.x, m.position.y, def.aggroRange, aggroScratch)) {
+        const h = world.hunters[i]!;
+        if (!valid(h)) continue;
+        const d = dist(h.position, m.position);
+        if (d <= bestD) { bestD = d; target = h; }
+      }
     }
     if (target) m.targetHunterId = target.id;
   }
@@ -143,6 +171,7 @@ export const combatSystem: System = {
     }
     for (const h of world.hunters) if (isAlive(h) && !h.insideBuildingId) hunterAttacks(ctx, h);
     world.monsters = world.monsters.filter((m) => m.hp > 0);
+    buildAggroIndex(ctx);
     for (const m of world.monsters) monsterActs(ctx, m);
   },
 };
