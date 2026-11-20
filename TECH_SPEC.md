@@ -512,6 +512,16 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 - Khi số phần tử ít hơn số ô cần xét, `candidates()` quét bounding box trên danh sách phần tử (rẻ hơn tra từng ô); kết quả cùng hợp đồng.
 - Chưa dùng: `huntAct` (hunter chọn quái gần nhất, ưu tiên −1000 cho quái đang đánh mình nên không giới hạn được bán kính; chỉ chạy khi mất mục tiêu, ~1,5% thời gian).
 
+**Memo chỉ số hiệu dụng (đã làm).** `hunterStats` gọi qua `memoHunterStats` (`src/core/statsCache.ts`); phần tính giữ nguyên trong `computeHunterStats` (formulas.ts), chữ ký công khai không đổi. Cũng là dữ liệu dẫn xuất (WeakMap theo object hunter, không nằm trong World/save).
+
+- Mỗi hunter giữ 1 entry cho chỉ số steady và 1 cho live, kèm snapshot **giá trị** mọi input mà `hunterStats` đọc: object config + formula, mọi trường `h.stats`, classId, jobTier, reincarnation, level, gearId/qualityId/enhance của từng slot, cấp trait; live thêm stat/value từng buff và `needs.mood`. Mỗi lần gọi so snapshot với hunter hiện tại, khác là tính lại. Không khoá theo tick/id: lên cấp, thêm buff, mood giảm, đổi đồ giữa tick đều miss, nên kết quả trùng với tính mỗi lần (vd. `progression` đọc max HP trước/sau khi lên cấp trong cùng tick).
+- Kết quả bị `Object.freeze` và dùng chung giữa các caller; ghi vào sẽ throw.
+- **Khi `hunterStats` đọc thêm trường mới của hunter, phải thêm trường đó vào `matches`/`capture`.** `setStatsCacheVerify(true)` hoặc env `TH_VERIFY_CACHES=1` tính lại ở mỗi lần hit và throw nếu lệch (`tests/statsCache.test.ts` chạy 10 phút sim ở chế độ này).
+- `crafting.countUpgrades`: bảng roll theo quality (xác suất, giá trị, ngân sách tối thiểu) chỉ phụ thuộc config, cache theo (config, formula, gear).
+- Đã kiểm: output headless 720 phút seed 1–3 và hash world + event từng phút giống từng byte trước/sau (cả khi bật verify); toàn bộ test chạy ở chế độ verify. 240 phút seed 1: `step` 19,0 → 11,0 giây (−42%), `hunterStats` (gồm cả `needMax`) 4,2 → 1,3 giây.
+- Đã thử và bỏ: index id → vị trí cho `findHunter`/`findMonster` (Array.find trên ≤ ~100 quái chỉ ~0,1% thời gian; dựng lại Map sau mỗi lần `filter` quái chết làm chậm hơn), memo `personalityFactor` (tra Map theo chuỗi `urgent.<need>` ghép mới mỗi lần chậm hơn vòng lặp gốc).
+- Còn nóng (đo 240 phút seed 1, % thời gian `step`): `applyUrgentBackstop` → `backstopHpFloor` → `retreatHpFloor`/`tripHomeDamage`/`zoneDanger` (~22%): mỗi tick, 2 lần cho mỗi hunter ngoài field trong dải HP, dựng `dangerCache` mới và chạy lại `duel` cho mọi loại quái của các vùng trên đường về. Hướng làm: memo `ZoneDanger` theo hunter, khoá theo object chỉ số steady (memo trên trả cùng object khi input không đổi) + maxHp + độ khó + `h.skills`/level (input của `duel`). Chưa làm vì đang có thay đổi song song ở code retreat/combat. Tiếp theo: `crafting.pickRecipe`/`autoMaterialDemand` (~7%, `recipeBeneficiaries` duyệt hunter 2 lần, có thể gộp 1 lượt), `monsterActs` (~5% self).
+
 ## 11. Telemetry và debug
 
 - Overlay debug: state AI, goal và điểm utility của hunter đang chọn, path, needs.

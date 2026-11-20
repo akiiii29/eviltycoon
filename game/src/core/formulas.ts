@@ -13,6 +13,7 @@
 import type { FormulaParams, GameConfig, GearSlot, MainStat, ModStat, NeedKey, SkillDef, StatKey, ZoneDef } from './config/types';
 import { GEAR_SLOTS } from './config/types';
 import { personalityFactor } from './hunterFactory';
+import { memoHunterStats } from './statsCache';
 import type { GearInstance, Hunter, Monster, World } from './world';
 
 export type EffectiveStats = Record<StatKey, number> & { atkSpeed: number };
@@ -97,8 +98,14 @@ export interface StatOptions {
  *   atkSpeed   = max(minAttackInterval, base interval ÷ stackPct(traitSpeed%, buffSpeed%))
  */
 export function hunterStats(config: GameConfig, h: Hunter, opts: StatOptions = {}): EffectiveStats {
+  // Memoised per hunter, recomputed whenever an input changes (statsCache.ts); the result is frozen.
+  const steady = !!opts.steady;
+  return memoHunterStats(config, h, steady, () => computeHunterStats(config, h, steady)) as EffectiveStats;
+}
+
+function computeHunterStats(config: GameConfig, h: Hunter, steady: boolean): EffectiveStats {
   const f = config.formula;
-  const buffs = !opts.steady;
+  const buffs = !steady;
   const growth = jobMult(config, h) * (1 + h.reincarnation * f.reincStatBonus);
   const s: EffectiveStats = { ...h.stats };
   s.hp *= growth;
