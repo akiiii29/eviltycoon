@@ -3,6 +3,7 @@ import type { GameConfig, GearDef } from '../core/config/types';
 import { GEAR_SLOTS } from '../core/config/types';
 import type { SimEvent } from '../core/events';
 import { hunterStats, needMax } from '../core/formulas';
+import { bestJourneyTeam, journeyPreview } from '../core/systems/journey';
 import type { Simulation } from '../core/simulation';
 import type { GearInstance, Hunter, NeedKey } from '../core/world';
 import { bagCount } from '../core/world';
@@ -47,6 +48,9 @@ function bountyTargetName(config: GameConfig, kind: 'monster' | 'zone', id: stri
 function difficultyName(config: GameConfig, id: string): string {
   return name(config, config.index.difficulties.get(id)?.nameKey, id);
 }
+function journeyName(config: GameConfig, id: string): string {
+  return name(config, config.index.journeys.get(id)?.nameKey, id);
+}
 function jobName(config: GameConfig, id: string): string {
   return name(config, config.index.jobs.get(id)?.nameKey, id);
 }
@@ -81,6 +85,8 @@ export class DebugOverlay {
   private logEl: HTMLElement;
   private log: string[] = [];
   private status = '';
+  /** Hunters picked for the next journey (overlay-only state; stale ids are dropped when sending). */
+  private team = new Set<string>();
 
   constructor(parent: HTMLElement, private sim: Simulation, private actions: OverlayActions) {
     this.root = document.createElement('div');
@@ -141,6 +147,24 @@ export class DebugOverlay {
       case 'autobounty': sim.enqueue({ type: 'town.setAutoBounty', on: !sim.world.town.autoBounty }); break;
       case 'cancelbounty': sim.enqueue({ type: 'town.cancelBounty', bountyId: el.dataset.id! }); break;
       case 'reincarnate': sim.enqueue({ type: 'hunter.reincarnate', hunterId: el.dataset.id! }); break;
+      case 'team': {
+        const id = el.dataset.id!;
+        if (this.team.has(id)) this.team.delete(id);
+        else this.team.add(id);
+        break;
+      }
+      case 'journey': {
+        const ids = [...this.team].filter((id) => sim.world.hunters.some((h) => h.id === id));
+        sim.enqueue({ type: 'journey.start', journeyId: el.dataset.j!, hunterIds: ids });
+        this.team.clear();
+        break;
+      }
+      case 'journeybest': {
+        const def = sim.config.index.journeys.get(el.dataset.j!);
+        if (def) sim.enqueue({ type: 'journey.start', journeyId: def.id, hunterIds: bestJourneyTeam(sim.config, sim.world, def).map((h) => h.id) });
+        break;
+      }
+      case 'recall': sim.enqueue({ type: 'journey.recall', journeyUid: el.dataset.id! }); break;
     }
     this.render();
   }
@@ -199,7 +223,36 @@ export class DebugOverlay {
       <div class="debug-sub">Cửa hàng ${town.shop.length}/${cap}</div>
       <div class="shop-list">${shop}</div>
       ${this.renderBounties()}
+      ${this.renderJourneys()}
       ${this.renderDifficulty()}`;
+  }
+
+  /**
+   * Journey block (TECH_SPEC §5.10): running journeys (time left, power, chance, recall) and one row per destination
+   * with the preview for the picked team (or the best Town team) and send buttons. Pick hunters with "+đội".
+   */
+  private renderJourneys(): string {
+    const { world, config } = this.sim;
+    const f = config.formula;
+    const running = (world.journeys ?? []).map((j) =>
+      `<div class="journey">${esc(journeyName(config, j.journeyId))} · ${esc(j.hunters.map((h) => `${h.id} Lv${h.level}`).join(', '))} · ` +
+      `còn ${fmtTime(j.remainingMs)} · sức ${j.teamPower.toFixed(2)} · ${Math.round(j.successChance * 100)}% ` +
+      `<button data-a="recall" data-id="${esc(j.id)}">gọi về</button></div>`).join('') || '<div class="journey">—</div>';
+    const picked = world.hunters.filter((h) => this.team.has(h.id));
+    const dests = config.journeys.map((d) => {
+      const team = picked.length > 0 ? picked : bestJourneyTeam(config, world, d);
+      const p = team.length > 0 ? journeyPreview({ config, world }, d, team) : null;
+      const prev = p ? `${picked.length > 0 ? 'đội chọn' : 'đội tốt nhất'} ${p.teamPower.toFixed(2)} → ${Math.round(p.successChance * 100)}%` : 'không có hunter ở Town';
+      return `<div class="journey-dest"><b>${esc(t(config, d.nameKey))}</b> · ${esc(name(config, config.index.zones.get(d.zoneId)?.nameKey, d.zoneId))} · ` +
+        `đề xuất ${d.recommendedPower} · ${Math.round(d.durationSec / 60)} phút · phí ${d.cost}g · thưởng ${d.gold}g, ${d.exp} EXP<br>` +
+        `<span class="journey-prev">${esc(prev)}</span> ` +
+        `<button data-a="journey" data-j="${esc(d.id)}"${picked.length > 0 ? '' : ' disabled'}>gửi đội chọn</button>` +
+        `<button data-a="journeybest" data-j="${esc(d.id)}">gửi ${f.journeyTeamMax} mạnh nhất</button></div>`;
+    }).join('');
+    return `
+      <div class="debug-sub">Hành trình ${(world.journeys ?? []).length}/${f.journeyMaxActive} · thành công ${world.stats.journeysSucceeded ?? 0} · thất bại ${world.stats.journeysFailed ?? 0} · đội chọn: ${esc([...this.team].join(', ') || '—')}</div>
+      ${running}
+      ${dests}`;
   }
 
   /** Bounty block (TECH_SPEC §5.9): active bounties with progress, escrow and a cancel button; auto-bounty toggle. */
@@ -275,7 +328,7 @@ export class DebugOverlay {
     this.stats.innerHTML = `
       config <b>${esc(config.version)}</b> · seed ${world.seed}<br>
       tick <b>${world.tick}</b> · time <b>${fmtTime(world.timeMs)}</b> · ${this.sim.paused ? '<b>PAUSED</b>' : `x${this.sim.speed}`}<br>
-      hunters ${world.hunters.length}/${config.formula.hunterSlots} · next arrival ${Math.max(0, config.formula.arrivalIntervalSec - world.town.arrivalTimerMs / 1000).toFixed(0)}s<br>
+      hunters ${world.hunters.length}${(world.journeys ?? []).length ? ` (+${(world.journeys ?? []).reduce((a, j) => a + j.hunters.length, 0)} đi xa)` : ''}/${config.formula.hunterSlots} · next arrival ${Math.max(0, config.formula.arrivalIntervalSec - world.town.arrivalTimerMs / 1000).toFixed(0)}s<br>
       town gold <b>${world.town.gold}</b> · monsters ${world.monsters.length} · kills ${world.stats.kills} · deaths ${world.stats.deaths} · services ${world.stats.serviceUses}<br>
       bán NL ${world.stats.materialsSold} · bỏ NL ${world.stats.materialsDiscarded ?? 0} · bỏ đồ ${world.stats.gearScrapped ?? 0} · shop ${world.town.shop.length} · chế ${world.stats.crafted} · mua ${world.stats.gearBought} · cường hóa ${world.stats.enhanceSuccess}/${world.stats.enhanceTries}<br>
       kỹ năng ${world.stats.skillCasts} · chuyển nghề ${world.stats.jobChanges} · tái sinh ${world.stats.reincarnations} · học ${world.stats.learned}
@@ -306,7 +359,7 @@ export class DebugOverlay {
         .map(([id, name]) => `<button data-a="move" data-id="${esc(h.id)}" data-zone="${esc(id!)}">→${esc(name!)}</button>`).join('');
       return `<div class="hunter">
         <div class="hunter-top"><b>${esc(h.id)}</b> ${esc(cls)} <span class="reinc">R${h.reincarnation}</span> · ${esc(jobLabel)} · <span class="tier-${h.tier}">${h.tier}</span> · Lv${h.level}
-          ${canReinc ? `<button data-a="reincarnate" data-id="${esc(h.id)}">Tái sinh</button>` : ''}<button data-a="restore" data-id="${esc(h.id)}">hồi</button><button data-a="remove" data-id="${esc(h.id)}">×</button></div>
+          ${canReinc ? `<button data-a="reincarnate" data-id="${esc(h.id)}">Tái sinh</button>` : ''}<button data-a="team" data-id="${esc(h.id)}">${this.team.has(h.id) ? '−đội' : '+đội'}</button><button data-a="restore" data-id="${esc(h.id)}">hồi</button><button data-a="remove" data-id="${esc(h.id)}">×</button></div>
         <div class="hunter-sub">ATK ${Math.round(st.atk)} DEF ${Math.round(st.def)} HP ${Math.round(st.hp)} · ${h.gold}g · ${h.kills} kill · túi ${bagCount(h)}/${config.formula.bagCapacity} · ${esc(pers)}</div>
         <div class="hunter-equip">${esc(equip)}</div>
         ${this.renderProgress(h)}
@@ -350,8 +403,12 @@ function progressLine(config: GameConfig, e: SimEvent): string | null {
     case 'bountyPosted': return `${e.auto ? 'bounty tự động' : 'đặt bounty'}: ${bountyTargetName(config, e.targetKind, e.targetId)} ×${e.kills} -${e.reward}g`;
     case 'bountyCompleted': return `bounty ${e.bountyId} xong (${e.hunterId}) · vương quốc trả Town +${e.kingdomGold}g`;
     case 'bountyCancelled': return `bounty ${e.bountyId} ${e.reason === 'expired' ? 'hết hạn' : 'bị hủy'} · hoàn ${e.refund}g`;
+    case 'journeyStarted': return `hành trình ${journeyName(config, e.journeyId)}: ${e.hunterIds.join(', ')} lên đường · sức ${e.teamPower.toFixed(2)} · ${Math.round(e.successChance * 100)}% · -${e.cost}g`;
+    case 'journeyCompleted': return `hành trình ${journeyName(config, e.journeyId)} ${e.success ? 'thành công' : 'thất bại'}${e.offline ? ' (offline)' : ''} · +${e.rewards.gold}g · ${e.rewards.exp} EXP/người${e.rewards.items.length ? ` · ${e.rewards.items.length} đồ hiếm` : ''}`;
+    case 'journeyRecalled': return `hành trình ${journeyName(config, e.journeyId)} bị gọi về (${e.hunterIds.join(', ')})`;
     case 'difficultyUnlocked': return `mở khóa độ khó ${difficultyName(config, e.difficultyId)}`;
     case 'difficultyChanged': return `độ khó → ${difficultyName(config, e.difficultyId)}`;
     default: return null;
   }
 }
+

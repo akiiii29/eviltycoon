@@ -1,0 +1,130 @@
+[
+ {
+  "id": "journey.mossway",
+  "nameKey": "journey.mossway.name",
+  "durationSec": 600,
+  "zoneId": "zone.ruins",
+  "recommendedPower": 3.5,
+  "cost": 100,
+  "gold": 300,
+  "exp": 1000,
+  "materials": [
+   {
+    "materialId": "mat.ore",
+    "count": 8
+   },
+   {
+    "materialId": "mat.core",
+    "count": 3
+   }
+  ],
+  "rare": [
+   {
+    "gearId": "gear.w.iron",
+    "qualityId": "q.rare",
+    "chance": 0.15
+   }
+  ],
+  "failHpFrac": 0.3,
+  "failRewardFrac": 0.25
+ },
+ {
+  "id": "journey.emberglow",
+  "nameKey": "journey.emberglow.name",
+  "durationSec": 1800,
+  "zoneId": "zone.crags",
+  "recommendedPower": 3.3,
+  "cost": 500,
+  "gold": 2000,
+  "exp": 9000,
+  "materials": [
+   {
+    "materialId": "mat.cinder",
+    "count": 8
+   },
+   {
+    "materialId": "mat.scale",
+    "count": 4
+   },
+   {
+    "materialId": "mat.ember",
+    "count": 2
+   }
+  ],
+  "rare": [
+   {
+    "gearId": "gear.a.drake",
+    "qualityId": "q.rare",
+    "chance": 0.12
+   }
+  ],
+  "failHpFrac": 0.25,
+  "failRewardFrac": 0.25
+ },
+ {
+  "id": "journey.saltdeep",
+  "nameKey": "journey.saltdeep.name",
+  "durationSec": 3600,
+  "zoneId": "zone.citadel",
+  "recommendedPower": 3.6,
+  "cost": 1500,
+  "gold": 6000,
+  "exp": 22000,
+  "materials": [
+   {
+    "materialId": "mat.brine",
+    "count": 6
+   },
+   {
+    "materialId": "mat.pearl",
+    "count": 4
+   },
+   {
+    "materialId": "mat.sigil",
+    "count": 2
+   }
+  ],
+  "rare": [
+   {
+    "gearId": "gear.r.sigil",
+    "qualityId": "q.epic",
+    "chance": 0.08
+   }
+  ],
+  "failHpFrac": 0.2,
+  "failRewardFrac": 0.2
+ },
+ {
+  "id": "journey.hollowthrone",
+  "nameKey": "journey.hollowthrone.name",
+  "durationSec": 7200,
+  "zoneId": "zone.abyss",
+  "recommendedPower": 4,
+  "cost": 4000,
+  "gold": 15000,
+  "exp": 45000,
+  "materials": [
+   {
+    "materialId": "mat.void",
+    "count": 6
+   },
+   {
+    "materialId": "mat.shade",
+    "count": 4
+   },
+   {
+    "materialId": "mat.star",
+    "count": 2
+   }
+  ],
+  "rare": [
+   {
+    "gearId": "gear.w.star",
+    "qualityId": "q.epic",
+    "chance": 0.06
+   }
+  ],
+  "failHpFrac": 0.15,
+  "failRewardFrac": 0.2
+ }
+]

@@ -149,7 +149,7 @@ describe('save/load', () => {
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 6, configVersion: config.version, savedAt: 0, world: w }), config);
     expect(r.migratedFrom).toBe(6);
     expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
-    expect(WORLD_SCHEMA_VERSION).toBe(7);
+    expect(WORLD_SCHEMA_VERSION).toBe(9);
     expect(r.world.town.bounties).toEqual([]);
     expect(r.world.town.autoBounty).toBe(true);
     expect(r.world.town.requests).toEqual({ 'mat.ore': 7 });

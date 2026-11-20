@@ -129,5 +129,12 @@
  "bountyAutoGoldMul": 1,
  "bountyAutoRewardFrac": 0.1,
  "bountyAutoKills": 30,
- "bountyAutoExpireSec": 1800
+ "bountyAutoExpireSec": 1800,
+ "journeyTeamMax": 3,
+ "journeyMaxActive": 2,
+ "journeySuccessAtRec": 0.75,
+ "journeySuccessExp": 2,
+ "journeySuccessMin": 0.05,
+ "journeySuccessMax": 0.95,
+ "journeyReturnNeedFrac": 0.5
 }

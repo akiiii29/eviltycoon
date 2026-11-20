@@ -1,6 +1,7 @@
 import { loadConfig, ConfigError } from '../core/config/load';
 import type { GameConfig } from '../core/config/types';
-import { applyOffline, estimateOffline, recordSample, type OfflineReport, type OfflineTracker } from '../core/offline';
+import { advanceJourneys } from '../core/systems/journey';
+import { applyOffline, estimateOffline, offlineJourneyMs, recordSample, type OfflineReport, type OfflineTracker } from '../core/offline';
 import { deserialize, serialize, SaveError } from '../core/save/save';
 import { IndexedDbStorage } from '../core/save/storage';
 import { createWorld, Simulation } from '../core/simulation';
@@ -40,10 +41,12 @@ async function boot(): Promise<void> {
 
   /** Estimate and apply offline progress for the wall-clock gap since `since`; returns the report when anything was credited. */
   function creditOffline(since: number): OfflineReport | null {
-    const r = estimateOffline(config, sim.world, tracker, since, Date.now());
-    if (r.skipped) return null;
-    applyOffline(config, sim.world, r, tracker);
-    return r;
+    const now = Date.now();
+    const r = estimateOffline(config, sim.world, tracker, since, now);
+    if (!r.skipped) applyOffline(config, sim.world, r, tracker);
+    // Journeys run on wall-clock time, independent of the rate estimate (TECH_SPEC §5.10).
+    r.journeys = sim.runBetweenTicks((ctx) => advanceJourneys(ctx, offlineJourneyMs(since, now), true));
+    return r.skipped && r.journeys.length === 0 ? null : r;
   }
 
   function showReport(r: OfflineReport | null): void {

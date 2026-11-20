@@ -132,4 +132,16 @@ export const MIGRATIONS: Record<number, Migration> = {
       stats: { bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, ...stats },
     };
   },
+  // v7 → v8: reserved for Town Hall/buildings (parallel branch). Pass-through here; on merge the buildings migration
+  // takes this slot. The journey migration below only fills missing fields, so it is correct either side of it.
+  7: (w) => w,
+  // v8 → v9 (Journey, GDD §9): no journey running, journey stats = 0.
+  8: (w) => {
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    return {
+      ...w,
+      journeys: Array.isArray(w.journeys) ? w.journeys : [],
+      stats: { journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, ...stats },
+    };
+  },
 };

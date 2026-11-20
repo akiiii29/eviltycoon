@@ -1,7 +1,7 @@
 import { validateTables, type ConfigIssue, type FieldSpec, type TableSpec } from './schema';
 import {
   BUILDING_KINDS, GEAR_SLOTS, MOD_STATS, NEED_KEYS, STAT_KEYS,
-  type BuildingDef, type DifficultyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
+  type BuildingDef, type DifficultyDef, type JourneyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
   type MapEdge, type MapNode, type MaterialDef, type MonsterDef, type ZoneDef,
 } from './types';
 
@@ -220,6 +220,36 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       rewardMul: { kind: 'number', min: 0.01 },
     },
   },
+  journey: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      durationSec: { kind: 'number', min: 1 },
+      zoneId: { kind: 'ref', table: 'zone' },
+      recommendedPower: { kind: 'number', min: 0.01 },
+      cost: { kind: 'int', min: 0 },
+      gold: { kind: 'int', min: 0 },
+      exp: { kind: 'number', min: 0 },
+      materials: {
+        kind: 'array',
+        of: { kind: 'object', fields: { materialId: { kind: 'ref', table: 'material' }, count: { kind: 'int', min: 1 } } },
+      },
+      rare: {
+        kind: 'array',
+        of: {
+          kind: 'object',
+          fields: {
+            gearId: { kind: 'ref', table: 'gear' },
+            qualityId: { kind: 'ref', table: 'gear_quality' },
+            chance: { kind: 'number', min: 0, max: 1 },
+          },
+        },
+      },
+      failHpFrac: { kind: 'number', min: 0.01, max: 1 },
+      failRewardFrac: { kind: 'number', min: 0, max: 1 },
+    },
+  },
 };
 
 /** Formula keys that must exist (other numeric keys are allowed for tuning). */
@@ -248,6 +278,8 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'offlineMaxHours', 'offlineEfficiency', 'offlineSampleSec', 'offlineWindowMin', 'offlineMinWindowSec', 'offlineMinAwaySec',
   'bountyMaxActive', 'bountyMaxKills', 'bountyCompletionFrac', 'bountyZoneBonus', 'bountyTormentFromOrder', 'bountyTormentDropBonus',
   'bountyAutoIntervalSec', 'bountyAutoGoldMul', 'bountyAutoRewardFrac', 'bountyAutoKills', 'bountyAutoExpireSec',
+  'journeyTeamMax', 'journeyMaxActive', 'journeySuccessAtRec', 'journeySuccessExp', 'journeySuccessMin', 'journeySuccessMax',
+  'journeyReturnNeedFrac',
 ];
 
 export class ConfigError extends Error {
@@ -338,6 +370,17 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('bountyAutoRewardFrac', 0, 1);
     range('bountyAutoKills', 1, 1e6);
     range('bountyAutoExpireSec', 0, 1e7);
+    // Journeys (TECH_SPEC §5.10).
+    range('journeyTeamMax', 1, 10);
+    range('journeyMaxActive', 0, 100);
+    range('journeySuccessAtRec', 0, 1);
+    range('journeySuccessExp', 0, 10);
+    range('journeySuccessMin', 0, 1);
+    range('journeySuccessMax', 0, 1);
+    range('journeyReturnNeedFrac', 0, 1);
+    if (typeof o.journeySuccessMin === 'number' && typeof o.journeySuccessMax === 'number' && o.journeySuccessMin > o.journeySuccessMax) {
+      issues.push({ path: 'formula_params.journeySuccessMin', message: 'must be <= journeySuccessMax' });
+    }
   }
 
   const grades = raw.stat_grade;
@@ -466,6 +509,7 @@ export function loadConfig(raw: RawConfig): GameConfig {
   const skills = raw.skill as SkillDef[];
   const traits = raw.trait as TraitDef[];
   const difficulties = [...(raw.difficulty as DifficultyDef[])].sort((a, b) => a.order - b.order);
+  const journeys = raw.journey as JourneyDef[];
   const jobsByClass = new Map<string, JobDef[]>(classes.map((c) => [c.id, jobs.filter((j) => j.classId === c.id).sort((a, b) => a.tier - b.tier)]));
   return {
     version: (raw.meta as { version: string }).version,
@@ -486,6 +530,7 @@ export function loadConfig(raw: RawConfig): GameConfig {
     skills,
     traits,
     difficulties,
+    journeys,
     loc,
     index: {
       classes: new Map(classes.map((c) => [c.id, c])),
@@ -507,6 +552,7 @@ export function loadConfig(raw: RawConfig): GameConfig {
       skills: new Map(skills.map((x) => [x.id, x])),
       traits: new Map(traits.map((x) => [x.id, x])),
       difficulties: new Map(difficulties.map((d) => [d.id, d])),
+      journeys: new Map(journeys.map((j) => [j.id, j])),
       squareNode: nodes.find((n) => n.kind === 'square')!.id,
       zoneNodes,
     },
