@@ -32,7 +32,7 @@ function learnSkill(ctx: SystemContext, h: Hunter, skillId: string): void {
   const next = nextSkillStudy(config, h, skillId);
   if (!next || h.gold < next.cost) return;
   h.gold -= next.cost;
-  world.town.gold += feeTownCut(config, next.cost); // the rest leaves the economy (gold sink)
+  world.town.gold += feeTownCut(config, next.cost, world); // the rest leaves the economy (gold sink)
   h.skills[skillId] = next.level;
   world.stats.learned += 1;
   ctx.events.emit(world.tick, { type: 'learned', hunterId: h.id, kind: 'skill', id: skillId, level: next.level, cost: next.cost });

@@ -240,6 +240,7 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'craftGoldFrac', 'feeTownShare', 'shopStaleSec', 'shopMarkdownPct', 'shopMarkdownFloor', 'shopScrapSec', 'monsterCritMultiplier',
   'requestMaxCopies', 'requestZoneBonus', 'requestMaxUnits', 'tradeSaleTax', 'servicePriceLevelPct',
   'tradeSurplusPriceFrac', 'tradeSurplusFloorMul', 'craftAffordFrac',
+  'feeTownTargetMul', 'feeTownTargetMin', 'servicePriceLatePct', 'servicePriceLateLevel',
 ];
 
 export class ConfigError extends Error {
@@ -286,6 +287,11 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('tradeSurplusPriceFrac', 0, 1);
     range('tradeSurplusFloorMul', 0, 1000);
     range('craftAffordFrac', 0, 10);
+    range('feeTownShare', 0, 1);
+    range('feeTownTargetMul', 0, 1000);
+    range('feeTownTargetMin', 0, 1e9);
+    range('servicePriceLatePct', 0, 100);
+    range('servicePriceLateLevel', 0, 1000);
   }
 
   const grades = raw.stat_grade;

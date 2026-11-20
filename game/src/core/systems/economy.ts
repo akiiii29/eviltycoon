@@ -1,8 +1,8 @@
 import type { GameConfig, GearSlot } from '../config/types';
 import { hunterStats } from '../formulas';
 import type { System, SystemContext } from '../system';
-import { isAlive, type GearInstance, type Hunter, type ShopItem } from '../world';
-import { materialDemand, salePrice, surplusBudget, surplusPrice } from './trading';
+import { isAlive, type GearInstance, type Hunter, type ShopItem, type World } from '../world';
+import { materialDemand, salePrice, surplusBudget, surplusPrice, townFeeShare } from './trading';
 
 /** Gold cost of the next enhance step for this gear, or null when it is already at max (or unknown). */
 export function enhanceCost(config: GameConfig, g: GearInstance): number | null {
@@ -19,9 +19,12 @@ export function canBuy(config: GameConfig, h: Hunter, item: ShopItem): boolean {
   return h.level >= def.level && h.gold >= item.price;
 }
 
-/** Part of a forge/academy fee the town receives: round(fee × feeTownShare); the hunter pays the full fee. */
-export function feeTownCut(config: GameConfig, fee: number): number {
-  return Math.round(fee * config.formula.feeTownShare);
+/**
+ * Part of a forge/academy fee the town receives; the hunter pays the full fee. Without `world`: round(fee × feeTownShare);
+ * with it: round(fee × townFeeShare) (the share shrinks while town gold is above its target, trading.ts).
+ */
+export function feeTownCut(config: GameConfig, fee: number, world?: World): number {
+  return Math.round(fee * (world ? townFeeShare(config, world) : config.formula.feeTownShare));
 }
 
 function done(h: Hunter): void {
@@ -114,7 +117,7 @@ function doEnhance(ctx: SystemContext, h: Hunter, slot: GearSlot): void {
   if (cost === null || h.gold < cost) return;
   const row = config.enhance[g.enhance]!;
   h.gold -= cost;
-  world.town.gold += feeTownCut(config, cost); // the rest leaves the economy (gold sink)
+  world.town.gold += feeTownCut(config, cost, world); // the rest leaves the economy (gold sink)
   world.stats.enhanceTries += 1;
   const success = ctx.rng.chance(row.successRate);
   if (success) {

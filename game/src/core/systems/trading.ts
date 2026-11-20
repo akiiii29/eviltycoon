@@ -67,6 +67,29 @@ export function surplusFloor(config: GameConfig, world: World): number {
   return config.formula.tradeSurplusFloorMul * autoCraftReserve(config, world);
 }
 
+/**
+ * Town treasury target: max(feeTownTargetMin, feeTownTargetMul × autoCraftReserve). Tier-relative like the surplus
+ * floor, so it grows with the materials the town has to buy; the minimum keeps early-game fees in the town.
+ */
+export function townGoldTarget(config: GameConfig, world: World): number {
+  const f = config.formula;
+  return Math.max(f.feeTownTargetMin ?? 0, (f.feeTownTargetMul ?? 0) * autoCraftReserve(config, world));
+}
+
+/**
+ * Share of a forge/academy fee the town keeps right now: feeTownShare while town gold ≤ townGoldTarget, then
+ * feeTownShare × target / townGold (halved at 2 × target). The rest leaves the economy. This is the restoring force
+ * on town gold: above the surplus floor the post already exports every unrequested unit, so without it any surplus of
+ * fee + service + shop income over material purchases piles up without bound (feeTownTargetMul 0 = constant share).
+ */
+export function townFeeShare(config: GameConfig, world: World): number {
+  const f = config.formula;
+  if (!(f.feeTownTargetMul > 0) && !(f.feeTownTargetMin > 0)) return f.feeTownShare;
+  const target = townGoldTarget(config, world);
+  const gold = world.town.gold;
+  return gold <= target ? f.feeTownShare : (f.feeTownShare * target) / gold;
+}
+
 /** Town gold available for unrequested (surplus) purchases right now. */
 export function surplusBudget(config: GameConfig, world: World): number {
   return Math.max(0, world.town.gold - surplusFloor(config, world));

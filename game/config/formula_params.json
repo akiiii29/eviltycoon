@@ -85,5 +85,9 @@
  "servicePriceLevelPct": 1,
  "tradeSurplusPriceFrac": 0.6,
  "tradeSurplusFloorMul": 5,
- "craftAffordFrac": 0.2
+ "craftAffordFrac": 0.2,
+ "feeTownTargetMul": 10,
+ "feeTownTargetMin": 5000,
+ "servicePriceLatePct": 5,
+ "servicePriceLateLevel": 40
 }
