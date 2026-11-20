@@ -271,8 +271,10 @@ export function duel(config: GameConfig, h: Hunter, s: EffectiveStats, m: Monste
 /**
  * Spawn-pressure multiplier on damage taken per kill in a zone:  zoneCrowdRespawnSec / respawnSec.
  * A zone refills one monster every respawnSec, so the rate at which extra monsters wander into a fight scales
- * with 1 / respawnSec. Measured in headless runs: fast-respawn zones cost more HP per kill than the 1-v-1 duel
- * predicts (adds), slow-respawn zones less (several hunters share the targets).
+ * with 1 / respawnSec. EMPIRICAL calibration, not a validated model: in headless runs fast-respawn zones cost
+ * more HP per kill than the 1-v-1 duel predicts (adds), slow-respawn zones less (several hunters share targets).
+ * With the shipped zones it is effectively two levels (0.5 for meadow/ruins, 1 elsewhere); measured/predicted
+ * still ranges ~0.8–1.5 between zones with the same respawnSec (aggro range, AoE and adds are not modelled).
  */
 export function zoneCrowd(zone: ZoneDef, f: FormulaParams): number {
   return f.zoneCrowdRespawnSec / zone.respawnSec;
@@ -371,8 +373,10 @@ export interface ZoneScore {
  * harder zones: among the zones
  * that are comfortable (ratio ≥ zoneFitBest), the hardest one keeps its fit and each easier comfortable zone
  * loses zoneTierBonus per tier below it. A hunter that out-classes every zone (all at zoneFitFloor) therefore
- * goes to the hardest one instead of a random/easiest one. zoneTierBonus must exceed decisionNoise so the
- * tie-break is not drowned by noise. The best zone's score is never raised, so other goals are unaffected.
+ * goes to the hardest one instead of a random/easiest one. zoneTierBonus (> decisionNoise) is applied at fit
+ * level; the goal score is fit × needsOk × personality, so for e.g. a timid hunter (× 0.7) or low needs ADJACENT
+ * tiers can fall within the decision noise, while zones two or more tiers down stay clearly behind.
+ * The best zone's score is never raised, so other goals are unaffected.
  */
 export function zoneScores(config: GameConfig, world: World, h: Hunter): ZoneScore[] {
   const f = config.formula;

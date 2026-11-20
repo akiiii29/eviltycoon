@@ -135,7 +135,7 @@ Tỷ lệ sức mạnh tính **từ chính công thức combat** (§7.1), không
 duel(h, m)    = hunterDps = E[hit(ATK)]/atkSpeed + Σ skill E[hit(ATK×mult)]/cooldown
                 monsterDps = E[hit(ATK quái)]/attackSpeed quái;  ttk = HP quái / hunterDps
                 dmgPerKill = monsterDps × ttk
-zoneCrowd     = zoneCrowdRespawnSec / respawnSec        (zone hồi quái nhanh → nhiều quái chen vào)
+zoneCrowd     = zoneCrowdRespawnSec / respawnSec        (hiệu chỉnh thực nghiệm: zone hồi quái nhanh → nhiều quái chen vào)
 killsPerLife  = HP hunter / (zoneCrowd × Σ_w dmgPerKill / Σ_w)   (w = trọng số spawn; chỉ số "steady": bỏ buff, mood)
 ratio         = √(killsPerLife / zoneRefKills)          (1 = đánh được zoneRefKills con trên một thanh HP)
 zoneFit       = 0 nếu ratio < zoneFitMin; ramp zoneFitRampLow→1 tới zoneFitBest; 1 tới zoneFitEasy;
@@ -206,7 +206,7 @@ Hằng số ở `formula_params.json`; phương trình và ý đồ ghi ở đ�
 | Cộng dồn % | `(base × job × (1 + reinc × reincStatBonus) + gear) × (1 + min(traitPctCap, Σtrait%)/100) × (1 + min(buffPctCap, Σbuff%)/100)` | Cộng trong cùng nhóm (trait / buff skill), nhân giữa các nhóm, mỗi nhóm có trần. Crit/EVA là điểm cộng thẳng, trần nằm ở hàm xác suất. Tốc đánh: `interval ÷ (cùng hệ số)`, sàn `minAttackInterval`. |
 | Mood | `× moodStatMult` lên ATK/DEF: 1 khi mood ≥ `moodPenaltyFrac`, giảm tuyến tính tới `moodStatFloor` ở mood 0 | GDD §4.2. `moodStatFloor = 1` là tắt. |
 
-Trần bão hòa: với `defReductionCap = 0.85`, DEF quái chỉ còn tác dụng tới khoảng `5.7 × (defPerLevel·L + defFlat)` (≈1 900 DEF khi hunter Lv100); các độ khó trên Torment III mà tăng thêm `monsterDefMul` sẽ không đổi gì. Ở các độ khó hiện tại DEF quái tối đa ≈ 2 050 (Torment III) nên chỉ chạm trần ở mức cao nhất.
+Trần bão hòa: với `defReductionCap = 0.85`, R chạm trần khi `DEF ≥ 0.85/0.15 × (defPerLevel·L + defFlat) ≈ 5.67 × (3L + 35)`, với L là level **hunter đang đánh**: ≈ 400 DEF ở Lv10, ≈ 710 ở Lv30, ≈ 1 900 ở Lv100. Tái sinh đưa level về thấp, nên hunter Lv30 ở Torment I (DEF quái tới ~830) đã có quái chạm trần; khi đó tăng thêm `monsterDefMul` không đổi gì (quái vẫn nhận `(1 − cap) × ATK × G`). Cần design chọn: chấp nhận, hoặc nâng trần / tính DEF quái theo độ khó khác đi.
 
 ## 8. Data schema
 

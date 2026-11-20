@@ -1,3 +1,4 @@
+import { scoreGoals } from '../src/core/ai/utility';
 import type { FormulaParams, GameConfig } from '../src/core/config/types';
 import { EventBuffer } from '../src/core/events';
 import {
@@ -212,6 +213,21 @@ describe('formulas: zone fit and tie-break', () => {
       for (const s of scores.slice(0, -1)) expect(top.fit - s.fit).toBeGreaterThan(f.decisionNoise);
     }
     expect(f.zoneTierBonus).toBeGreaterThan(f.decisionNoise);
+  });
+
+  it('through scoreGoals, even a timid (× 0.7) over-powered hunter ranks the hardest zone first and the meadow far below', () => {
+    const h = bareHunter(100, 'zone.meadow', 2);
+    h.personalities = ['pers.timid'];
+    h.stats.hp *= 1e4;
+    h.stats.atk *= 1e4;
+    h.stats.def *= 1e4;
+    h.needs.hp = hunterStats(config, h).hp; // full HP, so needsOk = 1
+    const hunts = scoreGoals(config, nav, createWorld(config, 2), h).filter((c) => c.goal.type === 'hunt');
+    const by = (id: string) => hunts.find((c) => (c.goal as { zoneId: string }).zoneId === id)?.score ?? 0; // absent = score 0
+    const top = config.zones[config.zones.length - 1]!.id;
+    expect(Math.max(...hunts.map((c) => c.score))).toBe(by(top));
+    // Adjacent tiers may sit within the noise after × 0.7; the easiest zone must not.
+    expect(by(top) - by('zone.meadow')).toBeGreaterThan(f.decisionNoise * 2);
   });
 
   it('the tie-break never raises the best zone and leaves zones that are not comfortable alone', () => {
