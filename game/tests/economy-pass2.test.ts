@@ -167,6 +167,20 @@ describe('craft tier urgency (TECH_SPEC §5.12)', () => {
     expect(urgentCandidates(config, w).map((c) => c.buildingId)).toContain('bld.smithy');
   });
 
+  it('lists craft steps before the Town Hall step (they raise a tier cap right away)', () => {
+    // Jeweler can still level under the current Town Hall, the Smithy cannot: both urgent, the Jeweler comes first
+    // although the Smithy is first in config order.
+    const ctx = townAt(40);
+    const w = ctx.world;
+    const set = (id: string, lv: number) => { w.town.buildings.find((s) => s.buildingId === id)!.level = lv; };
+    set('bld.townhall', 3);
+    set('bld.smithy', 3);
+    set('bld.jeweler', 2);
+    const ids = urgentCandidates(config, w).map((c) => c.buildingId);
+    expect(ids).toEqual(['bld.jeweler', 'bld.townhall']);
+    expect(config.buildings.findIndex((b) => b.id === 'bld.smithy')).toBeLessThan(config.buildings.findIndex((b) => b.id === 'bld.jeweler'));
+  });
+
   it('imports missing materials for an urgent step after investUrgentImportSec (sooner than investImportSec)', () => {
     expect(f.investUrgentImportSec).toBeLessThan(f.investImportSec);
     const ctx = townAt(30);
@@ -200,27 +214,39 @@ describe('value-based auto-investment (TECH_SPEC §5.12)', () => {
     }
   });
 
-  it('does not always pick the cheapest step: Academy and Trading Post get upgraded', () => {
+  /** Order in which steps get picked (applied instantly) by `pick`, as buildingId:toLevel. */
+  const pickOrder = (pick: (w: World) => ReturnType<typeof chooseInvestment>, n: number): string[] => {
     const w = rich();
-    const ctx = { ...makeCtx(), world: w };
-    const picked = new Set<string>();
-    for (let i = 0; i < 40; i++) {
-      const c = chooseInvestment(config, w);
+    const out: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const c = pick(w);
       if (!c) break;
-      picked.add(c.buildingId);
+      out.push(`${c.buildingId}:${c.toLevel}`);
       const s = w.town.buildings.find((x) => x.id === c.plotId);
-      if (s) s.level = c.toLevel; // apply instantly
+      if (s) s.level = c.toLevel;
       else w.town.buildings.push({ id: c.plotId, buildingId: c.buildingId, level: c.toLevel, upgrade: null });
       w.town.investPlan = null;
     }
-    void ctx;
-    expect(picked.has('bld.academy')).toBe(true);
-    expect(picked.has('bld.trading')).toBe(true);
-    // The first pick is not simply the cheapest step.
-    const w2 = rich();
-    const cheapest = otherCandidates(config, w2).reduce((a, b) => (b.cost.gold < a.cost.gold ? b : a));
-    const first = chooseInvestment(config, w2)!;
-    expect(investPriority(config, w2, first)).toBeGreaterThanOrEqual(investPriority(config, w2, cheapest));
+    return out;
+  };
+  const cheapestFirst = (w: World) =>
+    otherCandidates(config, w).reduce<ReturnType<typeof chooseInvestment>>((a, b) => (!a || b.cost.gold < a.cost.gold ? b : a), null);
+
+  it('Academy and Trading Post are upgraded much earlier than under the old cheapest-step rule', () => {
+    const byValue = pickOrder((w) => chooseInvestment(config, w), 60);
+    const byPrice = pickOrder(cheapestFirst, 60);
+    for (const id of ['bld.academy', 'bld.trading']) {
+      const v = byValue.indexOf(`${id}:2`);
+      const p = byPrice.indexOf(`${id}:2`);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThan(p);
+    }
+    // The first pick is the best value per gold, not the cheapest step.
+    const w = rich();
+    const first = chooseInvestment(config, w)!;
+    const cheapest = cheapestFirst(w)!;
+    expect(first.buildingId).not.toBe(cheapest.buildingId);
+    expect(investPriority(config, w, first)).toBeGreaterThan(investPriority(config, w, cheapest));
   });
 
   it('keeps a non-urgent plan while Town gold dips under the target (import timer is not reset)', () => {
