@@ -287,24 +287,32 @@ function upgradeCandidate(config: GameConfig, world: World, s: BuildingState, ur
 /**
  * Urgent steps: for every craft building (config order) whose tier cap is below a recipe hunters will want soon
  * (gear.level ≤ max hunter level + craftLevelAhead + investCraftLeadLevels), its next level — or, when that is above the
- * Town Hall level, the Town Hall upgrade (listed once). Buildings already upgrading are skipped.
+ * Town Hall level, the Town Hall upgrade (listed once). The Town Hall step looks investTownHallLeadLevels further ahead:
+ * it has to finish before the craft building can even start, so Town Hall → Smithy/Jeweler is not a serial chain that
+ * only begins once the hunters are already at the tier. Buildings already upgrading are skipped. Craft steps come
+ * before the Town Hall step (they raise a cap now; the Town Hall only unblocks the next level).
  */
 export function urgentCandidates(config: GameConfig, world: World): Candidate[] {
   const f = config.formula;
   const want = maxHunterLevel(world) + f.craftLevelAhead + (f.investCraftLeadLevels ?? 0);
+  const th = townHallLevel(config, world);
   const out: Candidate[] = [];
   for (const b of config.buildings) {
     if (b.kind !== 'craft') continue;
     const s = buildingState(world, b.id);
     if (!s || s.level < 1 || s.level >= b.maxLevel || s.upgrade) continue;
+    const blocked = s.level + 1 > th;
+    const horizon = want + (blocked ? (f.investTownHallLeadLevels ?? 0) : 0);
     const cap = levelValue(b.maxGearLevel, s.level) ?? 0;
-    if (!config.gear.some((g) => g.craftBuilding === b.id && g.level > cap && g.level <= want)) continue;
-    const target = s.level + 1 > townHallLevel(config, world) ? buildingState(world, config.index.townHall) : s;
+    if (!config.gear.some((g) => g.craftBuilding === b.id && g.level > cap && g.level <= horizon)) continue;
+    const target = blocked ? buildingState(world, config.index.townHall) : s;
     if (!target || out.some((c) => c.plotId === target.id)) continue;
     const c = upgradeCandidate(config, world, target, true);
     if (c) out.push(c);
   }
-  return out;
+  // Craft steps raise a tier cap right away; a Town Hall step only unblocks the next one: craft steps first.
+  const thId = config.index.townHall;
+  return [...out.filter((c) => c.buildingId !== thId), ...out.filter((c) => c.buildingId === thId)];
 }
 
 /** The first urgent step (see urgentCandidates), or null. */
@@ -337,10 +345,57 @@ export function investFloor(config: GameConfig, world: World, urgent: boolean): 
   return urgent ? f.investUrgentReserveMul * autoCraftReserve(config, world) : f.investTargetMul * townGoldTarget(config, world);
 }
 
+/** Relative change of a per-level value list from level `from` to `to` (|to/from − 1|; absolute change when from is 0). */
+function relStep(list: readonly number[] | undefined, from: number, to: number): number {
+  const a = levelValue(list, from) ?? 0;
+  const b = levelValue(list, to) ?? 0;
+  return a !== 0 ? Math.abs(b / a - 1) : Math.abs(b - a);
+}
+
+/**
+ * Value of a non-urgent step (TECH_SPEC §5.12): investValue<Kind> × the size of the effect gained, read from the
+ * building's own per-level list —
+ *   service restorePerSec, shop capacity, tradingPost surplusPriceMul, craft maxGearLevel: relative change;
+ *   academy studyGoldMul: 1 − to/from; forge enhanceBonus: added success rate; storehouse requestCopies: added copies /
+ *   requestMaxCopies; townHall: 1 / toLevel.
+ * A building that is not built yet counts from level 0. The weights are formula_params (investValueService, …).
+ */
+export function investValue(config: GameConfig, c: Candidate): number {
+  const f = config.formula;
+  const b = config.index.buildings.get(c.buildingId);
+  if (!b) return 0;
+  const from = c.toLevel - 1;
+  const at = (list: readonly number[] | undefined, lv: number, dflt: number) => levelValue(list, lv) ?? dflt;
+  switch (b.kind) {
+    case 'service': return f.investValueService * relStep(b.restorePerSec, from, c.toLevel);
+    case 'shop': return f.investValueShop * relStep(b.capacity, from, c.toLevel);
+    case 'tradingPost': return f.investValueTradingPost * relStep(b.surplusPriceMul, from, c.toLevel);
+    case 'craft': return f.investValueCraft * relStep(b.maxGearLevel, from, c.toLevel);
+    case 'academy': {
+      const a = at(b.studyGoldMul, from, 1);
+      return f.investValueAcademy * Math.max(0, a > 0 ? 1 - at(b.studyGoldMul, c.toLevel, 1) / a : 0);
+    }
+    case 'forge': return f.investValueForge * Math.max(0, at(b.enhanceBonus, c.toLevel, 0) - at(b.enhanceBonus, from, 0));
+    case 'storehouse':
+      return (f.investValueStorehouse * Math.max(0, at(b.requestCopies, c.toLevel, 0) - at(b.requestCopies, from, 0))) / Math.max(1, f.requestMaxCopies);
+    case 'townHall': return f.investValueTownHall / Math.max(1, c.toLevel);
+    default: return 0;
+  }
+}
+
+/** Priority of a non-urgent step: investValue / gold, × investReadyMul when its materials are already in storage. */
+export function investPriority(config: GameConfig, world: World, c: Candidate): number {
+  const ready = Object.keys(missingMaterials(world, c.cost)).length === 0;
+  return (investValue(config, c) / Math.max(1, c.cost.gold)) * (ready ? config.formula.investReadyMul : 1);
+}
+
 /**
  * The next investment. Urgent steps first (whatever the gold): one whose materials are in storage, else the stored plan
- * if it is still urgent (so its import timer keeps running), else the first. Otherwise the cheapest other step (gold, then
- * config order) that Town gold above the treasury target can pay for, preferring steps whose materials are in storage.
+ * if it is still urgent (so its import timer keeps running), else the first. Otherwise:
+ *  - the stored non-urgent plan while it is still a valid step with value > 0 — kept even when Town gold dips under the
+ *    target for a while, so its material requests and import timer are not reset whenever gold oscillates around it;
+ *  - else the highest investPriority (value per gold) among the steps that Town gold above the treasury target can pay
+ *    for (ties → config order); steps with value 0 are never picked.
  * Null when there is nothing worth doing or no spare gold.
  */
 export function chooseInvestment(config: GameConfig, world: World): Candidate | null {
@@ -350,16 +405,21 @@ export function chooseInvestment(config: GameConfig, world: World): Candidate | 
       ?? urgent.find((c) => samePlan(world.town.investPlan, c))
       ?? urgent[0]!;
   }
-  const floor = investFloor(config, world, false);
-  const spare = world.town.gold - floor;
+  const others = otherCandidates(config, world);
+  const plan = world.town.investPlan;
+  if (plan && !plan.urgent) {
+    const kept = others.find((c) => samePlan(plan, c));
+    if (kept && investValue(config, kept) > 0) return kept;
+  }
+  const spare = world.town.gold - investFloor(config, world, false);
   let best: Candidate | null = null;
-  let bestReady = false;
-  for (const c of otherCandidates(config, world)) {
+  let bestP = 0;
+  for (const c of others) {
     if (c.cost.gold > spare) continue;
-    const ready = Object.keys(missingMaterials(world, c.cost)).length === 0;
-    if (!best || (ready && !bestReady) || (ready === bestReady && c.cost.gold < best.cost.gold)) {
+    const p = investPriority(config, world, c);
+    if (p > bestP) {
       best = c;
-      bestReady = ready;
+      bestP = p;
     }
   }
   return best;
@@ -401,7 +461,8 @@ export function autoInvest(ctx: SystemContext): void {
   if (!hasBuildSlot(config, world)) return;
   const missing = missingMaterials(world, c.cost);
   const lacking = Object.keys(missing).length > 0;
-  const mayImport = world.timeMs - sinceMs >= config.formula.investImportSec * 1000;
+  const importSec = c.urgent ? config.formula.investUrgentImportSec : config.formula.investImportSec;
+  const mayImport = world.timeMs - sinceMs >= importSec * 1000;
   if (lacking && !mayImport) return;
   const imp = lacking ? importCost(config, missing) : 0;
   if (world.town.gold - c.cost.gold - imp < investFloor(config, world, c.urgent)) return;
