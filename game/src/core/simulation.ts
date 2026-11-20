@@ -10,6 +10,7 @@ import { academySystem } from './systems/academy';
 import { bountySystem } from './systems/bounty';
 import { combatSystem } from './systems/combat';
 import { craftingSystem } from './systems/crafting';
+import { journeySystem } from './systems/journey';
 import { economySystem } from './systems/economy';
 import { movementSystem } from './systems/movement';
 import { needsSystem } from './systems/needs';
@@ -42,6 +43,7 @@ export const DEFAULT_SYSTEMS: readonly System[] = [
   craftingSystem,
   townSystem,
   bountySystem,
+  journeySystem,
   needsSystem,
   progressionSystem,
   spawnSystem,
@@ -75,8 +77,9 @@ export function createWorld(config: GameConfig, seed: number): World {
     },
     hunters: [],
     monsters: [],
+    journeys: [],
     zones: {},
-    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0 },
+    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0 },
   };
 }
 
@@ -144,6 +147,21 @@ export class Simulation {
     }
     if (ticks === MAX_TICKS_PER_ADVANCE) this.accumulatorMs = 0;
     return { ticks, alpha: this.accumulatorMs / TICK_MS };
+  }
+
+  /**
+   * Run `fn` between ticks with this simulation's live RNG and event buffer (e.g. resolving journeys that ended while
+   * the game was closed, TECH_SPEC §5.10). The RNG state is written back to the world like at the end of `step()`, so
+   * draws made here are never replayed. Does not advance tick/time.
+   */
+  runBetweenTicks<T>(fn: (ctx: SystemContext) => T): T {
+    const ctx: SystemContext = {
+      world: this.world, config: this.config, nav: this.nav, rng: this.rng,
+      events: this.events, debug: this.debug, dtMs: 0,
+    };
+    const out = fn(ctx);
+    this.world.rng = this.rng.state;
+    return out;
   }
 
   drainEvents(): SimEvent[] {

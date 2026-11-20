@@ -132,7 +132,7 @@ export const MIGRATIONS: Record<number, Migration> = {
       stats: { bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, ...stats },
     };
   },
-  // v7 → v8 (Town buildings, TECH_SPEC §5.11): building instances on plots (levels that keep the save playing as before),
+  // v7 → v8 (Town buildings, TECH_SPEC §5.12): building instances on plots (levels that keep the save playing as before),
   // auto-invest (on, like auto-craft), building stats.
   7: (w, config) => {
     const town = (w.town ?? {}) as Record<string, unknown>;
@@ -141,6 +141,15 @@ export const MIGRATIONS: Record<number, Migration> = {
       ...w,
       town: { buildings: migrationBuildings(config, w), autoInvest: true, investPlan: null, ...town },
       stats: { buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, ...stats },
+    };
+  },
+  // v8 → v9 (Journey, GDD §9): no journey running, journey stats = 0.
+  8: (w) => {
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    return {
+      ...w,
+      journeys: Array.isArray(w.journeys) ? w.journeys : [],
+      stats: { journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, ...stats },
     };
   },
 };

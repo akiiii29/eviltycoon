@@ -107,7 +107,7 @@ export class Renderer {
       mesh.rotation.z = Math.atan2(b.y - a.y, b.x - a.x);
       this.scene.add(mesh);
     }
-    // Building plots (TECH_SPEC §5.11): an empty lot each; buildings on them are drawn in sync() from the world.
+    // Building plots (TECH_SPEC §5.12): an empty lot each; buildings on them are drawn in sync() from the world.
     for (const p of config.plots) {
       const lot = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.h), new THREE.MeshBasicMaterial({ color: 0x3f5638 }));
       lot.position.set(p.x, p.y, -0.6);

@@ -6,7 +6,7 @@
  * Runs the default Simulation with `hunterSlots` hunters (Easy difficulty) and prints, every interval
  * (default 30 game-minutes): max/median level, hunters that ever reached Lv20 / Lv50 / reincarnated,
  * the zone each hunter is hunting (with its power ratio for that zone, formulas.powerRatio) and the best gear level equipped,
- * plus Town building levels (TECH_SPEC §5.11; `*` = upgrade running) and the max craftable gear level (smithy/jeweler).
+ * plus Town building levels (TECH_SPEC §5.12; `*` = upgrade running) and the max craftable gear level (smithy/jeweler).
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';

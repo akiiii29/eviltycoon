@@ -19,6 +19,11 @@
  *  - needs: stamina/satiety/mood and HP refilled to their max (after level-ups); dead hunters revive on the next tick;
  *  - `timeMs`, `tick` and the RNG are NOT advanced (shop ages, spawn timers and determinism stay as they were).
  * A sample "epoch" is bumped on apply, so the jump never counts as measured play (no compounding across loads).
+ *
+ * Journeys (TECH_SPEC §5.11) are not estimated: they run on wall-clock time. The client advances them by
+ * `offlineJourneyMs` (the raw gap, not capped, not × efficiency, not gated by offlineMinAwaySec or by rates) through
+ * `systems/journey.advanceJourneys` with the sim's live RNG (Simulation.runBetweenTicks) AFTER applyOffline, so
+ * members away do not get hunting gains or the needs refill; the finished ones go into `report.journeys`.
  */
 import type { GameConfig } from './config/types';
 import { NEED_KEYS } from './config/types';
@@ -26,6 +31,7 @@ import { EventBuffer } from './events';
 import { expToNext, needMax } from './formulas';
 import { gainExp } from './progress';
 import type { SystemContext } from './system';
+import type { JourneyResult } from './systems/journey';
 import { materialDemand } from './systems/trading';
 import type { World } from './world';
 
@@ -92,6 +98,8 @@ export interface OfflineReport {
   gold: number;
   kills: number;
   materials: Record<string, number>;
+  /** Journeys that ended during the gap (filled by the caller after advanceJourneys; empty from estimateOffline). */
+  journeys: JourneyResult[];
 }
 
 export function newTracker(seed: number): OfflineTracker {
@@ -108,7 +116,8 @@ export function takeSample(config: GameConfig, world: World, epoch: number): Rat
   return {
     timeMs: world.timeMs,
     epoch,
-    townGold: world.town.gold,
+    // Journey rewards are one-off windfalls, not a rate: keep them out of the measured town gold (TECH_SPEC §5.11).
+    townGold: world.town.gold - (world.stats.journeyGold ?? 0),
     storage: { ...world.town.storage },
     hunters: world.hunters.map((h) => ({
       id: h.id,
@@ -192,8 +201,14 @@ export function offlineGap(config: GameConfig, savedAt: number, now: number): Pi
   return { awayMs: away, creditedMs: Math.min(away, cap), capped: away > cap, skipped: null };
 }
 
+/** Wall-clock ms journeys advance by while away: the raw gap (0 for unknown save time or a clock that went back). */
+export function offlineJourneyMs(savedAt: number, now: number): number {
+  if (!Number.isFinite(savedAt) || savedAt <= 0 || !Number.isFinite(now)) return 0;
+  return Math.max(0, now - savedAt);
+}
+
 function emptyReport(gap: Pick<OfflineReport, 'awayMs' | 'creditedMs' | 'capped' | 'skipped'>): OfflineReport {
-  return { ...gap, hunters: [], townGold: 0, gold: 0, kills: 0, materials: {} };
+  return { ...gap, hunters: [], townGold: 0, gold: 0, kills: 0, materials: {}, journeys: [] };
 }
 
 /** Level a hunter would reach from `level`/`exp` with `add` more EXP (same rules as gainExp). */

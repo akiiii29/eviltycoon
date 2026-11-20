@@ -688,5 +688,25 @@
   "key": "bld.storehouse.name",
   "vi": "Nhà Kho",
   "en": "Storehouse"
+ },
+ {
+  "key": "journey.mossway.name",
+  "vi": "Lối Rêu Cũ",
+  "en": "Old Mossway"
+ },
+ {
+  "key": "journey.emberglow.name",
+  "vi": "Đèo Than Hồng",
+  "en": "Emberglow Pass"
+ },
+ {
+  "key": "journey.saltdeep.name",
+  "vi": "Vực Muối Lặng",
+  "en": "Silent Saltdeep"
+ },
+ {
+  "key": "journey.hollowthrone.name",
+  "vi": "Ngai Rỗng",
+  "en": "Hollow Throne"
  }
 ]

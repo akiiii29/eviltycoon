@@ -6,7 +6,7 @@ import { buildingDoor } from './town';
 /** Destination node for a goal. */
 function destination(ctx: SystemContext, h: Hunter, goal: Goal): string | null {
   const { config, world } = ctx;
-  // Building doors come from the plot the building stands on; unbuilt buildings have none (TECH_SPEC §5.11).
+  // Building doors come from the plot the building stands on; unbuilt buildings have none (TECH_SPEC §5.12).
   switch (goal.type) {
     case 'hunt': return config.index.zones.get(goal.zoneId)?.entryNode ?? null;
     case 'service': return buildingDoor(config, world, goal.buildingId);

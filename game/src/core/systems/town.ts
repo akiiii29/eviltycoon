@@ -1,5 +1,5 @@
 /**
- * Town buildings (GDD §5, TECH_SPEC §5.11): Town Hall, building levels, plots, construction/upgrade, auto-investment.
+ * Town buildings (GDD §5, TECH_SPEC §5.12): Town Hall, building levels, plots, construction/upgrade, auto-investment.
  *
  * - `config.buildings` are building TYPES with per-level arrays (index i = level i + 1); `config.plots` are fixed map spots,
  *   each with its own door node. `world.town.buildings` holds what stands on which plot (id = plot id) and its level.
@@ -17,6 +17,7 @@ import type { BuildingDef, GameConfig, GearDef } from '../config/types';
 import type { System, SystemContext } from '../system';
 import type { BuildingState, InvestPlan, World } from '../world';
 import { autoCraftReserve } from './crafting';
+import { allHunters } from './journey';
 import { townGoldTarget } from './trading';
 
 /** Value of a per-level list at `level` (clamped to the list; undefined below level 1 or for a missing list). */
@@ -46,7 +47,7 @@ export function buildingDoor(config: GameConfig, world: World, buildingId: strin
   return config.index.plots.get(s.id)?.doorNode ?? null;
 }
 
-// ---- Per-level effects (TECH_SPEC §5.11). A missing/unbuilt building gives the "off" value. ----
+// ---- Per-level effects (TECH_SPEC §5.12). A missing/unbuilt building gives the "off" value. ----
 
 /** service: points restored per second inside. */
 export function serviceRestorePerSec(world: World, b: BuildingDef): number {
@@ -270,7 +271,7 @@ interface Candidate {
 
 function maxHunterLevel(world: World): number {
   let lv = 0;
-  for (const h of world.hunters) lv = Math.max(lv, h.level);
+  for (const h of allHunters(world)) lv = Math.max(lv, h.level); // hunters away on a journey count too
   return lv;
 }
 

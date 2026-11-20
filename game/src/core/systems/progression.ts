@@ -3,6 +3,7 @@ import type { GameConfig } from '../config/types';
 import { hunterStats } from '../formulas';
 import type { System, SystemContext } from '../system';
 import { isAlive, type Hunter, type World } from '../world';
+import { allHunters } from './journey';
 
 /**
  * M3 progression (GDD §8): automatic job changes, reincarnation and difficulty unlocks.
@@ -55,7 +56,7 @@ export function isDifficultyUnlockable(config: GameConfig, world: World, diffId:
   const d = config.index.difficulties.get(diffId);
   if (!d) return false;
   let n = 0;
-  for (const h of world.hunters) if (h.reincarnation >= d.unlockReincarnation) n++;
+  for (const h of allHunters(world)) if (h.reincarnation >= d.unlockReincarnation) n++;
   return n >= d.unlockHunters;
 }
 

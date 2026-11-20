@@ -9,7 +9,7 @@ import { buildingLevel, levelValue, serviceRestorePerSec } from './town';
  * round(base × (1 + servicePriceLevelPct / 100 × (level − 1) + servicePriceLatePct / 100 × max(0, level − servicePriceLateLevel))).
  * Scales with level so late-game hunter gold flows back to the town (a rich town burns it through townFeeShare);
  * the steeper late term starts only at servicePriceLateLevel so early pacing is untouched.
- * `base` is the building's price at its building level (`price[buildingLvl − 1]`, TECH_SPEC §5.11; 1 when omitted);
+ * `base` is the building's price at its building level (`price[buildingLvl − 1]`, TECH_SPEC §5.12; 1 when omitted);
  * `level` in the formula is the hunter's level.
  * Single source for the system, AI and commands.
  */

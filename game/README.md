@@ -31,6 +31,7 @@ Mọi công thức nằm ở `src/core/formulas.ts`, hệ số và ngưỡng AI 
 | `src/core/pathfinding.ts` | Waypoint graph + A*, road nhanh hơn, cache path. |
 | `src/core/commands.ts` | Command của người chơi/debug; command sai sinh event `commandRejected`. |
 | `src/core/save/` | Serialize, migration theo `schemaVersion`, storage IndexedDB/memory. |
+| `src/core/systems/journey.ts` | Journey (TECH_SPEC §5.11): đội tối đa 3 hunter đi xa theo `config/journey.json`, sức mạnh đội từ mô hình combat, chạy cả offline. |
 | `src/core/offline.ts` | Tiến trình offline: đo tốc độ khi chơi (mẫu lưu trong envelope save), ước lượng + áp dụng lúc mở lại, trần 8 giờ (TECH_SPEC §9). |
 | `src/client/` | Render Three.js (pipeline pixel: render target thấp + nearest), debug overlay, autosave 30 s. |
 | `tests/` | Vitest. |

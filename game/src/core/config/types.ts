@@ -121,7 +121,7 @@ export interface DifficultyDef {
   rewardMul: number;
 }
 
-/** Gold, Town Storage materials and build time to reach one building level (TECH_SPEC §5.11). */
+/** Gold, Town Storage materials and build time to reach one building level (TECH_SPEC §5.12). */
 export interface BuildingLevelCost {
   gold: number;
   materials: { materialId: string; count: number }[];
@@ -129,7 +129,7 @@ export interface BuildingLevelCost {
 }
 
 /**
- * A building TYPE (TECH_SPEC §5.11). Where it stands is a plot (`building_plot`); its level lives in the world.
+ * A building TYPE (TECH_SPEC §5.12). Where it stands is a plot (`building_plot`); its level lives in the world.
  * Per-level arrays have length maxLevel: index i = level i + 1. upgradeCost[0] is the cost to build (level 1).
  * At most one instance per type (maxCount 1), so systems keep addressing buildings by type id.
  */
@@ -159,7 +159,7 @@ export interface BuildingDef {
   requestCopies?: number[];
 }
 
-/** A building plot (TECH_SPEC §5.11): a fixed spot on the map with its own door node (enterable only once built). */
+/** A building plot (TECH_SPEC §5.12): a fixed spot on the map with its own door node (enterable only once built). */
 export interface BuildingPlotDef {
   id: string;
   doorNode: string;
@@ -464,7 +464,7 @@ export interface FormulaParams {
   bountyAutoKills: number;
   bountyAutoExpireSec: number;
   /**
-   * Town buildings (TECH_SPEC §5.11, systems/town.ts). Auto-invest runs every townInvestIntervalSec; an "urgent" step
+   * Town buildings (TECH_SPEC §5.12, systems/town.ts). Auto-invest runs every townInvestIntervalSec; an "urgent" step
    * (a craft building whose gear tier cap is below max hunter level + craftLevelAhead + investCraftLeadLevels, or the Town
    * Hall level that blocks it) may spend down to investUrgentReserveMul × autoCraftReserve, any other step only gold above
    * investTargetMul × townGoldTarget. Materials missing for investImportSec are bought at investImportPriceMul × price.
@@ -490,7 +490,43 @@ export interface FormulaParams {
   taxMaxRate: number;
   taxMoodFreeRate: number;
   taxMoodPerKill: number;
+  /** Journeys (TECH_SPEC §5.11, systems/journey.ts): hunters per team (GDD "3 NPC") and journeys running at once. */
+  journeyTeamMax: number;
+  journeyMaxActive: number;
+  /**
+   * Success chance = clamp(journeySuccessAtRec × (teamPower / recommendedPower)^journeySuccessExp,
+   * journeySuccessMin, journeySuccessMax): journeySuccessAtRec at exactly the recommended power.
+   */
+  journeySuccessAtRec: number;
+  journeySuccessExp: number;
+  journeySuccessMin: number;
+  journeySuccessMax: number;
+  /** Returning hunters (either outcome) come back with satiety/mood/stamina at most journeyReturnNeedFrac × max. */
+  journeyReturnNeedFrac: number;
   [key: string]: number;
+}
+
+/** A journey destination (config/journey.json, TECH_SPEC §5.11). */
+export interface JourneyDef {
+  id: string;
+  nameKey: string;
+  /** Game seconds away (also counts down in wall-clock time while offline). */
+  durationSec: number;
+  /** The foes of the journey: team power is measured against this zone's spawn mix (formulas.zonePower). */
+  zoneId: string;
+  /** Team power (Σ zonePower of the members) at which the success chance is journeySuccessAtRec. */
+  recommendedPower: number;
+  /** Town gold paid when the team leaves (supplies; never refunded). */
+  cost: number;
+  /** Success rewards: Town gold and EXP per member (both × difficulty rewardMul), materials into Town storage. */
+  gold: number;
+  exp: number;
+  materials: { materialId: string; count: number }[];
+  /** Rare finds on success: each rolled once; a hit is listed in the shop (or sold at the markdown floor when full). */
+  rare: { gearId: string; qualityId: string; chance: number }[];
+  /** Failure: members return with HP at failHpFrac × max and get failRewardFrac of the EXP (no gold/materials/rare). */
+  failHpFrac: number;
+  failRewardFrac: number;
 }
 
 export interface LocEntry {
@@ -508,7 +544,7 @@ export interface GameConfig {
   nodes: MapNode[];
   edges: MapEdge[];
   buildings: BuildingDef[];
-  /** Building plots in config order (TECH_SPEC §5.11). */
+  /** Building plots in config order (TECH_SPEC §5.12). */
   plots: BuildingPlotDef[];
   zones: ZoneDef[];
   monsters: MonsterDef[];
@@ -522,6 +558,7 @@ export interface GameConfig {
   traits: TraitDef[];
   /** Sorted by order (index 0 = starting difficulty). */
   difficulties: DifficultyDef[];
+  journeys: JourneyDef[];
   loc: LocEntry[];
   /** Lookups built by the loader. */
   index: {
@@ -549,6 +586,7 @@ export interface GameConfig {
     skills: Map<string, SkillDef>;
     traits: Map<string, TraitDef>;
     difficulties: Map<string, DifficultyDef>;
+    journeys: Map<string, JourneyDef>;
     /** The single town square node (spawn / revive / return point). */
     squareNode: string;
     /** Field node ids per zone. */
