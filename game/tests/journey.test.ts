@@ -4,7 +4,7 @@ import { loadConfig, type RawConfig } from '../src/core/config/load';
 import type { GameConfig } from '../src/core/config/types';
 import type { SimEvent } from '../src/core/events';
 import { hunterStats, journeySuccessChance, needMax, teamPower, zonePower, zoneScores } from '../src/core/formulas';
-import { applyOffline, estimateOffline, offlineJourneyMs } from '../src/core/offline';
+import { applyOffline, estimateOffline, offlineJourneyMs, takeSample } from '../src/core/offline';
 import { gainExp } from '../src/core/progress';
 import { deserialize, SAVE_FORMAT, serialize } from '../src/core/save/save';
 import { createWorld, Simulation } from '../src/core/simulation';
@@ -387,6 +387,17 @@ describe('journey save/load and offline', () => {
     expect(s.runBetweenTicks((ctx) => advanceJourneys(ctx, 10 * 3_600_000, true))).toEqual([]);
     expect(JSON.stringify(s.world.rng)).toBe(rng);
     expect(s.drainEvents()).toEqual([]);
+  });
+
+  it('a journey reward is not measured as a town gold rate (no 8 h extrapolation of a windfall)', () => {
+    const s = townSim();
+    send(s, { type: 'journey.start', journeyId: 'j.test', hunterIds: ids(s, 1) });
+    s.world.journeys[0]!.successChance = 1;
+    const before = takeSample(config, s.world, 0);
+    const gold = s.world.town.gold;
+    s.runBetweenTicks((ctx) => advanceJourneys(ctx, 1e9));
+    expect(s.world.town.gold).toBeGreaterThan(gold);
+    expect(takeSample(config, s.world, 0).townGold).toBe(before.townGold);
   });
 
   it('members away get no rate-based offline gains or needs refill', () => {

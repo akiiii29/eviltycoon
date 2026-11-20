@@ -116,7 +116,8 @@ export function takeSample(config: GameConfig, world: World, epoch: number): Rat
   return {
     timeMs: world.timeMs,
     epoch,
-    townGold: world.town.gold,
+    // Journey rewards are one-off windfalls, not a rate: keep them out of the measured town gold (TECH_SPEC §5.10).
+    townGold: world.town.gold - (world.stats.journeyGold ?? 0),
     storage: { ...world.town.storage },
     hunters: world.hunters.map((h) => ({
       id: h.id,
