@@ -54,3 +54,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .debug button:disabled:hover { background: #233028; }
 .diff-btns .req { color: var(--muted); }
 .debug-log { overflow-wrap: anywhere; }
+/* Offline progress summary (TECH_SPEC §9) */
+.offline-popup { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(380px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; padding: 10px; z-index: 10; }
+.offline-popup button { background: #233028; color: var(--text); border: 1px solid #3a4c40; border-radius: 4px; padding: 2px 12px; font: inherit; cursor: pointer; }
+.offline-popup button:hover { background: #2f4135; }
+.offline-hunter { color: var(--muted); font-size: 11px; }

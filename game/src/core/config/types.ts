@@ -395,6 +395,18 @@ export interface FormulaParams {
   /** Extra service price above servicePriceLateLevel: + servicePriceLatePct / 100 × (level − servicePriceLateLevel) × base. */
   servicePriceLatePct: number;
   servicePriceLateLevel: number;
+  /** Offline progress (TECH_SPEC §9, src/core/offline.ts): credited time away is capped at offlineMaxHours. */
+  offlineMaxHours: number;
+  /** Multiplier on the estimated offline gains (1 = the measured rates as-is). */
+  offlineEfficiency: number;
+  /** Game seconds between rate samples taken while playing. */
+  offlineSampleSec: number;
+  /** Rates are averaged over the last offlineWindowMin game minutes of samples. */
+  offlineWindowMin: number;
+  /** Minimum measured game seconds (per hunter / for the town) before a rate is trusted; less gives no gains. */
+  offlineMinWindowSec: number;
+  /** Wall-clock gaps shorter than this are ignored (no estimate, no popup). */
+  offlineMinAwaySec: number;
   [key: string]: number;
 }
 

@@ -1,4 +1,5 @@
 import type { GameConfig } from '../config/types';
+import { parseTracker, type OfflineTracker } from '../offline';
 import { WORLD_SCHEMA_VERSION, type World } from '../world';
 import { MIGRATIONS } from './migrations';
 
@@ -8,15 +9,18 @@ export interface SaveFile {
   format: typeof SAVE_FORMAT;
   schemaVersion: number;
   configVersion: string;
+  /** Wall-clock ms (Date.now()) of the save = last-active time for offline progress. */
   savedAt: number;
   world: World;
+  /** Optional rate samples for offline progress (src/core/offline.ts). Envelope-only: not part of World/schema. */
+  offline?: OfflineTracker;
 }
 
 export class SaveError extends Error {
   override name = 'SaveError';
 }
 
-export function serialize(world: World, savedAt: number): string {
+export function serialize(world: World, savedAt: number, offline?: OfflineTracker | null): string {
   const file: SaveFile = {
     format: SAVE_FORMAT,
     schemaVersion: world.schemaVersion,
@@ -24,6 +28,7 @@ export function serialize(world: World, savedAt: number): string {
     savedAt,
     world,
   };
+  if (offline) file.offline = offline;
   return JSON.stringify(file);
 }
 
@@ -33,6 +38,8 @@ export interface LoadResult {
   migratedFrom: number | null;
   /** True when the save was made with a different config version (data may need re-tuning). */
   configChanged: boolean;
+  /** Offline rate samples, or null when absent/malformed (old saves): offline progress then credits nothing. */
+  offline: OfflineTracker | null;
 }
 
 /** Parse a save and migrate it to the current schema. `config` is the current config (used by migrations and the version check). */
@@ -69,5 +76,6 @@ export function deserialize(text: string, config: GameConfig): LoadResult {
     savedAt: typeof file.savedAt === 'number' ? file.savedAt : 0,
     migratedFrom: from === WORLD_SCHEMA_VERSION ? null : from,
     configChanged: w.configVersion !== config.version,
+    offline: parseTracker(file.offline),
   };
 }

@@ -112,5 +112,11 @@
  "feeTownTargetMul": 10,
  "feeTownTargetMin": 5000,
  "servicePriceLatePct": 5,
- "servicePriceLateLevel": 40
+ "servicePriceLateLevel": 40,
+ "offlineMaxHours": 8,
+ "offlineEfficiency": 1,
+ "offlineSampleSec": 30,
+ "offlineWindowMin": 10,
+ "offlineMinWindowSec": 120,
+ "offlineMinAwaySec": 60
 }

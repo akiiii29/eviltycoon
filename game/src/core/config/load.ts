@@ -245,6 +245,7 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'serviceFullFrac', 'serviceLowBase', 'serviceLowWeight', 'serviceWeight', 'bagReturnScore', 'restScoreWeight',
   'retreatTripMul', 'retreatKillMul', 'retreatHpCap',
   'feeTownTargetMul', 'feeTownTargetMin', 'servicePriceLatePct', 'servicePriceLateLevel',
+  'offlineMaxHours', 'offlineEfficiency', 'offlineSampleSec', 'offlineWindowMin', 'offlineMinWindowSec', 'offlineMinAwaySec',
 ];
 
 export class ConfigError extends Error {
@@ -316,6 +317,13 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('retreatTripMul', 0, 100);
     range('retreatKillMul', 0, 100);
     range('retreatHpCap', 0, 0.95);
+    // Offline progress (TECH_SPEC §9).
+    range('offlineMaxHours', 0, 72);
+    range('offlineEfficiency', 0, 2);
+    range('offlineSampleSec', 1, 3600);
+    range('offlineWindowMin', 1, 1440);
+    range('offlineMinWindowSec', 0, 86400);
+    range('offlineMinAwaySec', 0, 86400);
   }
 
   const grades = raw.stat_grade;
