@@ -314,11 +314,15 @@ export interface FormulaParams {
   craftGoldFrac: number;
   /** Share of forge/academy fees that goes to the town; the rest leaves the economy. */
   feeTownShare: number;
-  /** Shop items unsold for shopStaleSec get marked down by shopMarkdownPct% every shopStaleSec, down to shopMarkdownFloor × list price; scrapped after shopScrapSec. */
+  /**
+   * Unsold shop items are marked down by shopMarkdownPct% of list price every shopStaleSec, down to
+   * shopMarkdownFloor × list price, and scrapped after sitting at the floor for shopFloorHoldSec
+   * (scrap age = shopScrapAgeSec: steps-to-floor × shopStaleSec + shopFloorHoldSec; < 0 = never scrap).
+   */
   shopStaleSec: number;
   shopMarkdownPct: number;
   shopMarkdownFloor: number;
-  shopScrapSec: number;
+  shopFloorHoldSec: number;
   /** Damage multiplier of a monster critical hit (chance = MonsterDef.crit %). */
   monsterCritMultiplier: number;
   /** Trading Post material requests (GDD §5). The post buys only requested units; the rest is discarded. */
@@ -336,8 +340,12 @@ export interface FormulaParams {
    */
   tradeSurplusPriceFrac: number;
   tradeSurplusFloorMul: number;
-  /** A hunter only counts as a recipe beneficiary (auto-craft, auto-requests) with shop budget ≥ craftAffordFrac × basePrice. */
+  /**
+   * A hunter counts as a recipe beneficiary (auto-craft, auto-requests) when the quality rolls that would be an
+   * upgrade for them AND cost ≤ budget / craftAffordFrac (list price of that quality) have total craftChance ≥ craftMinSellChance.
+   */
   craftAffordFrac: number;
+  craftMinSellChance: number;
   /** Service price = round(base × (1 + servicePriceLevelPct / 100 × (level − 1))). */
   servicePriceLevelPct: number;
   /**

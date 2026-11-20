@@ -30,7 +30,7 @@ function cfg(patch: Partial<FormulaParams> = {}): GameConfig {
     formula: {
       ...base.formula,
       requestMaxCopies: 2, requestZoneBonus: 0.3, requestMaxUnits: 999, tradeSaleTax: 0,
-      tradeSurplusPriceFrac: 0.5, tradeSurplusFloorMul: 5, craftAffordFrac: 0, servicePriceLevelPct: 0,
+      tradeSurplusPriceFrac: 0.5, tradeSurplusFloorMul: 5, craftAffordFrac: 0, craftMinSellChance: 0.35, servicePriceLevelPct: 0,
       servicePriceLatePct: 0, servicePriceLateLevel: 40, feeTownShare: 0.8, feeTownTargetMul: 0, feeTownTargetMin: 0,
       craftLevelAhead: 2, minUpgradeGain: 0.12,
       ...patch,
@@ -283,10 +283,10 @@ describe('AI: prefer zones that drop requested materials', () => {
 });
 
 describe('gearScrapped event/stat', () => {
-  it('the crafting system reports items scrapped after shopScrapSec', () => {
-    const ctx = makeCtx(cfg({ shopScrapSec: 1800 }));
+  it('the crafting system reports items scrapped after shopScrapAgeSec', () => {
+    const ctx = makeCtx(cfg({ shopStaleSec: 600, shopMarkdownPct: 10, shopMarkdownFloor: 0.8, shopFloorHoldSec: 600 }));
     ctx.world.town.autoCraft = false;
-    ctx.world.timeMs = 1800 * 1000;
+    ctx.world.timeMs = 1800 * 1000; // 2 steps to the floor × 600 s + 600 s at the floor
     ctx.world.town.shop.push({ uid: 'g1', gearId: 'gear.w.club', qualityId: 'q.rare', enhance: 0, price: 48, listPrice: 60, listedAtMs: 0 });
     craftingSystem.update(ctx);
     expect(ctx.world.town.shop).toEqual([]);

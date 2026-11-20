@@ -92,23 +92,43 @@ export function referenceQuality(config: GameConfig): GearQualityDef | undefined
 }
 
 /**
+ * Markdown steps from list price to the floor: ceil((1 − shopMarkdownFloor) × 100 / shopMarkdownPct), 0 when
+ * markdowns are off (shopStaleSec or shopMarkdownPct ≤ 0). The epsilon keeps float noise such as
+ * (1 − 0.7) × 100 / 10 = 3.0000000000000004 from adding a step.
+ */
+export function shopMarkdownSteps(f: GameConfig['formula']): number {
+  if (f.shopStaleSec <= 0 || f.shopMarkdownPct <= 0) return 0;
+  return Math.max(0, Math.ceil(((1 - f.shopMarkdownFloor) * 100) / f.shopMarkdownPct - 1e-9));
+}
+
+/**
+ * Age (s) at which an unsold item is scrapped: the time to mark it down to the floor
+ * (shopMarkdownSteps × shopStaleSec) plus shopFloorHoldSec at the floor price.
+ * Derived, so the floor is always reached and offered before scrapping. Infinity when shopFloorHoldSec < 0 (never scrap).
+ */
+export function shopScrapAgeSec(f: GameConfig['formula']): number {
+  if (f.shopFloorHoldSec < 0) return Infinity;
+  return shopMarkdownSteps(f) * Math.max(0, f.shopStaleSec) + f.shopFloorHoldSec;
+}
+
+/**
  * Shop turnover (deterministic, listing order): every shopStaleSec unsold the price drops by
  * shopMarkdownPct% of listPrice, never below round(listPrice × shopMarkdownFloor);
- * after shopScrapSec unsold the item is scrapped (removed, no refund).
+ * once the item has sat at the floor for shopFloorHoldSec (age ≥ shopScrapAgeSec) it is scrapped (removed, no refund).
  * The price is derived from the item's age each tick, so it is idempotent and save-safe.
  * Returns the items scrapped this call (the crafting system reports them as gearScrapped).
  */
 export function updateShopTurnover(world: World, config: GameConfig): ShopItem[] {
   const f = config.formula;
   const staleMs = f.shopStaleSec * 1000;
-  const scrapMs = f.shopScrapSec * 1000;
+  const scrapMs = shopScrapAgeSec(f) * 1000;
   const shop = world.town.shop;
   const scrapped: ShopItem[] = [];
   let w = 0;
   for (let r = 0; r < shop.length; r++) {
     const it = shop[r]!;
     const age = world.timeMs - it.listedAtMs;
-    if (scrapMs > 0 && age >= scrapMs) {
+    if (age >= scrapMs) {
       scrapped.push(it);
       continue;
     }
@@ -125,32 +145,51 @@ export function updateShopTurnover(world: World, config: GameConfig): ShopItem[]
 }
 
 /**
- * Best value a same-slot item already on sale (actual quality) or being crafted (reference quality)
- * offers, counting only items whose gear level ≤ this recipe's (usable no later than the new item).
+ * Same-slot items already on sale (actual quality) or being crafted (reference quality), counting only items whose
+ * gear level ≤ this recipe's (usable no later than the new item): their best value and how many copies there are.
  */
-function coveredValue(config: GameConfig, world: World, gear: GearDef, refQualityId: string): number {
-  let v = 0;
+function coveredStock(config: GameConfig, world: World, gear: GearDef, refQualityId: string): { value: number; copies: number } {
+  let value = 0;
+  let copies = 0;
   for (const it of world.town.shop) {
     const d = config.index.gear.get(it.gearId);
-    if (d && d.slot === gear.slot && d.level <= gear.level) v = Math.max(v, gearMainValue(config, it));
+    if (d && d.slot === gear.slot && d.level <= gear.level) {
+      value = Math.max(value, gearMainValue(config, it));
+      copies++;
+    }
   }
   for (const k in world.town.crafting) {
     const job = world.town.crafting[k];
     const d = job ? config.index.gear.get(job.gearId) : undefined;
     if (d && d.slot === gear.slot && d.level <= gear.level) {
-      v = Math.max(v, gearMainValue(config, { uid: '', gearId: d.id, qualityId: refQualityId, enhance: 0 }));
+      value = Math.max(value, gearMainValue(config, { uid: '', gearId: d.id, qualityId: refQualityId, enhance: 0 }));
+      copies++;
     }
   }
-  return v;
+  return { value, copies };
 }
 
 /**
- * Number of hunters (level ≥ gear.level − craftLevelAhead, shop budget ≥ craftAffordFrac × basePrice) for whom this recipe at reference quality
- * would be an upgrade of ≥ minUpgradeGain over max(their slot value, what is already covered).
- * Gain uses the same formula as the AI's shop purchase: (new − ref) / max(ref, 1).
+ * Number of hunters (level ≥ gear.level − craftLevelAhead) who would probably buy this recipe's output.
+ * A hunter counts when, summed over the craft qualities, the craftChance of the rolls that are an upgrade of
+ * ≥ minUpgradeGain over their slot value AND that they can afford (shop budget ≥ craftAffordFrac × that quality's
+ * list price) reaches craftMinSellChance. Gain uses the same formula as the AI's shop purchase: (new − ref) / max(ref, 1).
+ * Judging every roll, not just the Rare one, keeps auto-craft from making gear whose likely Common/Uncommon roll is
+ * no upgrade, or that nobody can pay for, which then sits unsold and is scrapped.
+ *
+ * Stock already on sale / being crafted (same slot, gear level ≤ recipe) is counted by copies: hunters who would
+ * still gain over max(slot value, best stocked value) always count; hunters the stock already serves count only
+ * beyond the number of stocked copies (each copy serves one hunter).
  */
 export function recipeBeneficiaries(ctx: SystemContext, gear: GearDef): number {
-  return countUpgrades(ctx.config, ctx.world, gear, true);
+  const { config, world } = ctx;
+  const refQ = referenceQuality(config);
+  if (!refQ) return 0;
+  const stock = coveredStock(config, world, gear, refQ.id);
+  const all = countUpgrades(config, world, gear, 0);
+  if (stock.copies === 0) return all;
+  const beyond = countUpgrades(config, world, gear, stock.value);
+  return beyond + Math.max(0, all - beyond - stock.copies);
 }
 
 /**
@@ -159,24 +198,34 @@ export function recipeBeneficiaries(ctx: SystemContext, gear: GearDef): number {
  * the next copies are bought while the current one is still on the shelf.
  */
 export function recipeWanters(config: GameConfig, world: World, gear: GearDef): number {
-  return countUpgrades(config, world, gear, false);
+  return countUpgrades(config, world, gear, 0);
 }
 
-function countUpgrades(config: GameConfig, world: World, gear: GearDef, useCovered: boolean): number {
+/** Hunters for whom this recipe's sellable rolls (see recipeBeneficiaries) reach craftMinSellChance, judged over max(slot value, covered). */
+function countUpgrades(config: GameConfig, world: World, gear: GearDef, covered: number): number {
   const f = config.formula;
-  const refQ = referenceQuality(config);
-  if (!refQ) return 0;
-  const value = gearMainValue(config, { uid: '', gearId: gear.id, qualityId: refQ.id, enhance: 0 });
-  const covered = useCovered ? coveredValue(config, world, gear, refQ.id) : 0;
-  // Only hunters who could plausibly pay for it count (shop budget ≥ craftAffordFrac × basePrice): crafting
-  // gear nobody can afford just gets it scrapped later, wasting the craft gold and the materials bought for it.
-  const minBudget = (f.craftAffordFrac ?? 0) * gear.basePrice;
+  let total = 0;
+  for (const q of config.qualities) total += Math.max(0, q.craftChance);
+  if (total <= 0) return 0;
+  const minChance = f.craftMinSellChance ?? 0;
+  const rolls = config.qualities.map((q) => ({
+    chance: Math.max(0, q.craftChance) / total,
+    value: gearMainValue(config, { uid: '', gearId: gear.id, qualityId: q.id, enhance: 0 }),
+    // Hunters who could not come close to paying do not count: that gear just gets scrapped later,
+    // wasting the craft gold and the materials bought for it.
+    minBudget: (f.craftAffordFrac ?? 0) * Math.round(gear.basePrice * q.priceMult),
+  }));
   let n = 0;
   for (const h of world.hunters) {
     if (h.level < gear.level - f.craftLevelAhead) continue;
-    if (minBudget > 0 && h.gold * f.spendRatio * personalityFactor(config, h, 'spendRatio') < minBudget) continue;
+    const budget = h.gold * f.spendRatio * personalityFactor(config, h, 'spendRatio');
     const ref = Math.max(slotValue(config, h, gear.slot), covered);
-    if ((value - ref) / Math.max(ref, 1) >= f.minUpgradeGain) n++;
+    let chance = 0;
+    for (const r of rolls) {
+      if (r.minBudget > 0 && budget < r.minBudget) continue;
+      if ((r.value - ref) / Math.max(ref, 1) >= f.minUpgradeGain) chance += r.chance;
+    }
+    if (chance > 0 && chance >= minChance - 1e-9) n++;
   }
   return n;
 }

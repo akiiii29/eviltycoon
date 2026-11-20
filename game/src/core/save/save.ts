@@ -1,3 +1,4 @@
+import type { GameConfig } from '../config/types';
 import { WORLD_SCHEMA_VERSION, type World } from '../world';
 import { MIGRATIONS } from './migrations';
 
@@ -34,7 +35,8 @@ export interface LoadResult {
   configChanged: boolean;
 }
 
-export function deserialize(text: string, currentConfigVersion: string): LoadResult {
+/** Parse a save and migrate it to the current schema. `config` is the current config (used by migrations and the version check). */
+export function deserialize(text: string, config: GameConfig): LoadResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -56,7 +58,7 @@ export function deserialize(text: string, currentConfigVersion: string): LoadRes
   while (v < WORLD_SCHEMA_VERSION) {
     const m = MIGRATIONS[v];
     if (!m) throw new SaveError(`no migration from schema v${v}`);
-    world = m(world);
+    world = m(world, config);
     v += 1;
     world.schemaVersion = v;
   }
@@ -66,6 +68,6 @@ export function deserialize(text: string, currentConfigVersion: string): LoadRes
     world: w,
     savedAt: typeof file.savedAt === 'number' ? file.savedAt : 0,
     migratedFrom: from === WORLD_SCHEMA_VERSION ? null : from,
-    configChanged: w.configVersion !== currentConfigVersion,
+    configChanged: w.configVersion !== config.version,
   };
 }

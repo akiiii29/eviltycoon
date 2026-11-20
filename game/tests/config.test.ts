@@ -1,4 +1,5 @@
 import { ConfigError, loadConfig, validateConfig } from '../src/core/config/load';
+import { shopMarkdownSteps, shopScrapAgeSec } from '../src/core/systems/crafting';
 import { readRawConfig } from './helpers';
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -42,6 +43,22 @@ describe('config', () => {
     expect(msgs).toContain('formula_params.hunterSlots');
     expect(msgs).toContain('formula_params.typo');
     expect(msgs).toContain('stat_grade');
+  });
+
+  it('shop markdown schedule: floor must be reachable before scrapping; old shopScrapSec is rejected', () => {
+    const shipped = loadConfig(readRawConfig()).formula;
+    expect(shopScrapAgeSec(shipped)).toBe(shopMarkdownSteps(shipped) * shipped.shopStaleSec + shipped.shopFloorHoldSec);
+    expect(shopMarkdownSteps(shipped)).toBeGreaterThan(0);
+    const raw = clone(readRawConfig()) as Record<string, any>;
+    raw.formula_params.shopMarkdownPct = 0; // never marked down: the floor is unreachable
+    raw.formula_params.shopStaleSec = 0;
+    raw.formula_params.shopMarkdownFloor = 0;
+    raw.formula_params.shopScrapSec = 1800;
+    const msgs = validateConfig(raw as any).map((i) => `${i.path}: ${i.message}`);
+    expect(msgs).toContain('formula_params.shopMarkdownPct: expected 0.000001..100');
+    expect(msgs).toContain('formula_params.shopStaleSec: expected 1..1000000');
+    expect(msgs).toContain('formula_params.shopMarkdownFloor: expected 0.01..1');
+    expect(msgs.some((m) => m.startsWith('formula_params.shopScrapSec: removed'))).toBe(true);
   });
 
   it('loadConfig throws ConfigError listing issues', () => {
