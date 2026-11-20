@@ -6,11 +6,15 @@
  * kingdom completion gold), the Town tax on kill gold (`tax`, TECH_SPEC §5.10) and the hunter gold ledger (gross: kill gold before tax, enhance and
  * skill-study spending), then event counts, stats, active bounties and the final hunter list.
  * Env HEADLESS_FP="key=value,..." overrides formula_params for the run (no file is changed), like tools/pacing.ts.
+ * Env HEADLESS_JOURNEY="journeyId@minute[xN],..." sends the journeyTeamMax strongest Town hunters (bestJourneyTeam) on
+ * that journey from that game minute on, N times in a row (retried each minute until accepted); journey events and
+ * active journeys are printed (TECH_SPEC §5.11). Without it no journey is started (output as before journeys existed).
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { loadConfig, type RawConfig } from '../src/core/config/load';
 import { createWorld, Simulation } from '../src/core/simulation';
+import { bestJourneyTeam } from '../src/core/systems/journey';
 import { salePrice } from '../src/core/systems/trading';
 import type { World } from '../src/core/world';
 
@@ -45,6 +49,15 @@ function snapshot(w: World, min: number): string {
     `hunterGold avg ${String(avg).padStart(6)} max ${String(Math.max(0, ...gold)).padStart(6)} avgLv ${lv}`;
 }
 
+/** Planned journeys: destination, first minute, launches left; `waiting` = a start command is in flight. */
+const plans = (process.env.HEADLESS_JOURNEY ?? '').split(',').filter(Boolean).map((p) => {
+  const m = /^([^@]+)@(\d+(?:\.\d+)?)(?:x(\d+))?$/.exec(p.trim());
+  if (!m || !config.index.journeys.has(m[1]!)) throw new Error(`HEADLESS_JOURNEY: bad entry "${p}"`);
+  return { id: m[1]!, at: Number(m[2]), left: Number(m[3] ?? 1), waiting: false };
+});
+const journeyLog: string[] = [];
+const fmtMin = (tick: number) => `${(tick / 600).toFixed(1)}m`;
+
 const counts: Record<string, number> = {};
 const reasons: Record<string, number> = {};
 const timeline: string[] = [];
@@ -65,6 +78,16 @@ let townGold0 = sim.world.town.gold;
 let townGoldMin = Infinity;
 const ticks = minutes * 600;
 for (let t = 0; t < ticks; t++) {
+  if (t % 600 === 0) {
+    for (const p of plans) {
+      if (p.left <= 0 || p.waiting || t / 600 < p.at) continue;
+      const def = config.index.journeys.get(p.id)!;
+      const team = bestJourneyTeam(config, sim.world, def);
+      if (team.length < config.formula.journeyTeamMax) continue;
+      sim.enqueue({ type: 'journey.start', journeyId: p.id, hunterIds: team.map((h) => h.id) });
+      p.waiting = true;
+    }
+  }
   sim.step();
   const st = sim.world.town.storage;
   for (const k in st) { const d = (st[k] ?? 0) - (prevStorage[k] ?? 0); if (d > 0) reqMats += d * salePrice(config, k); }
@@ -72,6 +95,18 @@ for (let t = 0; t < ticks; t++) {
   if (t % 600 === 0) townGoldMin = Math.min(townGoldMin, sim.world.town.gold); // sampled once per game-minute
   for (const e of sim.drainEvents()) {
     counts[e.type] = (counts[e.type] ?? 0) + 1;
+    if (e.type === 'journeyStarted' || (e.type === 'commandRejected' && e.command === 'journey.start')) {
+      const p = plans.find((x) => x.waiting && (e.type === 'commandRejected' || x.id === e.journeyId));
+      if (p) { p.waiting = false; if (e.type === 'journeyStarted') p.left -= 1; }
+    }
+    if (e.type === 'journeyStarted') {
+      const lv = e.hunterIds.map((id) => sim.world.journeys.flatMap((j) => j.hunters).find((h) => h.id === id)?.level ?? '?');
+      journeyLog.push(`${fmtMin(e.tick)} start ${e.journeyUid} ${e.journeyId} [${e.hunterIds.map((id, i) => `${id} Lv${lv[i]}`).join(', ')}] power ${e.teamPower.toFixed(2)} chance ${(e.successChance * 100).toFixed(0)}% cost ${e.cost}`);
+    } else if (e.type === 'journeyCompleted') {
+      const r = e.rewards;
+      journeyLog.push(`${fmtMin(e.tick)} done  ${e.journeyUid} ${e.journeyId} ${e.success ? 'SUCCESS' : 'FAIL'} gold ${r.gold} exp ${r.exp}/hunter mats ${JSON.stringify(r.materials)} items ${JSON.stringify(r.items)}`);
+    } else if (e.type === 'journeyRecalled') journeyLog.push(`${fmtMin(e.tick)} recall ${e.journeyUid} ${e.journeyId}`);
+    else if (e.type === 'commandRejected' && e.command.startsWith('journey.')) journeyLog.push(`${fmtMin(e.tick)} rejected ${e.command}: ${e.reason}`);
     if (e.type === 'serviceUsed') ledger.svc += e.price;
     else if (e.type === 'gearBought') ledger.shop += e.price;
     else if (e.type === 'enhanceResult' || (e.type === 'learned' && e.kind === 'skill')) {
@@ -114,6 +149,13 @@ console.log('events', counts);
 console.log('goal changes', reasons);
 console.log('stats', w.stats, 'town gold', w.town.gold, 'shop items', w.town.shop.length, 'monsters', w.monsters.length);
 console.log('storage', w.town.storage);
+if (plans.length > 0 || journeyLog.length > 0) {
+  console.log('journeys');
+  for (const l of journeyLog) console.log('  ' + l);
+  for (const j of w.journeys ?? []) {
+    console.log(`  active ${j.id} ${j.journeyId} [${j.hunters.map((h) => h.id).join(', ')}] left ${Math.round(j.remainingMs / 1000)}s power ${j.teamPower.toFixed(2)} chance ${(j.successChance * 100).toFixed(0)}%`);
+  }
+}
 for (const b of w.town.bounties ?? []) {
   console.log(`bounty ${b.id} ${b.auto ? 'auto' : 'player'} ${b.targetKind}:${b.targetId} ${b.progress}/${b.kills} reward ${b.reward} escrow ${b.escrow} age ${Math.round((w.timeMs - b.postedAtMs) / 60000)}m`);
 }

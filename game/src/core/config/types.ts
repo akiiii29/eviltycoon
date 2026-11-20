@@ -437,7 +437,43 @@ export interface FormulaParams {
   taxMaxRate: number;
   taxMoodFreeRate: number;
   taxMoodPerKill: number;
+  /** Journeys (TECH_SPEC §5.11, systems/journey.ts): hunters per team (GDD "3 NPC") and journeys running at once. */
+  journeyTeamMax: number;
+  journeyMaxActive: number;
+  /**
+   * Success chance = clamp(journeySuccessAtRec × (teamPower / recommendedPower)^journeySuccessExp,
+   * journeySuccessMin, journeySuccessMax): journeySuccessAtRec at exactly the recommended power.
+   */
+  journeySuccessAtRec: number;
+  journeySuccessExp: number;
+  journeySuccessMin: number;
+  journeySuccessMax: number;
+  /** Returning hunters (either outcome) come back with satiety/mood/stamina at most journeyReturnNeedFrac × max. */
+  journeyReturnNeedFrac: number;
   [key: string]: number;
+}
+
+/** A journey destination (config/journey.json, TECH_SPEC §5.11). */
+export interface JourneyDef {
+  id: string;
+  nameKey: string;
+  /** Game seconds away (also counts down in wall-clock time while offline). */
+  durationSec: number;
+  /** The foes of the journey: team power is measured against this zone's spawn mix (formulas.zonePower). */
+  zoneId: string;
+  /** Team power (Σ zonePower of the members) at which the success chance is journeySuccessAtRec. */
+  recommendedPower: number;
+  /** Town gold paid when the team leaves (supplies; never refunded). */
+  cost: number;
+  /** Success rewards: Town gold and EXP per member (both × difficulty rewardMul), materials into Town storage. */
+  gold: number;
+  exp: number;
+  materials: { materialId: string; count: number }[];
+  /** Rare finds on success: each rolled once; a hit is listed in the shop (or sold at the markdown floor when full). */
+  rare: { gearId: string; qualityId: string; chance: number }[];
+  /** Failure: members return with HP at failHpFrac × max and get failRewardFrac of the EXP (no gold/materials/rare). */
+  failHpFrac: number;
+  failRewardFrac: number;
 }
 
 export interface LocEntry {
@@ -467,6 +503,7 @@ export interface GameConfig {
   traits: TraitDef[];
   /** Sorted by order (index 0 = starting difficulty). */
   difficulties: DifficultyDef[];
+  journeys: JourneyDef[];
   loc: LocEntry[];
   /** Lookups built by the loader. */
   index: {
@@ -491,6 +528,7 @@ export interface GameConfig {
     skills: Map<string, SkillDef>;
     traits: Map<string, TraitDef>;
     difficulties: Map<string, DifficultyDef>;
+    journeys: Map<string, JourneyDef>;
     /** The single town square node (spawn / revive / return point). */
     squareNode: string;
     /** Field node ids per zone. */

@@ -134,5 +134,12 @@
  "taxMinRate": 0,
  "taxMaxRate": 0.5,
  "taxMoodFreeRate": 0.1,
- "taxMoodPerKill": 10
+ "taxMoodPerKill": 10,
+ "journeyTeamMax": 3,
+ "journeyMaxActive": 2,
+ "journeySuccessAtRec": 0.75,
+ "journeySuccessExp": 2,
+ "journeySuccessMin": 0.05,
+ "journeySuccessMax": 0.95,
+ "journeyReturnNeedFrac": 0.5
 }

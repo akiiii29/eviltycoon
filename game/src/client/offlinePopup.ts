@@ -23,16 +23,33 @@ export function showOfflinePopup(root: HTMLElement, config: GameConfig, world: W
   const box = document.createElement('div');
   box.className = 'offline-popup';
   line(box, 'Trong lúc bạn vắng mặt', 'debug-head');
-  const away = r.capped
-    ? `Vắng ${duration(r.awayMs)} (tính tối đa ${duration(r.creditedMs)})`
-    : `Vắng ${duration(r.creditedMs)}`;
+  const away = r.skipped
+    ? `Vắng ${duration(r.awayMs)}`
+    : r.capped
+      ? `Vắng ${duration(r.awayMs)} (tính tối đa ${duration(r.creditedMs)})`
+      : `Vắng ${duration(r.creditedMs)}`;
   line(box, away, 'debug-status');
-  line(box, `Vàng +${r.gold} (Town +${r.townGold}) · Kill +${r.kills}`);
-  const mats = Object.entries(r.materials)
-    .map(([id, n]) => `${t(config, config.index.materials.get(id)?.nameKey ?? id)} ×${n}`)
-    .join(', ');
-  line(box, `Vật liệu vào kho: ${mats || '—'}`);
-  line(box, 'Hunter', 'debug-sub');
+  const matName = (id: string) => t(config, config.index.materials.get(id)?.nameKey ?? id);
+  if (!r.skipped) {
+    line(box, `Vàng +${r.gold} (Town +${r.townGold}) · Kill +${r.kills}`);
+    const mats = Object.entries(r.materials).map(([id, n]) => `${matName(id)} ×${n}`).join(', ');
+    line(box, `Vật liệu vào kho: ${mats || '—'}`);
+  }
+  // Journeys that ended while away (TECH_SPEC §5.11).
+  if (r.journeys.length > 0) {
+    line(box, 'Hành trình', 'debug-sub');
+    for (const j of r.journeys) {
+      const dest = t(config, config.index.journeys.get(j.journeyId)?.nameKey ?? j.journeyId);
+      const w = j.rewards;
+      const parts = [`EXP +${w.exp}/người`];
+      if (w.gold > 0) parts.push(`vàng Town +${w.gold}`);
+      const mats = Object.entries(w.materials).map(([id, n]) => `${matName(id)} ×${n}`).join(', ');
+      if (mats) parts.push(mats);
+      for (const it of w.items) parts.push(`${t(config, config.index.gear.get(it.gearId)?.nameKey ?? it.gearId)} [${t(config, config.index.qualities.get(it.qualityId)?.nameKey ?? it.qualityId)}]`);
+      line(box, `${dest} (${j.hunterIds.join(', ')}): ${j.success ? 'THÀNH CÔNG' : 'THẤT BẠI'} · ${parts.join(' · ')}`, 'offline-hunter');
+    }
+  }
+  if (r.hunters.length > 0) line(box, 'Hunter', 'debug-sub');
   for (const g of r.hunters) {
     const h = world.hunters.find((x) => x.id === g.id);
     const cls = h ? t(config, config.index.classes.get(h.classId)?.nameKey ?? h.classId) : '';

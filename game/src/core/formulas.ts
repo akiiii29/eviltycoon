@@ -325,6 +325,33 @@ function ratioFromKills(kills: number, f: FormulaParams): number {
   return Math.sqrt(kills / f.zoneRefKills);
 }
 
+/** powerRatio against a zone's spawn mix at an explicit difficulty (journeys snapshot it at departure). */
+export function zonePower(config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string): number {
+  return ratioFromKills(killsPerLife(config, h, zone, difficultyId), config.formula);
+}
+
+/**
+ * Journey team power (TECH_SPEC §5.11): Σ zonePower of the members against the destination's foes. powerRatio is
+ * linear in stats (2× DPS and 2× HP → 2×), so n identical hunters add up to n×, the same as one hunter with n× DPS
+ * and n× HP (Lanchester-style). 1 per member = each could take zoneRefKills kills on one HP bar there.
+ */
+export function teamPower(config: GameConfig, team: readonly Hunter[], zone: ZoneDef, difficultyId: string): number {
+  let p = 0;
+  for (const h of team) p += zonePower(config, h, zone, difficultyId);
+  return p;
+}
+
+/**
+ * Journey success chance from team power P vs the destination's recommended power R:
+ *   clamp(journeySuccessAtRec × (P / R)^journeySuccessExp, journeySuccessMin, journeySuccessMax)
+ * Monotone in P; journeySuccessAtRec exactly at the recommendation; never certain either way.
+ */
+export function journeySuccessChance(power: number, recommended: number, f: FormulaParams): number {
+  const r = recommended > 0 ? Math.max(0, power) / recommended : 0;
+  const p = f.journeySuccessAtRec * Math.pow(r, f.journeySuccessExp);
+  return clamp(Number.isFinite(p) ? p : f.journeySuccessMax, f.journeySuccessMin, f.journeySuccessMax);
+}
+
 /**
  * Share of the hunter's potential kill rate a zone can actually supply when n hunters (this one included)
  * hunt it: a zone respawns one monster per respawnSec, so

@@ -8,6 +8,7 @@ import { servicePrice } from './systems/services';
 import { reincarnate } from './systems/progression';
 import { cancelBounty, postBounty, validateBounty } from './systems/bounty';
 import { setTaxRate, validateTaxRate } from './systems/tax';
+import { journeyOfHunter, recallJourney, startJourney, townHunterCount, validateJourney } from './systems/journey';
 
 /** Player/debug commands. Queued by UI, applied at the start of the next tick (TECH_SPEC §3.1). */
 export type Command =
@@ -43,11 +44,19 @@ export type Command =
   /** Toggle automatic bounties when Town gold is above its treasury target. */
   | { type: 'town.setAutoBounty'; on: boolean }
   /** Town tax on kill gold (TECH_SPEC §5.10), within [taxMinRate, taxMaxRate]. */
-  | { type: 'town.setTaxRate'; rate: number };
+  | { type: 'town.setTaxRate'; rate: number }
+  /**
+   * GDD §9 Journey: send 1..journeyTeamMax hunters that are in Town (alive, not inside a building) to a destination of
+   * config/journey.json; costs its `cost` Town gold (TECH_SPEC §5.11).
+   */
+  | { type: 'journey.start'; journeyId: string; hunterIds: string[] }
+  /** Bring a running journey's team home now (no reward, cost not refunded). */
+  | { type: 'journey.recall'; journeyUid: string };
 
 type Handler<C extends Command> = (ctx: SystemContext, cmd: C) => string | null;
 
 function controllable(ctx: SystemContext, hunterId: string): string | null {
+  if (journeyOfHunter(ctx.world, hunterId)) return 'hunter is on a journey';
   const h = findHunter(ctx.world, hunterId);
   if (!h) return 'unknown hunter';
   if (!isAlive(h)) return 'hunter is dead';
@@ -75,11 +84,12 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     return setGoal(ctx, h, { type: 'service', buildingId: b.id }, 'order', true) ? null : 'no path';
   },
   'debug.spawnHunter': (ctx) => {
-    if (ctx.world.hunters.length >= ctx.config.formula.hunterSlots) return 'no free slot';
+    if (townHunterCount(ctx.world) >= ctx.config.formula.hunterSlots) return 'no free slot';
     spawnHunter(ctx);
     return null;
   },
   'debug.removeHunter': (ctx, cmd) => {
+    if (journeyOfHunter(ctx.world, cmd.hunterId)) return 'hunter is on a journey';
     const i = ctx.world.hunters.findIndex((h) => h.id === cmd.hunterId);
     if (i < 0) return 'unknown hunter';
     ctx.world.hunters.splice(i, 1);
@@ -88,6 +98,7 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     return null;
   },
   'debug.restoreNeeds': (ctx, cmd) => {
+    if (journeyOfHunter(ctx.world, cmd.hunterId)) return 'hunter is on a journey';
     const h = findHunter(ctx.world, cmd.hunterId);
     if (!h) return 'unknown hunter';
     if (!isAlive(h)) return 'hunter is dead';
@@ -146,6 +157,13 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     setTaxRate(ctx, cmd.rate);
     return null;
   },
+  'journey.start': (ctx, cmd) => {
+    const bad = validateJourney(ctx, cmd.journeyId, cmd.hunterIds);
+    if (bad) return bad;
+    startJourney(ctx, ctx.config.index.journeys.get(cmd.journeyId)!, cmd.hunterIds);
+    return null;
+  },
+  'journey.recall': (ctx, cmd) => (recallJourney(ctx, cmd.journeyUid) ? null : 'unknown journey'),
 };
 
 export function applyCommand(ctx: SystemContext, cmd: Command): void {

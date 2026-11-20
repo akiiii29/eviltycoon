@@ -3,8 +3,11 @@ import type { GearSlot, ModStat, NeedKey, StatKey } from './config/types';
 
 export type { GearSlot, NeedKey } from './config/types';
 
-/** Bump when the World shape changes and add a migration in save/migrations.ts. */
-export const WORLD_SCHEMA_VERSION = 7;
+/**
+ * Bump when the World shape changes and add a migration in save/migrations.ts.
+ * v8 is reserved for buildings (parallel branch); v9 = journeys (TECH_SPEC §5.11).
+ */
+export const WORLD_SCHEMA_VERSION = 9;
 
 export type Grade = 'normal' | 'high' | 'highest';
 export type HunterTier = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
@@ -146,6 +149,29 @@ export interface Bounty {
   postedAtMs: number;
 }
 
+/**
+ * v9: a team away on a journey (systems/journey.ts, TECH_SPEC §5.11). Its hunters are MOVED out of `world.hunters`
+ * into `hunters` here while away, so no field/AI/needs/progression system can touch them; they come back (appended
+ * to `world.hunters`) at the town square when the journey ends or is recalled.
+ */
+export interface Journey {
+  id: string;
+  /** Destination id (config/journey.json). */
+  journeyId: string;
+  /** Difficulty at departure (team power and reward multiplier use it). */
+  difficultyId: string;
+  hunters: Hunter[];
+  /** Snapshot at departure: Σ formulas.zonePower of the members, and the resulting success chance. */
+  teamPower: number;
+  successChance: number;
+  durationMs: number;
+  /** Counts down by game time while playing and by wall-clock time while offline; resolves at 0. */
+  remainingMs: number;
+  startedAtMs: number;
+  /** Town gold paid at departure. */
+  cost: number;
+}
+
 export interface World {
   schemaVersion: number;
   configVersion: string;
@@ -187,6 +213,8 @@ export interface World {
   /** Arrays (not maps) so iteration order is stable and deterministic. */
   hunters: Hunter[];
   monsters: Monster[];
+  /** v9: teams away on a journey, in departure order. */
+  journeys: Journey[];
   zones: Record<string, { respawnMs: number }>;
   stats: {
     kills: number;
@@ -212,6 +240,12 @@ export interface World {
     bountyKingdomGold: number;
     /** Tax taken from kill gold into Town gold (systems/tax.ts). Optional, no schema bump: absent = 0. */
     taxCollected?: number;
+    /** v9: journeys started / succeeded / failed / recalled, Town gold earned from journeys (rewards, rare sold). */
+    journeysStarted: number;
+    journeysSucceeded: number;
+    journeysFailed: number;
+    journeysRecalled: number;
+    journeyGold: number;
   };
 }
 

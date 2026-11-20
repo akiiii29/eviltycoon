@@ -1,6 +1,7 @@
 import { rollHunter } from '../hunterFactory';
 import type { System, SystemContext } from '../system';
 import type { Hunter } from '../world';
+import { townHunterCount } from './journey';
 
 export function spawnHunter(ctx: SystemContext): Hunter {
   const { world, config, rng, nav } = ctx;
@@ -18,7 +19,8 @@ export const arrivalsSystem: System = {
   name: 'arrivals',
   update(ctx) {
     const { world, config } = ctx;
-    if (world.hunters.length >= config.formula.hunterSlots) {
+    // Hunters away on a journey keep their slot.
+    if (townHunterCount(world) >= config.formula.hunterSlots) {
       world.town.arrivalTimerMs = 0;
       return;
     }

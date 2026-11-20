@@ -69,6 +69,7 @@ Quy ước: **[CHỐT]** là quyết định kỹ thuật; **[ĐỀ XUẤT]** l�
 | `systems/economy` | Hành động tại cửa: bán ở Trạm Thu Mua, mua ở Shop, cường hóa ở Forge. |
 | `systems/trading` | Yêu cầu vật liệu của Trạm Thu Mua, giá mua (§5.7). |
 | `systems/academy` | Học skill (vàng) / trait (trait point). |
+| `systems/journey` | Journey (§5.11): gửi đội tối đa 3 hunter đi xa, đếm thời gian (cả offline), roll kết quả, thưởng/hậu quả, đưa đội về Town. |
 | `systems/crafting` | Auto-craft/craft thủ công, xếp hàng shop, giảm giá và hủy món tồn. |
 | `systems/needs` | Giảm nhu cầu theo thời gian, hồi chậm miễn phí khi rảnh trong Town; kẹp HP ≤ max. |
 | `systems/progression` | Chuyển nghề, reincarnation (tự động khi bật), unlock difficulty. EXP/level nằm ở `progress.ts`. |
@@ -78,13 +79,13 @@ Quy ước: **[CHỐT]** là quyết định kỹ thuật; **[ĐỀ XUẤT]** l�
 | `events` | Event bus một chiều sim → UI/render (hit, kill, levelUp, purchase…) để chơi VFX/âm thanh/toast. Sim không bao giờ đọc lại. |
 | `config/` | Schema DSL (`schema.ts`), `TABLE_SPECS` + kiểm tra chéo + index (`load.ts`), kiểu (`types.ts`). |
 
-Bounty: `systems/bounty` (§5.9). Thuế: `systems/tax` (§5.10) — thuế trên vàng rơi từ quái, thu ngay lúc kill. Build/upgrade building chưa làm (M4); invitation (M5) — xem §12.
+Bounty: `systems/bounty` (§5.9). Thuế: `systems/tax` (§5.10) — thuế trên vàng rơi từ quái, thu ngay lúc kill. Journey: `systems/journey` (§5.11). Build/upgrade building chưa làm (M4); invitation (M5) — xem §12.
 
 ### 3.2 Vòng lặp **[CHỐT]**
 
 - Fixed-step simulation: **10 tick/giây** (`dt = 100 ms`). Render nội suy vị trí giữa 2 tick.
 - Thứ tự system mỗi tick (`DEFAULT_SYSTEMS` trong `src/core/simulation.ts`):
-  `commands → arrivals → ai → movement → combat → skills → urgentBackstop → services → economy → academy → crafting → needs → progression → spawn`, rồi `tick += 1`, `timeMs += dt`, lưu RNG state vào world.
+  `commands → arrivals → ai → movement → combat → skills → urgentBackstop → services → economy → academy → crafting → bounty → journey → needs → progression → spawn`, rồi `tick += 1`, `timeMs += dt`, lưu RNG state vào world.
   - `commands`: lệnh enqueue giữa 2 tick được áp dụng đầu `step()`, trước mọi system.
   - `urgentBackstop` chạy lại backstop khẩn cấp của AI (§5.2) **sau combat và skills**, để đòn đánh làm nhu cầu tụt dưới ngưỡng được xử lý ngay trong tick đó (không chờ tick sau).
   - Không có pha `cleanup` riêng: combat xóa quái chết cuối pass của nó. Không có pha `emit events`: event được ghi vào buffer khi phát sinh, client lấy bằng `drainEvents()`.
@@ -294,6 +295,26 @@ Code: `src/core/systems/tax.ts` (hook duy nhất: `combat.grantKill` gọi `gran
 - **Số đo** (headless 12 giờ, seed 1–5, trước → sau với 10%): vàng Town lúc 12 giờ 23,0–26,5k → 21,5–26,9k; vàng hunter tb 6,0–6,7k → 5,9–7,6k, max 7,6–12,5k → 9,0–14,3k; Lv tb 82,1–85,9 → 79,6–85,3; shop 3–11 → 5–8 món; chết tổng 11 → 7 (seed 6–10: 4 → 11; 10 seed 15 → 18). Trung bình 10 seed: Lv 84,8 → 84,8, vàng hunter tb 7,0k → 7,2k — trong nhiễu. Thu 27,9–34,4k / 12 giờ (≈ 9% vàng kill; vàng kill chỉ ≈ 1/3 thu nhập hunter, phần lớn là tiền bán NL). `taxRate` 0 cho kết quả giống từng byte với trước. Thuế cao (seed 1–2): 30% → vàng Town 29,5/33,3k, vàng hunter tb 5,7/4,6k, Lv 83,0/78,8, lượt dịch vụ +9/+13%, kill −2/−3%; 50% → 28,5/39,3k, 5,6/3,9k, Lv 80,8/77,3, dịch vụ +19/+15%, kill −3%. (`taxMoodPerKill` 2 thì ở 50% không đo được khác biệt dịch vụ/level, nên chọn 10.)
 - **Lưu ý**: khi vàng Town đang trên mục tiêu ngân khố (§5.7), thu thêm bị quy tắc ngân khố bù lại (Town giữ ít phí hơn, phần còn lại bị đốt), nên ở 10% thuế thực chất là **chỗ tiêu vàng hunter**, không làm Town giàu hơn. Thuế chỉ thành thu nhập thật của Town khi Town dưới mục tiêu — tức khi có chỗ tiêu vàng Town ra khỏi nền kinh tế (xây/nâng building). Khi đó tăng `taxRate`/`town.setTaxRate` là đòn bẩy.
 
+### 5.11 Journey (GDD §9) **[ĐÃ LÀM — số liệu ĐỀ XUẤT]**
+
+Code: `src/core/systems/journey.ts` (system `journey` chạy sau `bounty`, trước `needs`), `formulas.ts` (`zonePower`, `teamPower`, `journeySuccessChance`), lệnh trong `commands.ts`, bảng `config/journey.json`, tham số `journey*` ở cuối `formula_params.json`. World v9: `world.journeys` (theo thứ tự xuất phát), stat `journeysStarted` / `journeysSucceeded` / `journeysFailed` / `journeysRecalled` / `journeyGold`.
+
+- **"3 NPC" = 3 slot hunter mỗi chuyến**: người chơi gửi một đội 1..`journeyTeamMax` (3) hunter **của Town** (không phải NPC riêng); tối đa `journeyMaxActive` (2) chuyến cùng lúc. Cách hiểu này dùng lại toàn bộ chỉ số/đồ/level của hunter làm "sức mạnh đội" và tạo đánh đổi: hunter đi xa thì không săn, không mua đồ.
+- **Lệnh** `journey.start { journeyId, hunterIds }`. Từ chối (`commandRejected`): điểm đến lạ, đội rỗng / > `journeyTeamMax` / không phải mảng, trùng hunter, hunter lạ, đang đi chuyến khác, đã chết, đang trong building, **không ở Town** (node có zone — gọi về Town bằng Move trước), đã đủ `journeyMaxActive`, vàng Town < `cost`. `journey.recall { journeyUid }` gọi đội về ngay: không thưởng, không hoàn `cost`.
+- **Vắng mặt**: lúc xuất phát hunter được **chuyển ra khỏi** `world.hunters` vào `journey.hunters` (AI reset, buff xóa, quái đang nhắm thì bỏ). Vì vậy không system nào (AI, di chuyển, combat, nhu cầu, tái sinh, AI chấm vùng/bounty, offline theo tốc độ) đụng tới họ: nhu cầu, level, vị trí **đóng băng**. Họ vẫn giữ slot (`townHunterCount` cho arrivals và `debug.spawnHunter`), vẫn được tính khi mở khóa độ khó (`allHunters`). Mọi lệnh theo hunter (Move, Activities, tái sinh, debug hồi/xóa) bị từ chối với lý do `hunter is on a journey`.
+- **Sức mạnh đội** (từ chính mô hình combat §5.3/§7.1, không có chỉ số mới):
+  ```
+  zonePower(h)   = √(killsPerLife(h, vùng của điểm đến, độ khó Town lúc xuất phát) / zoneRefKills)   (= powerRatio của AI, chỉ số steady)
+  teamPower      = Σ zonePower(thành viên)
+  successChance  = clamp(journeySuccessAtRec × (teamPower / recommendedPower)^journeySuccessExp, journeySuccessMin, journeySuccessMax)
+  ```
+  powerRatio tuyến tính theo chỉ số nên n hunter giống nhau = n× (như một hunter có n× DPS và n× HP). `recommendedPower` 3,5 = "ba hunter mỗi người thoải mái ở vùng đó" → 0,75. Mặc định 0,75 / mũ 2 / [0,05; 0,95]: ½ đề xuất → 19 %, 0,8× → 48 %, 1,13× → 95 %. Sức mạnh và tỉ lệ được **chụp lúc xuất phát** (lưu trong journey).
+- **Thời gian**: `remainingMs` giảm theo thời gian game mỗi tick; khi tắt game giảm theo **thời gian thực** (xem §9). Về 0 thì **roll kết quả bằng RNG của sim** (`rng.next() < successChance`, rồi khi thành công mỗi dòng `rare` một lần `rng.chance`). Không có chuyến nào thì system không rút RNG, không phát event: headless/hash world giống từng byte với trước (đã kiểm: hash world + event mỗi phút 90 phút seed 1–2; output `tools/headless.ts` 120 phút chỉ khác thêm 5 khóa stat).
+- **Thưởng** (bảng `journey`): thành công → `gold` vào Town, `exp` mỗi thành viên (qua `gainExp`, có trần level; cả hai × `rewardMul` của độ khó lúc xuất phát), `materials` vào kho Town (thẳng, **không** qua luật Trạm Thu Mua §5.7 — giữ số nhỏ), `rare` (gear + chất lượng + tỉ lệ): trúng thì bày lên shop như đồ vừa chế; shop đầy thì Town bán ngay với giá sàn `round(giá × shopMarkdownFloor)`. Thất bại → chỉ `round(exp × failRewardFrac)`, HP về ≤ `failHpFrac` × max. Cả hai trường hợp satiety/mood/stamina về ≤ `journeyReturnNeedFrac` (0,5) × max nên đội về sẽ đi dịch vụ. Thành viên về **quảng trường**, AI mới, nối vào cuối `world.hunters`.
+- **Tái sinh**: hunter đang đi không tái sinh (không nằm trong `world.hunters`); EXP thưởng có thể đưa lên max level, rồi `progression` tự tái sinh khi đã về Town. Lệnh tái sinh thủ công bị từ chối khi đang đi.
+- **Event**: `journeyStarted` (sức mạnh, tỉ lệ, phí), `journeyCompleted { success, successChance, rewards: { gold, exp, materials, items }, offline }`, `journeyRecalled`. Debug overlay: khối "Hành trình" (chuyến đang chạy: thời gian còn, sức mạnh, %, nút gọi về; mỗi điểm đến: đề xuất, thời gian, phí, thưởng, xem trước % cho đội đã chọn bằng nút "+đội" ở từng hunter hoặc đội 3 mạnh nhất ở Town, nút gửi). `tools/headless.ts` với `HEADLESS_JOURNEY="journeyId@phút[xN],..."` gửi 3 hunter mạnh nhất đang ở Town (`bestJourneyTeam`) và in nhật ký chuyến + chuyến đang chạy.
+- **Số đo** (headless 600 phút seed 1, `journey.mossway@20x4, emberglow@150x3, saltdeep@420x2`): đội Lv5–7 vào Lối Rêu Cũ sức 2,9–3,8 (53–87 %), Lv10 4,7 (95 %); Đèo Than Hồng xuất phát được lúc 230 phút (cần 3 hunter cùng ở Town) với đội Lv39–46 sức 6–8 (95 %); Vực Muối Lặng đội Lv58–63 sức 3,5 (72 %), Lv65–69 4,1 (95 %). Thưởng EXP đặt ≈ 1–1,2× EXP săn cùng thời gian ở mốc level đó (bù việc không săn; **ước lượng** từ nhịp level ghi ở TODO §3, chưa đo trực tiếp), vàng là tiền mới vào Town (lớn hơn `cost`). Chưa tune kỹ; cần design chốt.
+
 ## 6. Di chuyển và pathfinding
 
 - Map là **waypoint graph**: node (vị trí, zoneId, loại: road/field/building-door) và cạnh (khoảng cách).
@@ -353,7 +374,7 @@ client load lúc khởi động → bất biến khi chạy
 
 Kiểu: `id` string, `ref<X>` = id của bảng X, `int[]`/`float[]` = mảng theo level.
 
-Bảng dưới là **thiết kế đích**. Đã có trong `game/config/` (trường thật xem `TABLE_SPECS`): `class` (statRanges, attackSpeed; **không** có growthPerLevel — mức tăng mỗi level là `levelHpGain/AtkGain/DefGain` chung trong `formula_params`), `job` (thêm `statMult`), `stat_grade`, `personality`, `skill` (kind strike/aoe/buff, `value[]`, `studyLevel[]`, `studyGold[]`…), `trait`, `gear` (slot, level, mainStat, mainValue, craftBuilding, craftSec, materials, basePrice), `gear_quality` (statMult, priceMult, craftChance), `enhance` (`level, successRate, costFrac, dropOnFail`), `material` (price), `monster`, `zone`, `difficulty` (unlockHunters, unlockReincarnation, monsterHp/Atk/DefMul, rewardMul), `building` (dịch vụ có need/restorePerSec/price), `map_node`, `map_edge`, `formula_params`, `loc`, `meta`. Các bảng khác chưa làm.
+Bảng dưới là **thiết kế đích**. Đã có trong `game/config/` (trường thật xem `TABLE_SPECS`): `class` (statRanges, attackSpeed; **không** có growthPerLevel — mức tăng mỗi level là `levelHpGain/AtkGain/DefGain` chung trong `formula_params`), `job` (thêm `statMult`), `stat_grade`, `personality`, `skill` (kind strike/aoe/buff, `value[]`, `studyLevel[]`, `studyGold[]`…), `trait`, `gear` (slot, level, mainStat, mainValue, craftBuilding, craftSec, materials, basePrice), `gear_quality` (statMult, priceMult, craftChance), `enhance` (`level, successRate, costFrac, dropOnFail`), `material` (price), `monster`, `zone`, `difficulty` (unlockHunters, unlockReincarnation, monsterHp/Atk/DefMul, rewardMul), `building` (dịch vụ có need/restorePerSec/price), `map_node`, `map_edge`, `journey` (§5.11: durationSec, zoneId, recommendedPower, cost, gold, exp, materials, rare, failHpFrac, failRewardFrac), `formula_params`, `loc`, `meta`. Các bảng khác chưa làm.
 
 | Bảng | Trường chính |
 |---|---|
@@ -381,7 +402,8 @@ Bảng dưới là **thiết kế đích**. Đã có trong `game/config/` (trư�
 | `relic` | id, nameKey, maxLevel, value[], upgradeCost[] |
 | `growth_property` | id, stat, valuePerLevel, maxLevel, cost[] |
 | `exp_curve` | level, expByReincarnation[6] |
-| `raid`, `journey`, `trading_request` | Theo GDD §9; tạo schema khi đặc tả mode chi tiết. Bounty không có bảng riêng: tham số `bounty*` trong `formula_params` (§5.9). |
+| `journey` | id, nameKey, durationSec, zoneId (đối thủ để tính sức mạnh đội), recommendedPower, cost, gold, exp, materials: [{materialId, count}], rare: [{gearId, qualityId, chance}], failHpFrac, failRewardFrac (§5.11) |
+| `raid`, `trading_request` | Theo GDD §9; tạo schema khi đặc tả mode chi tiết. Bounty không có bảng riêng: tham số `bounty*` trong `formula_params` (§5.9). |
 | `formula_params` | key → number (hệ số công thức combat, ngưỡng AI, tốc độ giảm nhu cầu) |
 | `loc` | key, vi, en, … |
 
@@ -417,6 +439,9 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 | v3 → v4 | M2 → M3 | `rollStats` ước lượng = `stats` trừ `(level − 1) × levelHpGain/AtkGain/DefGain` của config, kẹp trong khoảng roll của class (`statRanges`); skill/trait/buff rỗng; quái và Town dùng `diff.easy`; `autoReincarnate = true`; stat M3 = 0. |
 | v4 → v5 | lượt cân bằng | Món trong shop thêm `listPrice = price`, `listedAtMs = world.timeMs` (giảm giá/hủy theo tuổi). |
 | v5 → v6 | Trạm Thu Mua theo yêu cầu | `town.requests = {}`, stat `materialsDiscarded`/`gearScrapped` = 0. Kho cũ giữ nguyên. |
+| v6 → v7 | Bounty | `town.bounties = []`, `town.autoBounty = true`, stat bounty = 0. |
+| v7 → v8 | (dành cho Town Hall/building, nhánh song song) | Ở nhánh Journey là pass-through; khi merge, migration building thế chỗ này. |
+| v8 → v9 | Journey | `journeys = []` (giữ mảng nếu đã có), stat `journey*` = 0. Chỉ điền trường thiếu nên đúng ở cả hai phía migration building. |
 
 - **Offline progress [CHỐT]:** không mô phỏng từng tick. Ước lượng theo tốc độ trung bình đo được trong 10 phút gần nhất (gold/s, EXP/s, vật liệu/s theo từng hunter), nhân với thời gian vắng, trần **8 giờ [ĐỀ XUẤT]**. Hiển thị popup tổng kết. **[ĐÃ LÀM]**
   - **Vì sao không fast-forward:** 12 giờ game headless mất ~17 s (máy rảnh; ~100 ms/phút game khi máy bận), nên 8 giờ sẽ chặn lúc load ~11–48 s. Hybrid (chạy thật N phút đầu) chỉ chính xác phần đầu mà vẫn tốn ~25–100 ms/phút, nên không làm.
@@ -425,8 +450,8 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
   - **Áp dụng** (`applyOffline`): EXP qua `gainExp` (trần level, tăng chỉ số, điểm trait; đổi nghề do progression làm ở các tick sau; **không tái sinh offline**, EXP ở max level mất). Gold: thay đổi ròng đo được của từng hunter và Town, **sàn 0** (offline không ai tiêu, không ai nghèo đi). Kill cộng vào `hunter.kills`, `stats.kills`. Vật liệu: tốc độ vào kho từng loại nhưng **chỉ tới `materialDemand` hiện tại** (luật Trạm Thu Mua: chỉ mua cái được yêu cầu; yêu cầu của người chơi bị trừ như khi bán, `stats.materialsSold` tăng); tiền mua đã nằm trong gold ròng của Town nên không trừ thêm. Needs/HP đầy (theo max sau khi lên level), buff xóa, hunter đang chết hồi sinh ở tick sau. **Không** tăng `timeMs`/`tick`/RNG (tuổi món trong shop, timer spawn giữ nguyên). Sau khi áp dụng tăng `epoch` để bước nhảy không bao giờ thành tốc độ đo (load hai lần không cộng dồn).
   - **Client** (`src/client/main.ts`, `offlinePopup.ts`): lúc boot load → ước lượng → áp dụng → **save ngay** (reload trước autosave không cộng lại) → popup (thời gian vắng, có trần; vàng, kill, vật liệu; từng hunter Lv trước → sau, vàng, kill). Nút Load của debug chỉ load, không cộng offline. Tab bị ẩn (rAF dừng nên sim dừng) cũng được cộng thời gian ẩn khi hiện lại.
   - **Độ chính xác** (ước lượng 60 phút so với chạy thật 60 phút, efficiency 1, seed 1–3): sau 30 phút chơi kill −15…+26 %, tổng level lệch −17…−31 % (≈ 2,3–2,9 level/hunter); sau 60 phút kill −28…−43 %, level chỉ ~40–60 % thực tế (giai đoạn 60–120 phút game tăng tốc gấp đôi nhờ đổi vùng/đồ, tốc độ 10 phút trước không thấy được); sau 150 phút kill −9…+15 %, level −7…+7 %; sau 240 phút kill −2…−13 %, level −11…−22 % (1,4–1,9 level/hunter). Gold ước lượng không so trực tiếp được với gold ròng thật (thật có tiêu vào đồ/cường hóa): lệch −85…+200 %.
-- Journey chạy offline theo thời gian thực (GDD §9), tính kết quả lúc mở game.
-- Journey **chưa làm** (M4). `Simulation.advance` chạy tối đa 600 tick mỗi lần gọi để tránh dồn tick sau khi tab bị ẩn (phần thời gian ẩn được cộng bằng offline progress).
+- **Journey chạy offline theo thời gian thực** (GDD §9, §5.11) **[ĐÃ LÀM]**: không ước lượng theo tốc độ. Lúc mở game (và khi tab hiện lại) client gọi `advanceJourneys(ctx, offlineJourneyMs(savedAt, now), true)` qua `Simulation.runBetweenTicks` (RNG sống của sim, ghi lại vào `world.rng`, không tăng tick/time) **sau** `applyOffline` — nên thành viên đang đi không nhận EXP/vàng theo tốc độ và không được hồi nhu cầu. Khoảng dùng là khoảng thô: **không** trần `offlineMaxHours`, không × `offlineEfficiency`, không cần `offlineMinAwaySec` hay rate (trần chỉ để giới hạn ngoại suy); save không có thời gian / đồng hồ lùi → 0. Chuyến xong trong khoảng vắng được roll ngay lúc load, nằm trong `OfflineReport.journeys` và popup (thành công/thất bại, thưởng); popup hiện cả khi ước lượng bị bỏ qua (`noRates`/`tooShort`) mà có chuyến xong. Đội về không săn phần còn lại của khoảng vắng (đơn giản hóa). Mẫu đo tốc độ lấy vàng Town **trừ** `stats.journeyGold`, nên thưởng journey không bị ngoại suy thành tốc độ vàng (phí `cost` vẫn nằm trong vàng ròng: chỉ làm ước lượng thấp đi, sàn 0; NL thưởng có thể tính vào tốc độ vào kho nhưng bị kẹp bởi `materialDemand`). Lúc đang chơi journey đếm theo **thời gian game** (x2/x4 rút ngắn, pause dừng).
+- `Simulation.advance` chạy tối đa 600 tick mỗi lần gọi để tránh dồn tick sau khi tab bị ẩn (phần thời gian ẩn được cộng bằng offline progress).
 
 ## 10. Hiệu năng
 
@@ -462,12 +487,12 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 | M1 ✅ | 1 Town + 1 zone, waypoint/road, 5 class, needs, AI cơ bản (Hunt/Return/4 dịch vụ) | Hunter tự săn và tự quay về đúng ngưỡng |
 | M2 ✅ | Shop, craft, gear + quality + enhance, BuyGear/SellMaterials | Vòng săn → bán → craft → mua chạy kín |
 | M3 ✅ | Skill, trait, level, chuyển nghề, reincarnation, difficulty | Mở được difficulty Normal theo điều kiện GDD §8 |
-| M4 | Town & chế độ chơi: Trading Post theo yêu cầu ✅, Bounty ✅, offline progress ✅, Journey; **Town Hall, xây/nâng cấp/đặt building, slot building, cấp building giới hạn tier đồ** (GDD §5, bảng `building` §8; graph cập nhật khi đặt/xóa building §6), thuế ✅ | QA checklist GDD §13 đạt; vàng/NL Town có chỗ tiêu ra khỏi nền kinh tế |
+| M4 | Town & chế độ chơi: Trading Post theo yêu cầu ✅, Bounty ✅, offline progress ✅, Journey ✅; **Town Hall, xây/nâng cấp/đặt building, slot building, cấp building giới hạn tier đồ** (GDD §5, bảng `building` §8; graph cập nhật khi đặt/xóa building §6), thuế ✅ | QA checklist GDD §13 đạt; vàng/NL Town có chỗ tiêu ra khỏi nền kinh tế |
 | M5 | Chiều sâu hunter & trang bị: Invitation + `hunter_tier` (GDD §4.1–4.2), Donate/Banish; đủ 9 bậc nghề (hiện 3) và 7 slot đồ (GDD §6, hiện 3); nâng tier đồ (Dark Stone), `gear_option` / `gear_set` / `gear_skill`; `consumable` (potion, Alchemist) + goal BuyPotion; Training Ground + goal Train; Bank, Courage Headstone, Fountain of Life, Library of Wisdom; `rune`, `relic`, thú cưỡi, `growth_property`; ghép NL (`material.composeTo`); `exp_curve` theo lần tái sinh; bật Mood ảnh hưởng chỉ số (GDD §4.2); lệnh người chơi học skill/trait | Mọi bảng §8 (trừ `raid`) có code dùng; cân bằng lại bằng headless |
 | M6 | Client & nội dung: UI hoàn chỉnh (GDD §10), sprite/scene pixel-art và camera pan/zoom/chọn bằng click (GDD §11), UI cho yêu cầu vật liệu/bounty/building, vi/en, tutorial, headless xuất CSV; thay toàn bộ dữ liệu trích từ game thương mại (TODO §7), chốt nền tảng (GDD §2) và bố cục map | Bản chơi thử nội bộ, không còn dữ liệu sao chép |
 | M7 | Online: account, cloud save, IAP; Raid, PvP, Guild, World Boss, Tower Defense, chat, ranking | Theo đặc tả riêng |
 
-Hiện trạng: M0–M3 xong; M4 đã có Trading Post theo yêu cầu (§5.7), Bounty (§5.9), thuế (§5.10), offline progress (§9) — world v7. Còn Journey và Town Hall/building.
+Hiện trạng: M0–M3 xong; M4 đã có Trading Post theo yêu cầu (§5.7), Bounty (§5.9), thuế (§5.10), Journey (§5.11), offline progress (§9) — world v9 (v8 dành cho building). Còn Town Hall/building.
 
 ### 12.1 Bảng phủ (chống bỏ sót)
 
@@ -481,7 +506,7 @@ Mọi hệ thống nhắc trong GDD hoặc có bảng ở §8 phải nằm trong
 | Trading Post / yêu cầu vật liệu (GDD §5, §9) | M4 | ✅ |
 | Bounty (GDD §9) | M4 | ✅ |
 | Offline progress (§9) | M4 | ✅ |
-| Journey (GDD §9, bảng `journey`) | M4 | ⚪ |
+| Journey (GDD §9, bảng `journey`) | M4 | ✅ (§5.11; chưa có AI/tự gửi, chưa có UI ngoài debug) |
 | Town Hall, xây/nâng/đặt building, slot, cấp shop giới hạn tier (GDD §5, bảng `building`) | M4 | ⚪ |
 | Thuế (§3.1, §5.10) | M4 | ✅ |
 | QA checklist (GDD §13) | M4 | ⚪ |
