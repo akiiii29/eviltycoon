@@ -22,7 +22,10 @@ export const TICK_MS = 100; // 10 ticks per second (TECH_SPEC §3.2)
 /** Avoid a spiral of death after a long frame or tab switch; offline progress handles longer gaps. */
 const MAX_TICKS_PER_ADVANCE = 600;
 
-/** Fixed order from TECH_SPEC §3.2. Later milestones insert economy/progression here. */
+/**
+ * Fixed per-tick order (TECH_SPEC §3.2; commands are applied first in `step()`). `urgentBackstop` re-runs the AI's
+ * emergency check after combat/skills; the Trading Post lives inside `economy`. New systems go here and in §3.2.
+ */
 export const DEFAULT_SYSTEMS: readonly System[] = [
   arrivalsSystem,
   aiSystem,
