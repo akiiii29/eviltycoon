@@ -404,7 +404,16 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 | AI decide/tick | ≤ 15 hunter (chia lô theo id) |
 | A*/tick | ≤ 10 |
 | Draw call | Instancing cho sprite cùng atlas |
-| Truy vấn mục tiêu | Spatial hash theo ô 4×4 đơn vị |
+| Truy vấn mục tiêu | Spatial hash theo ô 4×4 đơn vị (`src/core/spatial.ts`, đã làm) |
+
+**Spatial hash (đã làm).** `SpatialHash` là lưới đều ô 4×4 (`SPATIAL_CELL_SIZE`), id là chỉ số của thực thể trong mảng `world.hunters`/`world.monsters`. Đây là dữ liệu dẫn xuất: không nằm trong `World` hay save (không cần migration), mỗi system tự dựng lại trong tick khi cần.
+
+- `combat`: sau bước hồi sinh, dựng lưới các hunter có thể bị nhắm (còn sống, không ở trong nhà) cùng tập vùng của họ; quái tìm aggro bằng truy vấn bán kính `aggroRange` thay vì quét mọi hunter, và bỏ qua hẳn nếu vùng của quái không có hunter nào.
+- `skills`: skill AoE truy vấn lưới quái (dựng lười ở lần AoE đầu tiên của tick).
+- `spawn`: đếm quái theo vùng một lượt thay vì quét toàn bộ mảng quái cho từng vùng.
+- **Tất định:** truy vấn trả về tập ứng viên (bao trùm) theo thứ tự chỉ số tăng dần; caller vẫn kiểm tra điều kiện và khoảng cách gốc, nên thứ tự duyệt, tie-break và các lần roll RNG giống hệt quét tuyến tính. Đã kiểm: output headless 720 phút seed 1–3 và hash toàn bộ world/event từng phút giống từng byte trước/sau.
+- Khi số phần tử ít hơn số ô cần xét, `candidates()` quét bounding box trên danh sách phần tử (rẻ hơn tra từng ô); kết quả cùng hợp đồng.
+- Chưa dùng: `huntAct` (hunter chọn quái gần nhất, ưu tiên −1000 cho quái đang đánh mình nên không giới hạn được bán kính; chỉ chạy khi mất mục tiêu, ~1,5% thời gian).
 
 ## 11. Telemetry và debug
 

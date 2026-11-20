@@ -1,8 +1,28 @@
 import type { SkillDef } from '../config/types';
 import { hunterStats } from '../formulas';
+import { SpatialHash } from '../spatial';
 import type { System, SystemContext } from '../system';
 import { dist, findMonster, isAlive, type Hunter, type Monster } from '../world';
 import { damageMonster } from './combat';
+
+/**
+ * AoE index over world.monsters (keyed by array index), built lazily on the first AoE cast of a skills pass
+ * and dropped at the start of the next pass. Monsters do not move or get removed during the pass (dead ones
+ * are filtered at the end), so it stays exact; the hp/zone/distance predicates are still checked per victim.
+ */
+const aoeGrid = new SpatialHash();
+let aoeGridBuilt = false;
+const aoeScratch: number[] = [];
+
+function monsterGrid(ctx: SystemContext): SpatialHash {
+  if (!aoeGridBuilt) {
+    aoeGrid.clear();
+    const ms = ctx.world.monsters;
+    for (let i = 0; i < ms.length; i++) aoeGrid.insert(i, ms[i]!.position.x, ms[i]!.position.y);
+    aoeGridBuilt = true;
+  }
+  return aoeGrid;
+}
 
 /** Tick buff durations and skill cooldowns by one step. */
 function tickTimers(h: Hunter, dtMs: number): void {
@@ -38,9 +58,13 @@ function cast(ctx: SystemContext, h: Hunter, sk: SkillDef, target: Monster): num
       const rawAtk = hunterStats(ctx.config, h).atk * value;
       const radius = sk.radius ?? 0;
       const center = { ...target.position };
-      const victims = ctx.world.monsters.filter(
-        (m) => m.hp > 0 && m.zoneId === target.zoneId && dist(m.position, center) <= radius,
-      );
+      // Same predicate as a filter over world.monsters; candidates are ascending indices, so the victim
+      // order (and with it the per-victim crit rolls) matches the linear scan.
+      const victims: Monster[] = [];
+      for (const i of monsterGrid(ctx).candidates(center.x, center.y, radius, aoeScratch)) {
+        const m = ctx.world.monsters[i]!;
+        if (m.hp > 0 && m.zoneId === target.zoneId && dist(m.position, center) <= radius) victims.push(m);
+      }
       for (const m of victims) damageMonster(ctx, h, m, rawAtk, true);
       return victims.length;
     }
@@ -77,6 +101,7 @@ export const skillsSystem: System = {
   name: 'skills',
   update(ctx) {
     const { world, dtMs } = ctx;
+    aoeGridBuilt = false;
     for (const h of world.hunters) {
       if (!isAlive(h)) {
         if (h.buffs.length > 0) h.buffs = [];
@@ -87,5 +112,6 @@ export const skillsSystem: System = {
       tryCast(ctx, h);
     }
     if (world.monsters.some((m) => m.hp <= 0)) world.monsters = world.monsters.filter((m) => m.hp > 0);
+    aoeGridBuilt = false;
   },
 };
