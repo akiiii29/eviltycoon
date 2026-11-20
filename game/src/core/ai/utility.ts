@@ -69,7 +69,7 @@ export function bagFill(config: GameConfig, h: Hunter): number {
 /**
  * Best affordable, equippable upgrade on sale, or null.
  * Budget = gold × spendRatio × personality(spendRatio); gain = (new − current) / max(current, 1), must be ≥ minUpgradeGain.
- * Highest score (1.1 + min(gain,1) × 0.5) wins; ties → lower price, then uid.
+ * Highest score (shopBaseScore + min(gain,1) × shopGainWeight) wins; ties → lower price, then uid.
  */
 export function bestShopPurchase(config: GameConfig, world: World, h: Hunter): { item: ShopItem; gain: number } | null {
   const f = config.formula;
@@ -91,8 +91,12 @@ export function bestShopPurchase(config: GameConfig, world: World, h: Hunter): {
   return best;
 }
 
-/** Cost of enhancing a slot's gear to its next level: round(basePrice × enhance[next-1].costFrac); null if empty/maxed. */
-export function enhanceCost(config: GameConfig, h: Hunter, slot: GearSlot): { cost: number; successRate: number } | null {
+/**
+ * Expected cost and success rate of enhancing a slot's gear to its next level (AI estimate):
+ * round(basePrice × enhance[next-1].costFrac); null if empty/maxed. The forge's own price is
+ * systems/economy.enhanceCost (per gear instance).
+ */
+export function expectedEnhanceCost(config: GameConfig, h: Hunter, slot: GearSlot): { cost: number; successRate: number } | null {
   const g = h.equipment[slot];
   if (!g) return null;
   const def = config.index.gear.get(g.gearId);
@@ -101,32 +105,21 @@ export function enhanceCost(config: GameConfig, h: Hunter, slot: GearSlot): { co
   return { cost: Math.round(def.basePrice * row.costFrac), successRate: row.successRate };
 }
 
-/** Enhance risk budget: exponent on 1/successRate in the gold reserve (see enhanceReserveMul). */
-export const ENHANCE_RISK_EXP = 0.5;
-/** Never gamble below this success rate (hard stop at +10 with the current table; gold usually binds far earlier). */
-export const ENHANCE_MIN_SUCCESS = 0.3;
-/** Fraction of the next gear upgrade's shop budget kept back before enhancing an outdated piece. */
-export const UPGRADE_SAVINGS_FRAC = 0.3;
-/** Enhance score = (ENHANCE_BASE_SCORE + ENHANCE_GAIN_WEIGHT × expected relative slot gain) × econMul. */
-export const ENHANCE_BASE_SCORE = 1.04;
-export const ENHANCE_GAIN_WEIGHT = 1;
-
 /**
  * Gold the hunter must hold to try an enhance, as a multiple of its cost:
- * enhanceGoldReserveMul / successRate^ENHANCE_RISK_EXP (risk budget: riskier steps need more spare gold,
- * e.g. ×2 at 100 %, ×2.4 at 70 %, ×2.8 at 50 %, ×3.7 at 30 %).
+ * enhanceGoldReserveMul / successRate^enhanceRiskExp (risk budget: riskier steps need more spare gold,
+ * e.g. ×2 at 100 %, ×2.4 at 70 %, ×2.8 at 50 %, ×3.7 at 30 % with exponent 0.5).
  */
 export function enhanceReserveMul(config: GameConfig, successRate: number): number {
-  return config.formula.enhanceGoldReserveMul / Math.pow(Math.max(successRate, 0.01), ENHANCE_RISK_EXP);
+  const f = config.formula;
+  return f.enhanceGoldReserveMul / Math.pow(Math.max(successRate, 0.01), f.enhanceRiskExp);
 }
-
-/** Quality multiplier the AI assumes for a gear piece it has not seen yet (uncommon-ish). */
-const TYPICAL_QUALITY_MULT = 0.9;
 
 /**
  * Gold to keep back before enhancing a slot: when a clearly better gear piece for that slot is wearable at the
- * hunter's level (typical-quality value ≥ current × (1 + minUpgradeGain)), the shop budget needed to buy it
- * (UPGRADE_SAVINGS_FRAC × basePrice × TYPICAL_QUALITY_MULT / (spendRatio × personality)); otherwise 0.
+ * hunter's level (value × aiTypicalQualityMult ≥ current × (1 + minUpgradeGain)), the shop budget needed to buy it
+ * (upgradeSavingsFrac × basePrice × aiTypicalQualityMult / (spendRatio × personality)); otherwise 0.
+ * aiTypicalQualityMult is the quality multiplier the AI assumes for a piece it has not seen yet (uncommon-ish).
  * Polishing gear that is about to be replaced is wasted gold, so this keeps enhancing from starving gear upgrades.
  */
 export function upgradeSavings(config: GameConfig, h: Hunter, slot: GearSlot): number {
@@ -136,8 +129,8 @@ export function upgradeSavings(config: GameConfig, h: Hunter, slot: GearSlot): n
   let need = 0;
   for (const def of config.gear) {
     if (def.slot !== slot || def.level > h.level) continue;
-    if (def.mainValue * TYPICAL_QUALITY_MULT < cur * (1 + f.minUpgradeGain)) continue;
-    const budget = (UPGRADE_SAVINGS_FRAC * def.basePrice * TYPICAL_QUALITY_MULT) / spend;
+    if (def.mainValue * f.aiTypicalQualityMult < cur * (1 + f.minUpgradeGain)) continue;
+    const budget = (f.upgradeSavingsFrac * def.basePrice * f.aiTypicalQualityMult) / spend;
     need = need === 0 ? budget : Math.min(need, budget);
   }
   return need;
@@ -155,16 +148,17 @@ export interface EnhanceChoice {
 
 /**
  * Best next enhance over equipped slots, or null. A slot qualifies only if
- * successRate ≥ ENHANCE_MIN_SUCCESS and gold ≥ cost × enhanceReserveMul(successRate) + upgradeSavings(slot).
+ * successRate ≥ enhanceMinSuccess and gold ≥ cost × enhanceReserveMul(successRate) + upgradeSavings(slot).
  * Among those, the highest (successRate × stat step) / cost wins (expected stat gain per gold); ties → GEAR_SLOTS order.
  */
 export function bestEnhance(config: GameConfig, h: Hunter): EnhanceChoice | null {
+  const minSuccess = config.formula.enhanceMinSuccess;
   let best: EnhanceChoice | null = null;
   let bestPerGold = -Infinity;
   for (const slot of GEAR_SLOTS) {
-    const c = enhanceCost(config, h, slot);
+    const c = expectedEnhanceCost(config, h, slot);
     const g = h.equipment[slot];
-    if (!c || !g || c.successRate < ENHANCE_MIN_SUCCESS) continue;
+    if (!c || !g || c.successRate < minSuccess) continue;
     if (h.gold < c.cost * enhanceReserveMul(config, c.successRate) + upgradeSavings(config, h, slot)) continue;
     const cur = gearMainValue(config, g);
     const step = gearMainValue(config, { ...g, enhance: g.enhance + 1 }) - cur;
@@ -263,40 +257,40 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
   if (zoneNow) {
     // In the field: services are only reachable by going home first; a full bag also sends the hunter home,
     // but only if the trading post will buy or discard something (otherwise hunters would shuttle back and forth).
-    const bagScore = fill >= f.bagReturnFrac && (sellable || dump) ? 1.2 : 0;
+    const bagScore = fill >= f.bagReturnFrac && (sellable || dump) ? f.bagReturnScore : 0;
     out.push({ goal: { type: 'returnTown' }, score: Math.max(1 - ok, bagScore), label: 'returnTown' });
   } else {
     for (const b of config.buildings) {
       if (b.kind !== 'service' || !b.need || b.price === undefined) continue;
       const frac = needFrac(config, h, b.need);
-      if (frac >= 0.98 || h.gold < servicePrice(config, h, b)) continue;
-      const base = frac < f.softNeedFrac ? 0.6 + 0.4 * (1 - frac) : 0.5 * (1 - frac);
+      if (frac >= f.serviceFullFrac || h.gold < servicePrice(config, h, b)) continue;
+      const base = frac < f.softNeedFrac ? f.serviceLowBase + f.serviceLowWeight * (1 - frac) : f.serviceWeight * (1 - frac);
       const s = base * personalityFactor(config, h, `goal.service.${b.need}`);
       out.push({ goal: { type: 'service', buildingId: b.id }, score: s, label: `service ${b.need}` });
     }
 
     // Economy (M2): damped when needs are low so services still win.
-    const econMul = Math.max(ok, 0.5);
+    const econMul = Math.max(ok, f.econMulFloor);
     if (sellable || dump) {
-      out.push({ goal: { type: 'sell' }, score: (0.4 + 1.0 * fill) * econMul, label: 'sell' });
+      out.push({ goal: { type: 'sell' }, score: (f.sellBaseScore + f.sellFillWeight * fill) * econMul, label: 'sell' });
     }
     const buy = bestShopPurchase(config, world, h);
     if (buy) {
-      const s = (1.1 + Math.min(buy.gain, 1) * 0.5) * econMul;
+      const s = (f.shopBaseScore + Math.min(buy.gain, 1) * f.shopGainWeight) * econMul;
       out.push({ goal: { type: 'shop', itemUid: buy.item.uid }, score: s, label: `shop ${buy.item.gearId}` });
     }
     const enh = bestEnhance(config, h);
     if (enh) {
-      out.push({ goal: { type: 'enhance', slot: enh.slot }, score: (ENHANCE_BASE_SCORE + ENHANCE_GAIN_WEIGHT * enh.expectedRelGain) * econMul, label: `enhance ${enh.slot}` });
+      out.push({ goal: { type: 'enhance', slot: enh.slot }, score: (f.enhanceBaseScore + f.enhanceGainWeight * enh.expectedRelGain) * econMul, label: `enhance ${enh.slot}` });
     }
     const learn = bestLearn(config, h);
     if (learn) {
-      const s = (learn.kind === 'skill' ? 1.15 : 1.2) * econMul;
+      const s = (learn.kind === 'skill' ? f.learnSkillScore : f.learnTraitScore) * econMul;
       out.push({ goal: { type: 'learn', kind: learn.kind, id: learn.id }, score: s, label: `learn ${learn.kind} ${learn.id}` });
     }
 
     // Idling in town also recovers needs slowly for free, so a tired hunter who cannot pay rests instead of hunting.
-    out.push({ goal: { type: 'wander', nodeId: '' }, score: Math.max(f.wanderScore, 0.5 * (1 - ok)), label: 'wander/rest' });
+    out.push({ goal: { type: 'wander', nodeId: '' }, score: Math.max(f.wanderScore, f.restScoreWeight * (1 - ok)), label: 'wander/rest' });
   }
   return out.sort((a, b) => b.score - a.score);
 }

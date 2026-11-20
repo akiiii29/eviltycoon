@@ -1,5 +1,5 @@
 import {
-  bestEnhance, ENHANCE_BASE_SCORE, ENHANCE_MIN_SUCCESS, enhanceReserveMul, needsOk, scoreGoals, upgradeSavings, urgentNeed,
+  bestEnhance, enhanceReserveMul, needsOk, scoreGoals, upgradeSavings, urgentNeed,
 } from '../src/core/ai/utility';
 import { rollHunter } from '../src/core/hunterFactory';
 import { NavGraph } from '../src/core/pathfinding';
@@ -9,6 +9,7 @@ import type { GearInstance, Hunter } from '../src/core/world';
 import { testConfig } from './helpers';
 
 const config = testConfig();
+const { enhanceBaseScore: ENHANCE_BASE_SCORE, enhanceMinSuccess: ENHANCE_MIN_SUCCESS } = config.formula;
 const nav = new NavGraph(config);
 const f = config.formula;
 

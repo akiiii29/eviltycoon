@@ -340,6 +340,37 @@ export interface FormulaParams {
   craftAffordFrac: number;
   /** Service price = round(base × (1 + servicePriceLevelPct / 100 × (level − 1))). */
   servicePriceLevelPct: number;
+  /** AI enhance (TECH_SPEC §5.2). Gold reserve to try an enhance = cost × enhanceGoldReserveMul / successRate^enhanceRiskExp. */
+  enhanceRiskExp: number;
+  /** The AI never tries an enhance step below this success rate. */
+  enhanceMinSuccess: number;
+  /** Fraction of the next gear upgrade's shop budget kept back before enhancing an outdated piece. */
+  upgradeSavingsFrac: number;
+  /** Quality multiplier the AI assumes for a gear piece it has not seen yet (upgradeSavings). */
+  aiTypicalQualityMult: number;
+  /** Enhance score = (enhanceBaseScore + enhanceGainWeight × expected relative slot gain) × econMul. */
+  enhanceBaseScore: number;
+  enhanceGainWeight: number;
+  /** Town goal scores (TECH_SPEC §5.2), all × econMul = max(needsOk, econMulFloor). */
+  /** Shop: shopBaseScore + min(gain, 1) × shopGainWeight. */
+  shopBaseScore: number;
+  shopGainWeight: number;
+  /** Sell: sellBaseScore + sellFillWeight × bagFill. */
+  sellBaseScore: number;
+  sellFillWeight: number;
+  /** Academy: learn a skill / a trait. */
+  learnSkillScore: number;
+  learnTraitScore: number;
+  econMulFloor: number;
+  /** Services: skipped when need ≥ serviceFullFrac; need < softNeedFrac → serviceLowBase + serviceLowWeight × (1 − need), else serviceWeight × (1 − need). */
+  serviceFullFrac: number;
+  serviceLowBase: number;
+  serviceLowWeight: number;
+  serviceWeight: number;
+  /** ReturnTown score with a full bag the trading post will take. */
+  bagReturnScore: number;
+  /** Idling in town (wander/rest) = max(wanderScore, restScoreWeight × (1 − needsOk)). */
+  restScoreWeight: number;
   [key: string]: number;
 }
 

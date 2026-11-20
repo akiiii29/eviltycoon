@@ -240,6 +240,9 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'craftGoldFrac', 'feeTownShare', 'shopStaleSec', 'shopMarkdownPct', 'shopMarkdownFloor', 'shopScrapSec', 'monsterCritMultiplier',
   'requestMaxCopies', 'requestZoneBonus', 'requestMaxUnits', 'tradeSaleTax', 'servicePriceLevelPct',
   'tradeSurplusPriceFrac', 'tradeSurplusFloorMul', 'craftAffordFrac',
+  'enhanceRiskExp', 'enhanceMinSuccess', 'upgradeSavingsFrac', 'aiTypicalQualityMult', 'enhanceBaseScore', 'enhanceGainWeight',
+  'shopBaseScore', 'shopGainWeight', 'sellBaseScore', 'sellFillWeight', 'learnSkillScore', 'learnTraitScore', 'econMulFloor',
+  'serviceFullFrac', 'serviceLowBase', 'serviceLowWeight', 'serviceWeight', 'bagReturnScore', 'restScoreWeight',
 ];
 
 export class ConfigError extends Error {
@@ -286,6 +289,13 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('tradeSurplusPriceFrac', 0, 1);
     range('tradeSurplusFloorMul', 0, 1000);
     range('craftAffordFrac', 0, 10);
+    // AI enhance / town goal scores.
+    range('enhanceRiskExp', 0, 5);
+    range('enhanceMinSuccess', 0, 1);
+    range('upgradeSavingsFrac', 0, 10);
+    range('aiTypicalQualityMult', 0.01, 10);
+    range('econMulFloor', 0, 1);
+    range('serviceFullFrac', 0, 1);
   }
 
   const grades = raw.stat_grade;
