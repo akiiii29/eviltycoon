@@ -323,7 +323,7 @@ export interface FormulaParams {
   zoneTierBonus: number;
   /** Kills per full HP bar that count as power ratio 1 (ratio = √(killsPerLife / zoneRefKills)). */
   zoneRefKills: number;
-  /** Spawn-pressure multiplier on HP lost per kill = zoneCrowdRespawnSec / zone.respawnSec. */
+  /** Static crowd factor = zoneCrowdRespawnSec / zone.respawnSec; only journeys use it (the AI uses zoneCrowdMul/zoneCrowdMinRho). */
   zoneCrowdRespawnSec: number;
   /** Fit multiplier of a fully crowded zone (see formulas.zoneShare); 1 = ignore crowding. */
   zoneShareFloor: number;
@@ -416,8 +416,9 @@ export interface FormulaParams {
   /** Idling in town (wander/rest) = max(wanderScore, restScoreWeight × (1 − needsOk)). */
   restScoreWeight: number;
   /**
-   * Retreat (TECH_SPEC §5.2): HP floor to head home = min(retreatHpCap, retreatTripMul × expected HP lost on the
-   * way home / maxHp); between fights the hunter also leaves if one more kill (× retreatKillMul) would cross it.
+   * Retreat (TECH_SPEC §5.2): HP floor to head home = min(retreatHpCap, (retreatTripMul × expected HP lost on the
+   * way home + retreatBurstMul × next hit of every monster on the hunter) / maxHp); between fights the hunter also
+   * leaves if one more kill (× retreatKillMul) would cross it.
    */
   retreatTripMul: number;
   retreatKillMul: number;
@@ -516,6 +517,15 @@ export interface FormulaParams {
   offlineHuntDuty: number;
   /** Seconds of the offline model's heal trip per HP bar (time per kill += offlineTripSec / killsPerLife). */
   offlineTripSec: number;
+  /** Live crowd factor on duel damage per kill = zoneCrowdMul × √max(zoneCrowdMinRho, monsters alive / hunters) (formulas.crowdFactor). */
+  zoneCrowdMul: number;
+  zoneCrowdMinRho: number;
+  /** Retreat floor adds retreatBurstMul × Σ expected hit of the monsters on the hunter (TECH_SPEC §5.2). */
+  retreatBurstMul: number;
+  /** DEF reduction is the plain hyperbola up to this value, then bends smoothly towards defReductionCap (formulas.defReduction). */
+  defSoftKnee: number;
+  /** Kills per HP bar that count as journey power 1 per member (formulas.zonePower); the AI uses zoneRefKills. */
+  journeyRefKills: number;
   [key: string]: number;
 }
 

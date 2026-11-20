@@ -162,23 +162,27 @@ Chưa làm: `BuyPotion` (chưa có potion), `Train` (chưa có Training Ground).
 
 Điểm goal ở Town (`shop`, `sell`, `enhance`, `learn`, dịch vụ, nghỉ) dùng hệ số trong `formula_params.json` (`shopBaseScore`, `enhanceBaseScore`, `learnSkillScore`, `serviceLowBase`…), xem chú thích trong `src/core/config/types.ts`.
 
-**Rút lui** **[ĐỀ XUẤT]** (`src/core/ai/utility.ts`). Hunter chết chủ yếu lúc rút khỏi vùng khi quái đang đánh, không phải ở các vùng dưới trên đường về; rút giữa hai trận gần như không mất máu.
+**Rút lui** **[ĐỀ XUẤT]** (`src/core/ai/utility.ts`). Hunter chết chủ yếu lúc rút khỏi vùng khi quái đang đánh, không phải ở các vùng dưới trên đường về; rút giữa hai trận gần như không mất máu. Đo lại (headless 12 giờ, 30 seed, `tools/combat-report.ts`): > 80% cái chết bắt đầu bằng quyết định về Town khi **≥ 3 quái** đang đánh hunter (tb 5,3 quái) — bị vây, không phải phương sai của một trận đơn.
 
 ```
-zoneDanger(z)   = zoneCrowd × Σ_w (monsterDps, dmgPerKill) / Σ_w        (duel §5.3, chỉ số steady)
+zoneDanger(z)   = crowd(z) × Σ_w (monsterDps, dmgPerKill) / Σ_w        (duel §5.3, chỉ số steady; crowd = hệ số đông §5.3, theo trạng thái vùng lúc đó)
 tripHome        = Σ_vùng trên đường về (độ dài đường trong vùng / moveSpeed) × zoneDanger.dps
                   (mỗi đoạn tính nửa cho vùng của mỗi đầu; node Town không có vùng → 0)
-sàn rút lui     = min(retreatHpCap, retreatTripMul × tripHome / HP tối đa)   (0 ở Town)
+engaged         = Σ_{quái đang nhắm hunter, còn sống, cùng vùng hunter đứng} expectedHit(quái → hunter)
+sàn rút lui     = min(retreatHpCap, (retreatTripMul × tripHome + retreatBurstMul × engaged) / HP tối đa)   (0 ở Town)
 ranh giới kill  : không quái nào đang đánh hunter, chọn mục tiêu mới →
                   về ngay nếu HP − retreatKillMul × dmgPerKill/HP tối đa < max(ngưỡng khẩn cấp HP, sàn rút lui)
 chọn vùng khác  : needsOk tính với ngưỡng = max(ngưỡng khẩn cấp HP, sàn rút lui ở entryNode) + retreatKillMul × dmgPerKill/HP tối đa
-                  → không đi tới vùng mà phải quay về ngay ở ranh giới kill đầu tiên
+                  → không đi tới vùng mà phải quay về ngay ở ranh giới kill đầu tiên (ở entryNode chưa có quái nào đánh: engaged = 0)
+đường về        : trong vùng, nếu đi thẳng tới node thứ hai của path không xa hơn đi qua node gần nhất thì bỏ node gần nhất
+                  (`systems/ai.ts` skipNodeBehind) — trước đây hunter rút lui thường đi **sâu vào** vùng 1–2 s tới node gần nhất
 ```
 
-- `retreatTripMul` = 3 phủ phương sai đo được (HP mất / dự đoán: p50 ≈ 1, p90 ≈ 1,9, p99 ≈ 2,7). Sàn **không** nhân hệ số tính cách: Liều lĩnh vẫn đánh tới 12,5% ở vùng dễ, nhưng không bắt đầu một chuyến về chết người.
+- `engaged` ≈ "mỗi quái đang bám thêm một đòn" (quái chậm hơn hunter, rời tầm đánh sau ≤ 1 đòn); `retreatBurstMul` 1,5 phủ crit. Bị vây 5–9 quái thì sàn lên `retreatHpCap` ngay lập tức thay vì chỉ sau khi HP đã mất.
+- `retreatTripMul` = 2,5 (trước 3). Độ nhạy (pacing 900 phút, seed 1–10, cùng các tham số khác): `retreatTripMul` 1,5 / 2 / 2,5 / 3 → tổng chết 4 / 1 / 0 / 1, chuyến về tới Town dưới 10% HP 150 / 37 / 11 / 5 (trên ~30.000 chuyến). Trước khi có `engaged` và sửa đường về: 2 / 2,5 / 3 → 141 / 62 / 9 chết (seed 1–5). Sàn **không** nhân hệ số tính cách: Liều lĩnh vẫn đánh tới 12,5% ở vùng dễ, nhưng không bắt đầu một chuyến về chết người.
 - Ranh giới kill không áp dụng cho lệnh Move của người chơi (`ai.forced`); backstop khẩn cấp (kèm sàn) vẫn áp dụng.
 - Backstop chạy mỗi tick nên sàn chỉ được tính khi HP nằm giữa ngưỡng khẩn cấp theo tính cách và `retreatHpCap`; độ dài đường theo vùng được cache theo NavGraph.
-- `retreatHpCap` = 0 và `retreatKillMul` = 0 tắt hẳn rút lui (hành vi như trước).
+- `retreatHpCap` = 0 và `retreatKillMul` = 0 tắt hẳn rút lui (hành vi như trước); `retreatBurstMul` = 0 tắt riêng phần `engaged`.
 
 ### 5.3 Chấm điểm vùng săn
 
@@ -188,8 +192,10 @@ Tỷ lệ sức mạnh tính **từ chính công thức combat** (§7.1), không
 duel(h, m)    = hunterDps = E[hit(ATK)]/atkSpeed + Σ skill E[hit(ATK×mult)]/cooldown
                 monsterDps = E[hit(ATK quái)]/attackSpeed quái;  ttk = HP quái / hunterDps
                 dmgPerKill = monsterDps × ttk
-zoneCrowd     = zoneCrowdRespawnSec / respawnSec        (hiệu chỉnh thực nghiệm: zone hồi quái nhanh → nhiều quái chen vào)
-killsPerLife  = HP hunter / (zoneCrowd × Σ_w dmgPerKill / Σ_w)   (w = trọng số spawn; chỉ số "steady": bỏ buff, mood)
+ρ             = max(zoneCrowdMinRho, số quái còn sống trong zone / n)   (n = hunter có goal săn zone đó, kể cả mình;
+                zone chưa ai vào tính là đầy = monsterCap)
+crowd         = zoneCrowdMul × √ρ                       (formulas.crowdFactor / zoneOccupancy; hiệu chỉnh thực nghiệm)
+killsPerLife  = HP hunter / (crowd × Σ_w dmgPerKill / Σ_w)   (w = trọng số spawn; chỉ số "steady": bỏ buff, mood)
 ratio         = √(killsPerLife / zoneRefKills)          (1 = đánh được zoneRefKills con trên một thanh HP)
 zoneFit       = 0 nếu ratio < zoneFitMin; ramp zoneFitRampLow→1 tới zoneFitBest; 1 tới zoneFitEasy;
                 rồi giảm zoneFitDecay mỗi 1.0 ratio, sàn zoneFitFloor (quá dễ, ít EXP)
@@ -198,6 +204,10 @@ fit           = zoneFit × (zoneShareFloor + (1 − zoneShareFloor) × share)
 tie-break     = trong các zone "thoải mái" (ratio ≥ zoneFitBest), zone khó nhất giữ nguyên điểm,
                 mỗi bậc dễ hơn bị trừ zoneTierBonus (> decisionNoise) → hunter vượt mọi zone chọn zone khó nhất
 ```
+
+**Hệ số đông** (thay `zoneCrowdRespawnSec / respawnSec`, vốn chỉ có hai mức 0,5 / 1): đo HP mất mỗi kill / duel theo (zone, số hunter) trên 10 seed × 15 giờ cho thấy mọi zone nằm trên **một đường cong theo ρ** = quái còn sống / hunter: một hunter một mình trong zone đầy (ρ ≈ 10–12) kéo thêm quái, mất ≈ 1,8–2,1× duel; nhiều hunter chia aggro và cùng đánh một con (ρ ≈ 3 → ≈ 1,1×; ρ ≈ 0,25 → ≈ 0,3×). Tốc hồi quái, monsterCap, aggroRange tác động qua ρ. `zoneCrowdMul` 0,62 khớp ±10% trên khoảng ρ 0,1–12. Journey không có zone thật nên `zonePower` vẫn dùng hệ số tĩnh `zoneCrowdRespawnSec / respawnSec` và mốc riêng `journeyRefKills` (= 8, giá trị `zoneRefKills` lúc đặt mục tiêu journey), nên sức mạnh đội không đổi.
+
+Độ chính xác (HP mất mỗi kill đo / dự đoán của AI, pacing 900 phút seed 1–10, tham số hiện tại): Đồng Cỏ 1,20, Phế Tích 1,15, Đầm Sương 1,04, Vách Tro 1,05, Sông Băng 1,07, Thành Cổ Chìm 1,07, Vực Thẳm 1,01 (trước: ≈ 1,0 / 0,5–1,5 tùy seed / 1,2–1,6 / 0,9–1,35 / 1,05–1,4 / 0,9–1,2 / 1,0–1,2; chia theo số hunter thì trước đây 0,05–2,1 trong cùng một zone). Theo (zone, n) với ≥ 300 kill: hầu hết trong ±20%; lệch còn lại ở zone hồi 6 s đầu game (Phế Tích n = 2–3: 1,26; Đồng Cỏ n = 1: 1,21).
 
 Căn bậc hai làm ratio tuyến tính theo chỉ số: hunter gấp đôi DPS **và** gấp đôi HP hiệu dụng có ratio ×2, nên ngưỡng 0.7 / 1.1 / 2 vẫn đọc được. Test `tests/formulas.test.ts` đối chiếu `duel()` với combat mô phỏng 1-đấu-1 (sai số ≤ 15%) và đối chiếu HP mất mỗi kill trong mô phỏng đầy đủ với dự đoán.
 
@@ -378,7 +388,7 @@ Hằng số ở `formula_params.json`; phương trình và ý đồ ghi ở đ�
 
 | Công thức | Phương trình | Ý đồ |
 |---|---|---|
-| Giảm sát thương theo DEF | `R = min(defReductionCap, DEF / (DEF + defPerLevel·L_tấn công + defFlat))` | Hyperbol: tăng dần, lợi ích giảm dần, không bao giờ 100%. DEF "nửa giá trị" tăng theo level **người đánh**, nên DEF giữ ý nghĩa suốt 100 level; hunter vượt cấp zone thì quái zone đó gần như không làm gì được. |
+| Giảm sát thương theo DEF | `raw = DEF / (DEF + defPerLevel·L_tấn công + defFlat)`; `R = raw` khi `raw ≤ defSoftKnee`, trên đó `R = cap − (cap − knee)·exp(−(raw − knee)/(cap − knee))` (`cap = defReductionCap`) | Hyperbol: tăng dần, lợi ích giảm dần, không bao giờ 100%. DEF "nửa giá trị" tăng theo level **người đánh**, nên DEF giữ ý nghĩa suốt 100 level; hunter vượt cấp zone thì quái zone đó gần như không làm gì được. Trần **mềm**: trên knee cong mượt (cùng giá trị, cùng độ dốc) về phía trần và không bao giờ chạm. |
 | Chênh level | `G = max(levelGapMin, 1 − levelGapStep × max(0, L_mục tiêu − L_tấn công − levelGapGrace))` | Chỉ phạt kẻ đánh thấp hơn mục tiêu quá `levelGapGrace` level (không thưởng khi cao hơn). Quái zone thấp không giết được hunter đang đi ngang về Town; hunter vào zone trên level gây ít sát thương → ratio thấp → AI chờ đủ level. |
 | Một đòn | `hit = max(minDamage, ATK × (1 − R) × G)` | Không bao giờ 0/âm; DEF cực lớn vẫn còn `(1 − cap) × ATK`. |
 | Crit | `P = min(critChanceCap, CRIT/100)`; `mult = base + critOverflowMult × max(0, CRIT/100 − critChanceCap)` | `base` = `critMultiplier` (hunter) / `monsterCritMultiplier` (quái). Điểm crit vượt trần chuyển thành sát thương crit. |
@@ -387,7 +397,7 @@ Hằng số ở `formula_params.json`; phương trình và ý đồ ghi ở đ�
 | Cộng dồn % | `(base × job × (1 + reinc × reincStatBonus) + gear) × (1 + min(traitPctCap, Σtrait%)/100) × (1 + min(buffPctCap, Σbuff%)/100)` | Cộng trong cùng nhóm (trait / buff skill), nhân giữa các nhóm, mỗi nhóm có trần. Crit/EVA là điểm cộng thẳng, trần nằm ở hàm xác suất. Tốc đánh: `interval ÷ (cùng hệ số)`, sàn `minAttackInterval`. |
 | Mood | `× moodStatMult` lên ATK/DEF: 1 khi mood ≥ `moodPenaltyFrac`, giảm tuyến tính tới `moodStatFloor` ở mood 0 | GDD §4.2. `moodStatFloor = 1` là tắt. |
 
-Trần bão hòa: với `defReductionCap = 0.85`, R chạm trần khi `DEF ≥ 0.85/0.15 × (defPerLevel·L + defFlat) ≈ 5.67 × (3L + 35)`, với L là level **hunter đang đánh**: ≈ 400 DEF ở Lv10, ≈ 710 ở Lv30, ≈ 1 900 ở Lv100. Tái sinh đưa level về thấp, nên hunter Lv30 ở Torment I (DEF quái tới ~830) đã có quái chạm trần; khi đó tăng thêm `monsterDefMul` không đổi gì (quái vẫn nhận `(1 − cap) × ATK × G`). Cần design chọn: chấp nhận, hoặc nâng trần / tính DEF quái theo độ khó khác đi.
+Trần mềm **[ĐỀ XUẤT, đã làm]**: trước đây trần cứng `min(0.85, raw)` bão hòa khi `DEF ≥ 5.67 × (3L + 35)` (L = level người đánh: ≈ 400 DEF ở Lv10, ≈ 710 ở Lv30), nên hunter Lv30 tái sinh ở Torment I (DEF Vực Thẳm 676–832) đánh quái đã chạm trần và tăng `monsterDefMul` không đổi gì. Nay `defSoftKnee` = 0,7: dưới 0,7 công thức giữ nguyên (ở Dễ, hunter đánh quái tối đa raw ≈ 0,63, nên sát thương hunter gây ra **không đổi**; chỉ quái thấp hơn hunter ≥ ~50 level — đã bị phạt chênh level 0,3 — đánh hunter mạnh hơn một chút: 15% → ~20% ATK); trên 0,7 R tiến dần tới 0,85 (raw 0,85 → R 0,795; raw 0,95 → 0,828; giới hạn ≈ 0,83). Với hunter Lv30 ở Torment I: Vực Thẳm R 0,79–0,80 (trước 0,84–0,85), Torment II (×20) 0,81 — DEF quái vẫn có tác dụng. `defSoftKnee ≥ defReductionCap` = trần cứng cũ. Pacing ở Dễ không đổi đáng kể (đo cùng các thay đổi §5.2/§5.3).
 
 ## 8. Data schema
 

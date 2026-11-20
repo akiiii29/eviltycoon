@@ -317,6 +317,7 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'journeyTeamMax', 'journeyMaxActive', 'journeySuccessAtRec', 'journeySuccessExp', 'journeySuccessMin', 'journeySuccessMax',
   'journeyReturnNeedFrac',
   'offlineGrowthModel', 'offlineModelStepSec', 'offlineModelCalMin', 'offlineModelCalMax', 'offlineHuntDuty', 'offlineTripSec',
+  'zoneCrowdMul', 'zoneCrowdMinRho', 'retreatBurstMul', 'defSoftKnee', 'journeyRefKills',
 ];
 
 export class ConfigError extends Error {

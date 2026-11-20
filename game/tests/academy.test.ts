@@ -245,6 +245,9 @@ describe('Academy integration', () => {
     expect(team).toHaveLength(4);
     for (const h of team) {
       h.level = 2; // past the level-1 "keep the starting gold" rule
+      // Neutral personality: reckless (goal.hunt ×1.15) ties learnSkillScore 1.15 once the meadow fit is 1, which is
+      // the intended hunting bias (TODO §2), not an Academy bug.
+      h.personalities = ['pers.plain'];
       h.gold = 5_000;
       h.ai = newAiState(); // the spawn tick already picked a hunt goal; decide again with the new purse
       expect(bestLearn(config, h)?.kind).toBe('skill');
