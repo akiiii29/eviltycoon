@@ -271,6 +271,8 @@ describe('AI: prefer zones that drop requested materials', () => {
     const ret = () => scoreGoals(config, nav, w, h).find((c) => c.goal.type === 'returnTown')!.score;
     w.town.gold = 0;
     expect(ret()).toBeCloseTo(1.2); // junk → dump trip
+    w.town.requests = { 'mat.gel': 5 };
+    expect(ret()).toBeCloseTo(1.2); // 25 units beyond the request would be discarded → trip clears room
     w.town.requests = { 'mat.gel': 999 };
     expect(ret()).toBeLessThan(1.2); // all requested but the town cannot pay: keep hunting
     w.town.gold = 10_000;

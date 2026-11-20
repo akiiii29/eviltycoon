@@ -116,9 +116,9 @@ export function bagHasSellable(config: GameConfig, world: World, bag: Record<str
   return false;
 }
 
-/** Units in the bag that are not requested at all (they would be discarded at the post). */
+/** Units in the bag beyond the request (the post would buy them as surplus or discard them): Σ max(0, have − demand). */
 export function bagUnrequested(bag: Record<string, number>, demand: Demand): number {
   let n = 0;
-  for (const id in bag) if ((demand[id] ?? 0) <= 0) n += bag[id] ?? 0;
+  for (const id in bag) n += Math.max(0, (bag[id] ?? 0) - (demand[id] ?? 0));
   return n;
 }

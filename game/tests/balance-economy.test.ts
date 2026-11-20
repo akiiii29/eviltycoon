@@ -24,7 +24,7 @@ function cfg(patch: Partial<FormulaParams> = {}): GameConfig {
     formula: {
       ...base.formula,
       craftGoldFrac: 0.3, feeTownShare: 0.3, shopStaleSec: 600, shopMarkdownPct: 10, shopMarkdownFloor: 0.5, shopScrapSec: 1800,
-      minUpgradeGain: 0.12, craftLevelAhead: 2,
+      minUpgradeGain: 0.12, craftLevelAhead: 2, craftAffordFrac: 0,
       ...patch,
     },
   };
