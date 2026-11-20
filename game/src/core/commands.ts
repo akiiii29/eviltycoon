@@ -8,6 +8,7 @@ import { servicePrice } from './systems/services';
 import { reincarnate } from './systems/progression';
 import { cancelBounty, postBounty, validateBounty } from './systems/bounty';
 import { buildingLevel, cancelUpgrade, startBuild, startUpgrade } from './systems/town';
+import { setTaxRate, validateTaxRate } from './systems/tax';
 
 /** Player/debug commands. Queued by UI, applied at the start of the next tick (TECH_SPEC §3.1). */
 export type Command =
@@ -42,14 +43,16 @@ export type Command =
   | { type: 'town.cancelBounty'; bountyId: string }
   /** Toggle automatic bounties when Town gold is above its treasury target. */
   | { type: 'town.setAutoBounty'; on: boolean }
-  /** GDD §5: build a building type on a free plot (gold + Town Storage materials paid now; TECH_SPEC §5.10). */
+  /** GDD §5: build a building type on a free plot (gold + Town Storage materials paid now; TECH_SPEC §5.11). */
   | { type: 'town.build'; buildingId: string; plotId: string }
   /** Upgrade a building instance (id = its plot id) by one level. */
   | { type: 'town.upgrade'; buildingInstanceId: string }
   /** Cancel a running construction/upgrade (full refund). */
   | { type: 'town.cancelUpgrade'; buildingInstanceId: string }
   /** Toggle the Town's automatic investment of spare gold in building upgrades. */
-  | { type: 'town.setAutoInvest'; on: boolean };
+  | { type: 'town.setAutoInvest'; on: boolean }
+  /** Town tax on kill gold (TECH_SPEC §5.10), within [taxMinRate, taxMaxRate]. */
+  | { type: 'town.setTaxRate'; rate: number };
 
 type Handler<C extends Command> = (ctx: SystemContext, cmd: C) => string | null;
 
@@ -154,6 +157,12 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
   'town.setAutoInvest': (ctx, cmd) => {
     ctx.world.town.autoInvest = !!cmd.on;
     if (!ctx.world.town.autoInvest) ctx.world.town.investPlan = null;
+    return null;
+  },
+  'town.setTaxRate': (ctx, cmd) => {
+    const bad = validateTaxRate(ctx.config, cmd.rate);
+    if (bad) return bad;
+    setTaxRate(ctx, cmd.rate);
     return null;
   },
 };

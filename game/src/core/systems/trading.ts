@@ -21,7 +21,7 @@ export type Demand = Record<string, number>;
 
 /**
  * Automatic requests: auto-craft needs (when auto-craft is on; only recipes the craft building's level allows; copies =
- * requestMaxCopies + Storehouse requestCopies) plus the materials of the auto-investment plan (TECH_SPEC §5.10, when
+ * requestMaxCopies + Storehouse requestCopies) plus the materials of the auto-investment plan (TECH_SPEC §5.11, when
  * auto-invest is on), minus what storage already holds.
  */
 export function autoMaterialDemand(config: GameConfig, world: World): Demand {

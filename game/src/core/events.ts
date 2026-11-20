@@ -33,11 +33,14 @@ export type SimEvent =
   | { type: 'bountyCompleted'; tick: number; bountyId: string; hunterId: string; reward: number; kingdomGold: number }
   /** Cancelled by the player or an expired auto-bounty; `refund` (remaining escrow) went back to Town gold. */
   | { type: 'bountyCancelled'; tick: number; bountyId: string; refund: number; reason: 'cancelled' | 'expired' }
-  /** Town buildings (TECH_SPEC §5.10): gold (incl. importGold) and material units were paid and leave the economy. */
+  /** Town buildings (TECH_SPEC §5.11): gold (incl. importGold) and material units were paid and leave the economy. */
   | { type: 'buildingStarted'; tick: number; instanceId: string; buildingId: string; toLevel: number; gold: number; materials: number; importGold: number; auto: boolean }
   | { type: 'buildingCompleted'; tick: number; instanceId: string; buildingId: string; level: number }
   /** A running construction/upgrade was cancelled; `refund` gold (and its materials) went back to the Town. */
   | { type: 'buildingCancelled'; tick: number; instanceId: string; buildingId: string; refund: number }
+  /** Town tax (TECH_SPEC §5.10): `gold` of a kill's gold went to Town gold instead of the killer. */
+  | { type: 'taxCollected'; tick: number; hunterId: string; gold: number }
+  | { type: 'taxRateChanged'; tick: number; rate: number }
   | { type: 'commandRejected'; tick: number; command: string; reason: string };
 
 export type SimEventInput = SimEvent extends infer E ? (E extends { tick: number } ? Omit<E, 'tick'> : never) : never;

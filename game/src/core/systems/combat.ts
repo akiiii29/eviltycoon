@@ -6,6 +6,7 @@ import type { System, SystemContext } from '../system';
 import { bagCount, dist, findHunter, findMonster, isAlive, newAiState, type Hunter, type Monster } from '../world';
 import { bountyOnKill } from './bounty';
 import { stepTowards } from './movement';
+import { grantKillGold } from './tax';
 
 /**
  * Per-tick aggro index (TECH_SPEC §10), derived data rebuilt in combatSystem.update after revives: every
@@ -54,7 +55,7 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
   const def = config.index.monsters.get(m.defId)!;
   const ms = monsterStats(config, m);
   h.kills += 1;
-  h.gold += ms.gold;
+  grantKillGold(ctx, h, ms.gold); // minus Town tax (tax.ts)
   world.stats.kills += 1;
   ctx.events.emit(world.tick, { type: 'monsterKilled', hunterId: h.id, monsterId: m.id, defId: m.defId });
   // Bounty payout; a bounty target killed under Torment drops more (one RNG draw per drop either way).

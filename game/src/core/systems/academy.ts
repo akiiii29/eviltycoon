@@ -7,7 +7,7 @@ import { feeTownCut } from './economy';
 /**
  * Next skill level the hunter may study and its gold cost, or null when not allowed
  * (unknown skill, other class, job tier too low, maxed, hunter level too low). Gold is NOT checked here.
- * With `world` the cost is round(studyGold × the Academy's studyGoldMul) (TECH_SPEC §5.10).
+ * With `world` the cost is round(studyGold × the Academy's studyGoldMul) (TECH_SPEC §5.11).
  */
 export function nextSkillStudy(config: GameConfig, h: Hunter, skillId: string, world?: World): { level: number; cost: number } | null {
   const def = config.index.skills.get(skillId);

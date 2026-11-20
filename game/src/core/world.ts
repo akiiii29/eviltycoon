@@ -146,7 +146,7 @@ export interface Bounty {
   postedAtMs: number;
 }
 
-/** v8: a construction or upgrade in progress (TECH_SPEC §5.10). Gold and materials were paid when it started. */
+/** v8: a construction or upgrade in progress (TECH_SPEC §5.11). Gold and materials were paid when it started. */
 export interface BuildingUpgrade {
   toLevel: number;
   remainingMs: number;
@@ -158,7 +158,7 @@ export interface BuildingUpgrade {
   auto: boolean;
 }
 
-/** v8: a building standing on a plot (TECH_SPEC §5.10). `id` is the plot id (one building per plot). */
+/** v8: a building standing on a plot (TECH_SPEC §5.11). `id` is the plot id (one building per plot). */
 export interface BuildingState {
   id: string;
   buildingId: string;
@@ -210,11 +210,16 @@ export interface World {
     bounties: Bounty[];
     /** v7: post bounties automatically when Town gold is above its treasury target. */
     autoBounty: boolean;
-    /** v8: buildings on plots, in plot config order (TECH_SPEC §5.10). */
+    /** v8: buildings on plots, in plot config order (TECH_SPEC §5.11). */
     buildings: BuildingState[];
     /** v8: spend Town gold above the treasury target (and materials) on building upgrades automatically. */
     autoInvest: boolean;
     investPlan: InvestPlan | null;
+    /**
+     * Tax rate on kill gold set by `town.setTaxRate` (systems/tax.ts, TECH_SPEC §5.10). Optional, no schema bump:
+     * absent = config `taxRate`.
+     */
+    taxRate?: number;
   };
   /** Arrays (not maps) so iteration order is stable and deterministic. */
   hunters: Hunter[];
@@ -248,6 +253,8 @@ export interface World {
     investGold: number;
     investMaterials: number;
     investImportGold: number;
+    /** Tax taken from kill gold into Town gold (systems/tax.ts). Optional, no schema bump: absent = 0. */
+    taxCollected?: number;
   };
 }
 

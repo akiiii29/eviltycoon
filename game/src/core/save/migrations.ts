@@ -132,7 +132,7 @@ export const MIGRATIONS: Record<number, Migration> = {
       stats: { bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, ...stats },
     };
   },
-  // v7 → v8 (Town buildings, TECH_SPEC §5.10): building instances on plots (levels that keep the save playing as before),
+  // v7 → v8 (Town buildings, TECH_SPEC §5.11): building instances on plots (levels that keep the save playing as before),
   // auto-invest (on, like auto-craft), building stats.
   7: (w, config) => {
     const town = (w.town ?? {}) as Record<string, unknown>;

@@ -68,7 +68,9 @@ Số liệu hiện tại (headless 12 giờ `tools/headless.ts 720 <seed> 120`, 
 
 ### M4 (tiếp)
 - ⚪ **Town Hall và xây/nâng cấp/đặt building**, slot building, cấp building giới hạn tier đồ (GDD §5, bảng `building` TECH_SPEC §8; graph cập nhật khi đặt/xóa building, TECH_SPEC §6). Đây là chỗ tiêu vàng/NL Town **ra khỏi** nền kinh tế còn thiếu (xem §1 và Bounty ở trên).
-- ⚪ Thuế (TECH_SPEC §3.1).
+- ✅ **Thuế** (TECH_SPEC §5.10, `src/core/systems/tax.ts`, không tăng schema): `floor(vàng kill × taxRate)` chuyển từ hunter sang Town ngay lúc kill (không đánh thuế tiền bán NL và thưởng bounty — đều là vàng Town trả); lệnh `town.setTaxRate { rate }` trong [`taxMinRate` 0, `taxMaxRate` 0,5]; trên `taxMoodFreeRate` 0,1 mỗi kill bị thu mất `taxMoodPerKill` 10 × (rate − 0,1) mood (về Tavern nhiều hơn). Mặc định 10%: không có giá mood.
+  - Headless 12 giờ seed 1–5 (trước → sau): vàng Town 23,0–26,5k → 21,5–26,9k, vàng hunter tb 6,0–6,7k → 5,9–7,6k, Lv tb 82,1–85,9 → 79,6–85,3, shop 3–11 → 5–8, chết 11 → 7 (10 seed 15 → 18); thu 28–34k / 12 giờ — trong nhiễu. `taxRate` 0: giống từng byte với trước.
+  - 🟡 Còn lại: khi Town trên mục tiêu ngân khố, thuế bị quy tắc ngân khố bù (phí bị đốt nhiều hơn) nên hiện chỉ là chỗ tiêu vàng hunter; chỉ thành thu nhập Town khi có chỗ tiêu building — lúc đó cần tune lại `taxRate` cùng `feeTownTargetMul`. Chưa có UI ngoài nút −/+5% trong debug overlay. Giá mood chỉ tác động qua Tavern (mood chưa ảnh hưởng chỉ số); `taxMoodPerKill` mới đo trên 2 seed.
 
 ### M5 — chiều sâu hunter & trang bị
 - ⚪ Invitation (vé gọi hunter theo tier, GDD §4.1), Donate / Banish.

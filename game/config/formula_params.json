@@ -138,5 +138,10 @@
  "investImportPriceMul": 2,
  "buildMaxConcurrent": 2,
  "buildCostMul": 1,
- "buildTimeMul": 1
+ "buildTimeMul": 1,
+ "taxRate": 0.1,
+ "taxMinRate": 0,
+ "taxMaxRate": 0.5,
+ "taxMoodFreeRate": 0.1,
+ "taxMoodPerKill": 10
 }

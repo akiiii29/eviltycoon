@@ -78,7 +78,7 @@ Quy ước: **[CHỐT]** là quyết định kỹ thuật; **[ĐỀ XUẤT]** l�
 | `events` | Event bus một chiều sim → UI/render (hit, kill, levelUp, purchase…) để chơi VFX/âm thanh/toast. Sim không bao giờ đọc lại. |
 | `config/` | Schema DSL (`schema.ts`), `TABLE_SPECS` + kiểm tra chéo + index (`load.ts`), kiểu (`types.ts`). |
 
-Bounty: `systems/bounty` (§5.9). Thuế, build/upgrade building chưa làm (M4); invitation (M5) — xem §12.
+Bounty: `systems/bounty` (§5.9). Thuế: `systems/tax` (§5.10) — thuế trên vàng rơi từ quái, thu ngay lúc kill. Build/upgrade building chưa làm (M4); invitation (M5) — xem §12.
 
 ### 3.2 Vòng lặp **[CHỐT]**
 
@@ -281,6 +281,19 @@ Code: `src/core/systems/bounty.ts` (hook duy nhất trong combat: `grantKill` g�
 - **Event**: `bountyPosted`, `bountyProgress` (mỗi kill, kèm vàng trả), `bountyCompleted`, `bountyCancelled`. Debug overlay hiện bounty đang chạy (tiến độ, ký quỹ, nút hủy) và nút bật/tắt tự động; `tools/headless.ts` in sổ bounty mỗi mốc (đặt / xong / ký quỹ / hoàn / trả / vương quốc / đang giữ), tính ký quỹ vào `total`, và in bounty đang chạy cuối run.
 - **Số đo** (headless 12 giờ, seed 1–5, trước → sau, `bountyAutoRewardFrac` 0,1): vàng Town lúc 12 giờ 22,3–27,6k → 23,0–26,5k; vàng hunter tb 5,5–6,8k → 6,0–6,7k; shop 6–9 → 3–11 món; Lv tb 83,1–86,6 → 82,1–85,9; chết (tổng 5 seed) 6 → 11, nhưng seed 6–10 là 9 → 4, tức 15 → 15 trên 10 seed (`bountyZoneBonus` 0: 5 trên seed 1–5); 45–61 bounty xong / 12 giờ, trả hunter 21–33k, vương quốc 4,7–7,9k. Các khác biệt nằm trong nhiễu giữa các seed (mỗi seed chạy 1 lần, phân kỳ hỗn loạn); tắt auto-bounty thì timeline và hunter cuối run giống từng dòng với trước. Với 0,2: vàng hunter tb lúc 12 giờ 5,9–7,8k (4/5 seed cao hơn), nên chọn 0,1. Bounty **không** kéo vàng Town xuống thấp hơn đáng kể: quy tắc ngân khố (§5.7) bù lại (Town nghèo hơn → giữ nhiều phí hơn), nên tác dụng thực là chuyển phần phí lẽ ra bị đốt sang hunter + một chút vàng vương quốc. Torment cần 5 lần tái sinh (~13 giờ+), headless 12 giờ không tới; chỉ có unit test.
 
+### 5.10 Thuế Town (M4) **[ĐÃ LÀM — số liệu ĐỀ XUẤT]**
+
+Code: `src/core/systems/tax.ts` (hook duy nhất: `combat.grantKill` gọi `grantKillGold` thay cho `h.gold += gold`, nên kill bằng skill cũng bị thu), lệnh `town.setTaxRate { rate }` trong `commands.ts`, tham số `tax*` ở cuối `formula_params.json`. **Không tăng schema**: `town.taxRate` và stat `taxCollected` là field tùy chọn (thiếu = `taxRate` của config / 0), save cũ load bình thường.
+
+- **Thu gì**: chỉ **vàng rơi từ quái**, ngay lúc kill. Đây là nguồn vàng duy nhất đi vào nền kinh tế từ bên ngoài (ngoài vàng vương quốc trả khi xong bounty, vốn đã vào Town). Tiền bán NL ở Trạm Thu Mua (đã có `tradeSaleTax`) và thưởng bounty (trả từ ký quỹ của Town) đều là vàng của Town, đánh thuế chỉ là Town tự trả mình ít đi. Thu lúc kill: không cần lưu "nợ thuế" trên hunter, không phụ thuộc lúc về Town, không rút RNG.
+- **Công thức**: `tax = floor(vàng kill × rate)`, hunter nhận phần còn lại, vàng Town + tax (tổng vàng không đổi; vàng vẫn là số nguyên). Kill < `1 / rate` vàng không mất gì (ở 10%: quái < 10 vàng, tức đầu game gần như miễn thuế). `rate = town.taxRate ?? taxRate`, kẹp trong [`taxMinRate`, `taxMaxRate`].
+- **Lệnh** `town.setTaxRate { rate }`: từ chối không phải số hữu hạn (`invalid rate`), < `taxMinRate` (`rate below minimum`), > `taxMaxRate` (`rate above maximum`). Event `taxRateChanged`. `config:check` yêu cầu `taxMinRate ≤ taxRate ≤ taxMaxRate` trong [0, 1].
+- **Cái giá của thuế cao**: mỗi kill **có bị thu** (tax > 0) làm người giết mất `taxMoodPerKill × max(0, rate − taxMoodFreeRate) × personality(decay.mood)` mood. Mood chỉ tác động qua việc hunter phải về Tavern sớm/nhiều hơn (`moodDecayPerSec` = 0, `moodStatFloor` = 1), tức tốn thời gian và vàng ở Town, săn ít hơn. Tại/dưới `taxMoodFreeRate` (= mặc định 10%) không mất gì nên mặc định không đổi nhịp.
+- **Event/stat**: `taxCollected { hunterId, gold }` mỗi kill bị thu (không hiện trong log overlay), stat `taxCollected`. Debug overlay: dòng thuế (tỉ lệ, đã thu, mood/kill) và nút −5% / +5%. `tools/headless.ts` in cột `tax` trong sổ Town (trừ khỏi phần dư `fees`) và cộng lại vào `hunter kill` (vàng kill trước thuế).
+- **Mặc định**: `taxRate` 0,1, `taxMinRate` 0, `taxMaxRate` 0,5, `taxMoodFreeRate` 0,1, `taxMoodPerKill` 10.
+- **Số đo** (headless 12 giờ, seed 1–5, trước → sau với 10%): vàng Town lúc 12 giờ 23,0–26,5k → 21,5–26,9k; vàng hunter tb 6,0–6,7k → 5,9–7,6k, max 7,6–12,5k → 9,0–14,3k; Lv tb 82,1–85,9 → 79,6–85,3; shop 3–11 → 5–8 món; chết tổng 11 → 7 (seed 6–10: 4 → 11; 10 seed 15 → 18). Trung bình 10 seed: Lv 84,8 → 84,8, vàng hunter tb 7,0k → 7,2k — trong nhiễu. Thu 27,9–34,4k / 12 giờ (≈ 9% vàng kill; vàng kill chỉ ≈ 1/3 thu nhập hunter, phần lớn là tiền bán NL). `taxRate` 0 cho kết quả giống từng byte với trước. Thuế cao (seed 1–2): 30% → vàng Town 29,5/33,3k, vàng hunter tb 5,7/4,6k, Lv 83,0/78,8, lượt dịch vụ +9/+13%, kill −2/−3%; 50% → 28,5/39,3k, 5,6/3,9k, Lv 80,8/77,3, dịch vụ +19/+15%, kill −3%. (`taxMoodPerKill` 2 thì ở 50% không đo được khác biệt dịch vụ/level, nên chọn 10.)
+- **Lưu ý**: khi vàng Town đang trên mục tiêu ngân khố (§5.7), thu thêm bị quy tắc ngân khố bù lại (Town giữ ít phí hơn, phần còn lại bị đốt), nên ở 10% thuế thực chất là **chỗ tiêu vàng hunter**, không làm Town giàu hơn. Thuế chỉ thành thu nhập thật của Town khi Town dưới mục tiêu — tức khi có chỗ tiêu vàng Town ra khỏi nền kinh tế (xây/nâng building). Khi đó tăng `taxRate`/`town.setTaxRate` là đòn bẩy.
+
 ## 6. Di chuyển và pathfinding
 
 - Map là **waypoint graph**: node (vị trí, zoneId, loại: road/field/building-door) và cạnh (khoảng cách).
@@ -449,12 +462,12 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 | M1 ✅ | 1 Town + 1 zone, waypoint/road, 5 class, needs, AI cơ bản (Hunt/Return/4 dịch vụ) | Hunter tự săn và tự quay về đúng ngưỡng |
 | M2 ✅ | Shop, craft, gear + quality + enhance, BuyGear/SellMaterials | Vòng săn → bán → craft → mua chạy kín |
 | M3 ✅ | Skill, trait, level, chuyển nghề, reincarnation, difficulty | Mở được difficulty Normal theo điều kiện GDD §8 |
-| M4 | Town & chế độ chơi: Trading Post theo yêu cầu ✅, Bounty ✅, offline progress ✅, Journey; **Town Hall, xây/nâng cấp/đặt building, slot building, cấp building giới hạn tier đồ** (GDD §5, bảng `building` §8; graph cập nhật khi đặt/xóa building §6), thuế | QA checklist GDD §13 đạt; vàng/NL Town có chỗ tiêu ra khỏi nền kinh tế |
+| M4 | Town & chế độ chơi: Trading Post theo yêu cầu ✅, Bounty ✅, offline progress ✅, Journey; **Town Hall, xây/nâng cấp/đặt building, slot building, cấp building giới hạn tier đồ** (GDD §5, bảng `building` §8; graph cập nhật khi đặt/xóa building §6), thuế ✅ | QA checklist GDD §13 đạt; vàng/NL Town có chỗ tiêu ra khỏi nền kinh tế |
 | M5 | Chiều sâu hunter & trang bị: Invitation + `hunter_tier` (GDD §4.1–4.2), Donate/Banish; đủ 9 bậc nghề (hiện 3) và 7 slot đồ (GDD §6, hiện 3); nâng tier đồ (Dark Stone), `gear_option` / `gear_set` / `gear_skill`; `consumable` (potion, Alchemist) + goal BuyPotion; Training Ground + goal Train; Bank, Courage Headstone, Fountain of Life, Library of Wisdom; `rune`, `relic`, thú cưỡi, `growth_property`; ghép NL (`material.composeTo`); `exp_curve` theo lần tái sinh; bật Mood ảnh hưởng chỉ số (GDD §4.2); lệnh người chơi học skill/trait | Mọi bảng §8 (trừ `raid`) có code dùng; cân bằng lại bằng headless |
 | M6 | Client & nội dung: UI hoàn chỉnh (GDD §10), sprite/scene pixel-art và camera pan/zoom/chọn bằng click (GDD §11), UI cho yêu cầu vật liệu/bounty/building, vi/en, tutorial, headless xuất CSV; thay toàn bộ dữ liệu trích từ game thương mại (TODO §7), chốt nền tảng (GDD §2) và bố cục map | Bản chơi thử nội bộ, không còn dữ liệu sao chép |
 | M7 | Online: account, cloud save, IAP; Raid, PvP, Guild, World Boss, Tower Defense, chat, ranking | Theo đặc tả riêng |
 
-Hiện trạng: M0–M3 xong; M4 đã có Trading Post theo yêu cầu (§5.7), Bounty (§5.9), offline progress (§9) — world v7. Còn Journey và Town Hall/building.
+Hiện trạng: M0–M3 xong; M4 đã có Trading Post theo yêu cầu (§5.7), Bounty (§5.9), thuế (§5.10), offline progress (§9) — world v7. Còn Journey và Town Hall/building.
 
 ### 12.1 Bảng phủ (chống bỏ sót)
 
@@ -470,7 +483,7 @@ Mọi hệ thống nhắc trong GDD hoặc có bảng ở §8 phải nằm trong
 | Offline progress (§9) | M4 | ✅ |
 | Journey (GDD §9, bảng `journey`) | M4 | ⚪ |
 | Town Hall, xây/nâng/đặt building, slot, cấp shop giới hạn tier (GDD §5, bảng `building`) | M4 | ⚪ |
-| Thuế (§3.1) | M4 | ⚪ |
+| Thuế (§3.1, §5.10) | M4 | ✅ |
 | QA checklist (GDD §13) | M4 | ⚪ |
 | Invitation, `hunter_tier`, Donate/Banish (GDD §4.1–4.2) | M5 | ⚪ (tier hunter đã có) |
 | 9 bậc nghề, 7 slot đồ (GDD §6) | M5 | ⚪ |

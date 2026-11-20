@@ -285,7 +285,7 @@ export function enhanceReserveMul(config: GameConfig, successRate: number): numb
  * (upgradeSavingsFrac × basePrice × aiTypicalQualityMult / (spendRatio × personality)); otherwise 0.
  * aiTypicalQualityMult is the quality multiplier the AI assumes for a piece it has not seen yet (uncommon-ish).
  * Polishing gear that is about to be replaced is wasted gold, so this keeps enhancing from starving gear upgrades.
- * With `world`, gear above its craft building's tier cap (TECH_SPEC §5.10) is ignored: nobody can make it yet.
+ * With `world`, gear above its craft building's tier cap (TECH_SPEC §5.11) is ignored: nobody can make it yet.
  */
 export function upgradeSavings(config: GameConfig, h: Hunter, slot: GearSlot, world?: World): number {
   const f = config.formula;
