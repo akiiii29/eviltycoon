@@ -77,12 +77,13 @@ Ký hiệu: 🔴 lỗi/cần sửa sớm · 🟡 cân bằng/cải thiện · �
 
 ## 6. Save / migration
 
-- 🟡 Migration v1→v2 viết cứng node `t.square`; migration v3→v4 ước lượng `rollStats` bằng mức tăng level mặc định của M1.
-- 🟡 Cùng một tick có thể vừa `jobChanged` vừa `reincarnated` (vô hại, UI có thể hiện 2 thông báo).
+- ✅ ~~Migration v1→v2 viết cứng node `t.square`; migration v3→v4 ước lượng `rollStats` bằng mức tăng level mặc định của M1.~~ Migration nhận config hiện tại (`deserialize(text, config)`): v1→v2 dùng node quảng trường của config (fallback `t.square`), v3→v4 trừ `levelHpGain/AtkGain/DefGain` của config và kẹp trong `statRanges` của class; có test (TECH_SPEC §9).
+- 🟡 Cùng một tick có thể vừa `jobChanged` vừa `reincarnated` (vô hại, UI có thể hiện 2 thông báo). Đã ghi vào TECH_SPEC §3.2; không đổi code.
 
 ## 7. Dữ liệu & tài liệu
 
 - 🔴 **Pháp lý/IP:** phụ lục GDD và `data_tables/` chứa dữ liệu trích từ bản build của một game thương mại. Không phát hành game với tên, text, số liệu sao chép; dùng làm tham chiếu khoảng giá trị. Tên/nội dung trong `game/config/` là bản tự đặt.
 - 🟡 Dữ liệu trích: ~30% cột chưa rõ nghĩa (TBD), 8 bảng khớp byte nhưng chưa xác nhận đúng class, thiếu `sharedassets0.assets` (localUI, slang, help).
-- 🟡 Cập nhật `TECH_SPEC.md` theo các quyết định đã chốt khi code (backstop khẩn cấp chạy lại sau combat, thứ tự system, world v5, công thức cường hóa theo kỳ vọng…).
+- ✅ ~~Cập nhật `TECH_SPEC.md` theo các quyết định đã chốt khi code (backstop khẩn cấp chạy lại sau combat, thứ tự system, world v6, công thức cường hóa theo kỳ vọng…).~~ Đã cập nhật §3.1–3.2 (module, thứ tự system thật), §4 (Hunter/GearInstance theo `world.ts`, công thức gear/cường hóa), §5.1–5.2 (goal và điểm theo `scoreGoals`, backstop khẩn cấp), §5.4 (mua đồ, cường hóa theo kỳ vọng), §6–7 (hiện trạng), §8 (bảng đã có, validate), §9 (file save, bảng migration v0→v6), §12 (hiện trạng).
+- 🟡 Hằng số cường hóa của AI (`ENHANCE_*`, `UPGRADE_SAVINGS_FRAC`, `TYPICAL_QUALITY_MULT` trong `ai/utility.ts`) chưa nằm trong `formula_params.json`.
 - ⚪ CI chạy `npm test`, `npm run config:check`, `npm run build`.

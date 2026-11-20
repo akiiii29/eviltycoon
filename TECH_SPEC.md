@@ -50,24 +50,45 @@ Quy ước: **[CHỐT]** là quyết định kỹ thuật; **[ĐỀ XUẤT]** l�
 
 ### 3.1 Module core
 
+Đường dẫn tính từ `game/src/core/`.
+
 | Module | Trách nhiệm |
 |---|---|
-| `world` | Chứa toàn bộ state: town, buildings, hunters, monsters, inventory, economy, clock. Serializable 100%. |
-| `systems/needs` | Giảm HP/Satiety/Mood/Stamina theo sự kiện và thời gian. |
-| `systems/ai` | Ra quyết định cho hunter (§5). |
-| `systems/movement` | Di chuyển theo path trên waypoint graph. |
-| `systems/combat` | Target, đòn đánh, skill, damage, chết/hồi sinh. |
-| `systems/spawn` | Sinh quái theo zone và difficulty. |
-| `systems/economy` | Shop, dịch vụ, craft, trading post, bounty, thuế. |
-| `systems/progression` | EXP, level, chuyển nghề, reincarnation, unlock difficulty. |
-| `systems/arrivals` | Hunter mới ghé Town theo slot, invitation. |
-| `commands` | Hành động của người chơi (Move, Learn, Activities, Manage, build/upgrade…). Validate rồi đưa vào hàng đợi của tick kế tiếp. |
-| `events` | Event bus một chiều sim → UI/render (hit, kill, levelup, purchase…) để chơi VFX/âm thanh/toast. |
+| `world` | Chứa toàn bộ state: town, hunters, monsters, kho/shop/craft, clock, RNG state. Serializable 100%; `WORLD_SCHEMA_VERSION` (§9). |
+| `simulation` | `createWorld`, `Simulation.step()` (thứ tự system §3.2), `advance()` theo thời gian thực. |
+| `formulas` | Mọi công thức: chỉ số hiệu dụng, combat (§7.1), chấm điểm vùng (§5.3), giá trị gear/cường hóa (§4.2). |
+| `ai/utility` | Hàm thuần chấm điểm goal (§5.2), mua đồ, cường hóa, học (§5.4). |
+| `hunterFactory`, `progress` | Roll hunter mới (class, stat grade, tier, personality); `gainExp` (level-up, cộng chỉ số theo `formula_params`, trait point). |
+| `pathfinding` | `NavGraph`: waypoint graph + A* có cache (§6). |
+| `systems/arrivals` | Hunter mới ghé Town theo thời gian tới khi đủ slot (chưa có invitation). |
+| `systems/ai` | Ra quyết định (§5) và backstop khẩn cấp (`urgentBackstopSystem`). |
+| `systems/movement` | Đi theo path trên waypoint graph, steering tự do trong zone. |
+| `systems/combat` | Target, đòn đánh thường, damage, nhận thưởng kill (EXP/vàng/drop), chết/hồi sinh, xóa quái chết. |
+| `systems/skills` | Đếm buff/cooldown, auto-cast tối đa 1 skill/hunter/tick (sau combat). |
+| `systems/services` | Dịch vụ Town (Heal/Eat/Fun/Rest), giá `servicePrice`. |
+| `systems/economy` | Hành động tại cửa: bán ở Trạm Thu Mua, mua ở Shop, cường hóa ở Forge. |
+| `systems/trading` | Yêu cầu vật liệu của Trạm Thu Mua, giá mua (§5.7). |
+| `systems/academy` | Học skill (vàng) / trait (trait point). |
+| `systems/crafting` | Auto-craft/craft thủ công, xếp hàng shop, giảm giá và hủy món tồn. |
+| `systems/needs` | Giảm nhu cầu theo thời gian, hồi chậm miễn phí khi rảnh trong Town; kẹp HP ≤ max. |
+| `systems/progression` | Chuyển nghề, reincarnation (tự động khi bật), unlock difficulty. EXP/level nằm ở `progress.ts`. |
+| `systems/spawn` | Sinh quái theo zone và difficulty hiện tại. |
+| `save/` | `serialize`/`deserialize`, migration (§9), storage IndexedDB/memory. |
+| `commands` | Lệnh của người chơi/debug (Move, Activities, craft, reincarnate, đổi difficulty, yêu cầu vật liệu…). Xếp hàng, áp dụng đầu `step()` kế tiếp; handler trả lý do khi từ chối. |
+| `events` | Event bus một chiều sim → UI/render (hit, kill, levelUp, purchase…) để chơi VFX/âm thanh/toast. Sim không bao giờ đọc lại. |
+| `config/` | Schema DSL (`schema.ts`), `TABLE_SPECS` + kiểm tra chéo + index (`load.ts`), kiểu (`types.ts`). |
+
+Bounty, thuế, invitation, build/upgrade building chưa làm (M4+).
 
 ### 3.2 Vòng lặp **[CHỐT]**
 
 - Fixed-step simulation: **10 tick/giây** (`dt = 100 ms`). Render nội suy vị trí giữa 2 tick.
-- Thứ tự system mỗi tick: `commands → arrivals → ai → movement → combat → needs → economy → progression → spawn → cleanup → emit events`.
+- Thứ tự system mỗi tick (`DEFAULT_SYSTEMS` trong `src/core/simulation.ts`):
+  `commands → arrivals → ai → movement → combat → skills → urgentBackstop → services → economy → academy → crafting → needs → progression → spawn`, rồi `tick += 1`, `timeMs += dt`, lưu RNG state vào world.
+  - `commands`: lệnh enqueue giữa 2 tick được áp dụng đầu `step()`, trước mọi system.
+  - `urgentBackstop` chạy lại backstop khẩn cấp của AI (§5.2) **sau combat và skills**, để đòn đánh làm nhu cầu tụt dưới ngưỡng được xử lý ngay trong tick đó (không chờ tick sau).
+  - Không có pha `cleanup` riêng: combat xóa quái chết cuối pass của nó. Không có pha `emit events`: event được ghi vào buffer khi phát sinh, client lấy bằng `drainEvents()`.
+  - EXP/level-up xảy ra trong combat/skills (`gainExp`); `progression` chạy sau đó trong cùng tick nên một hunter có thể vừa `jobChanged` vừa `reincarnated` trong một tick (vô hại; UI có thể hiện 2 thông báo).
 - Tốc độ game x1/x2/x4: chạy nhiều tick trong một frame, không đổi `dt`.
 - Mỗi system chỉ ghi vào phần state của nó, đọc phần còn lại. Không dùng singleton toàn cục.
 
@@ -75,27 +96,36 @@ Quy ước: **[CHỐT]** là quyết định kỹ thuật; **[ĐỀ XUẤT]** l�
 
 ### 4.1 Hunter (runtime)
 
+Theo `interface Hunter` trong `src/core/world.ts` (world v6).
+
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | string | |
-| `classId`, `jobTier` | ref, int 0..8 | Chuỗi chuyển nghề 9 bậc mỗi class. |
-| `grade` | enum Normal/Rare/Superior/Heroic/Legendary | Theo điểm G (GDD §4.2). |
-| `statGrades` | map stat → Normal/High/Highest | Roll lúc sinh hunter. |
-| `baseStats` | HP, ATK, DEF, EVA, CRIT, ATKSPD | Roll trong khoảng của class theo statGrade. |
+| `classId`, `jobTier` | ref, int | Bậc nghề theo `job.json` (thiết kế: 9 bậc; config hiện có 3 bậc 0..2 mỗi class). |
+| `tier` | `normal`/`rare`/`superior`/`heroic`/`legendary` | Theo điểm G = N_high + 2 × N_highest (GDD §4.2, `tierFromPoints`). |
+| `statGrades` | map stat → `normal`/`high`/`highest` | Roll lúc sinh hunter. |
+| `stats` | hp, atk, def, eva, crit, atkSpeed | Chỉ số gốc = roll + cộng theo level (`levelHpGain/AtkGain/DefGain`), **chưa** gồm gear/job/trait/buff; giá trị hiệu dụng lấy qua `formulas.hunterStats()`. |
+| `rollStats` | như `stats` | Roll gốc ở level 1; reincarnation đặt lại `stats = rollStats`. |
 | `level`, `exp`, `reincarnation` | int | |
 | `needs` | hp, satiety, mood, stamina (0..max) | |
-| `gold` | int | Tiền riêng của hunter; dùng để mua đồ và dịch vụ. |
-| `equipment` | slot → GearInstance | 7 slot (GDD §6). |
-| `bag` | list ItemStack, `bagCapacity` | Nguyên liệu nhặt được, potion. |
-| `skills`, `traits`, `traitPoints` | | |
-| `personalities` | list ref (1–3) | Hệ số chỉnh hành vi (§5.5). |
-| `ai` | `{state, goal, targetId, path, cooldowns, lastDecisionTick}` | |
-| `position`, `zoneId` | | |
+| `gold` | int | Tiền riêng của hunter; dùng để mua đồ, dịch vụ, cường hóa, học. |
+| `equipment` | slot → GearInstance | 3 slot hiện tại: `weapon`, `armor`, `accessory` (GDD §6 có 7). |
+| `bag` | map materialId → số lượng | Sức chứa = `formula.bagCapacity` (tổng số đơn vị). Chưa có potion. |
+| `skills`, `skillCdMs`, `buffs` | map skillId → level, map → ms còn lại, list buff | |
+| `traits`, `traitPoints` | map traitId → level, int | |
+| `personalities` | list ref | Số lượng = `formula.personalitiesPerHunter`; hệ số chỉnh hành vi (§5.5). |
+| `ai` | `{goal, phase: travel/act, path, decideInMs, targetMonsterId, moveTo, forced}` | `forced` = goal do lệnh người chơi. |
+| `position`, `nodeId`, `insideBuildingId` | | Zone hiện tại suy ra từ `nodeId` (node field có `zoneId`). |
+| `attackCdMs`, `deadMs`, `kills`, `arrivedAtMs` | | `deadMs > 0` = đang chết, đếm tới hồi sinh. |
 
 ### 4.2 GearInstance
 
-`{ gearId, quality (Common..Mythic), enhanceLevel, tier, options: [{optionId, value}], setId?, gearSkillId?, runes[] }`.
-Chỉ số cuối = base theo `gearId` × hệ số quality (GDD §6) × đường cong enhance + options. Công thức cộng/nhân cụ thể: **TBD**, định nghĩa trong `formulas.ts` và có test.
+Thiết kế đầy đủ: `{ gearId, quality (Common..Mythic), enhanceLevel, tier, options: [{optionId, value}], setId?, gearSkillId?, runes[] }`.
+
+Đã làm (M2): `GearInstance = { uid, gearId, qualityId, enhance }`; món đang bán là `ShopItem` thêm `price`, `listPrice`, `listedAtMs` (world v5). Options, set, gear skill, rune chưa làm.
+
+- Chỉ số chính (`formulas.gearMainValue`): `mainValue(gear) × statMult(quality) × (1 + enhance × enhanceStatPerLevel)` — enhance cộng tuyến tính theo % của giá trị gốc.
+- Cường hóa (`systems/economy.ts`, `doEnhance`): bước lên `+n` dùng dòng `enhance[n−1]` trong `enhance.json` (`successRate`, `costFrac`, `dropOnFail`). Phí = `round(basePrice × costFrac)`, hunter trả đủ, Town nhận `round(phí × feeTownShare)`, phần còn lại ra khỏi nền kinh tế (gold sink). Thành công → `enhance + 1`; thất bại và `dropOnFail` và `enhance > 0` → `enhance − 1`. AI chọn khi nào cường hóa theo kỳ vọng (§5.4).
 
 ## 5. AI hunter
 
@@ -106,26 +136,28 @@ Chỉ số cuối = base theo `gearId` × hệ số quality (GDD §6) × đườ
 - *State machine* lo phần **thực thi** một mục tiêu: `Idle → Travel → Act → Done`.
 - *Utility* lo phần **chọn mục tiêu**: mỗi lần cần quyết định, chấm điểm tất cả goal khả dụng rồi chọn điểm cao nhất (có nhiễu nhỏ để hunter không đồng bộ).
 - Quyết định lại khi: xong goal, có ngưỡng khẩn cấp bị vượt, có command của người chơi, hoặc mỗi **3 s** khi đang săn **[ĐỀ XUẤT]**.
+- Trong code (`systems/ai.ts`): state machine là `ai.phase` = `travel` (đi theo `path`) → `act` (làm goal tại đích); `goal = null` là Idle, quyết định ngay ở tick sau. Định kỳ quyết định lại mỗi `decisionIntervalSec` chỉ khi đang `act` với goal `hunt`/`wander` và goal không bị ép (`forced`). Nhiễu: cộng `rng.range(0, decisionNoise)` vào từng điểm. Goal sell/shop/enhance/learn/service do system tương ứng thực hiện tại cửa rồi xóa goal.
 
 ### 5.2 Danh sách goal
 
-| Goal | Điều kiện khả dụng | Điểm cơ sở (chuẩn hóa 0..1) |
-|---|---|---|
-| `Hunt(zone)` | Zone đã mở, không có nhu cầu khẩn cấp | `zoneFit × needsOk × (1 − bagFull)` |
-| `ReturnTown` | Đang ở field | `max(urgency của các nhu cầu, bagFull, noPotion)` |
-| `Heal` (Infirmary) | Ở Town, dịch vụ còn hàng, đủ tiền | `1 − hp/hpMax` |
-| `Eat` (Restaurant) | như trên | `1 − satiety/max` |
-| `Fun` (Tavern) | như trên | `1 − mood/max` |
-| `Rest` (Inn) | như trên | `1 − stamina/max` |
-| `BuyGear(slot)` | Shop có món tốt hơn và đủ tiền | `upgradeGain × affordability` |
-| `BuyPotion` | Thiếu potion, đủ tiền | `1 − potionCount/potionTarget` |
-| `SellMaterials` | Trạm Thu Mua sẽ trả tiền cho ít nhất 1 đơn vị trong bag (xem §5.7), hoặc bag ≥ `bagReturnFrac` và có NL không được yêu cầu (đi bỏ) | `bagFill` (tăng mạnh khi > 80%) |
-| `Enhance/Upgrade` | Đủ tiền và vật liệu | `gain × affordability × riskTolerance` |
-| `Train` | Hunter sợ săn (Coward…) hoặc chênh level lớn | theo GDD §5 Training Ground |
-| `Wander` | fallback | hằng số nhỏ (0.05) |
+Theo `scoreGoals` trong `src/core/ai/utility.ts`. Điểm không chuẩn hóa về 0..1: goal kinh tế cố ý > 1 để thắng `Hunt` (fit ≤ 1) khi khả dụng. `needsOk` = 0 khi có nhu cầu khẩn cấp, 1 khi mọi nhu cầu ≥ ngưỡng mềm, tuyến tính ở giữa (nhu cầu tệ nhất quyết định). `econMul = max(needsOk, 0.5)`.
 
-**Nhu cầu khẩn cấp** (bỏ qua utility, ép `ReturnTown` ngay) **[ĐỀ XUẤT]**: HP < 25%, Satiety < 10%, Stamina < 10%.
-**Nhu cầu mềm** (cộng điểm `ReturnTown`): bất kỳ nhu cầu < 40%.
+| Goal (`Goal.type`) | Điều kiện khả dụng | Điểm |
+|---|---|---|
+| `hunt(zone)` | `fit > 0` (§5.3) | `fit × needsOk × personality(goal.hunt) × hệ số yêu cầu vật liệu (§5.3)`, `+ huntStickiness` nếu đang săn đúng zone đó |
+| `returnTown` | Đang ở field | `max(1 − needsOk, bagScore)`; `bagScore = 1.2` khi bag ≥ `bagReturnFrac` và Trạm Thu Mua sẽ mua hoặc nhận bỏ ít nhất 1 đơn vị |
+| `service(building)` — Heal/Eat/Fun/Rest | Ở Town, nhu cầu < 98%, đủ vàng cho `servicePrice` | `frac < softNeedFrac ? 0.6 + 0.4 × (1 − frac) : 0.5 × (1 − frac)`, × `personality(goal.service.<need>)` |
+| `sell` | Trạm Thu Mua sẽ trả tiền cho ít nhất 1 đơn vị trong bag (xem §5.7), hoặc bag ≥ `bagReturnFrac` và có NL không được yêu cầu (đi bỏ) | `(0.4 + bagFill) × econMul` |
+| `shop(item)` | `bestShopPurchase` (§5.4) | `(1.1 + 0.5 × min(gain, 1)) × econMul` |
+| `enhance(slot)` | `bestEnhance` (§5.4) | `(ENHANCE_BASE_SCORE + ENHANCE_GAIN_WEIGHT × expectedRelGain) × econMul` |
+| `learn(skill/trait)` | `bestLearn`: skill rẻ nhất học được khi vàng dư ≥ phí × `enhanceGoldReserveMul` (level 1 giữ lại vàng khởi điểm); không có thì trait theo thứ tự ưu tiên | skill `1.15 × econMul`, trait `1.2 × econMul` |
+| `wander` | Ở Town (fallback) | `max(wanderScore, 0.5 × (1 − needsOk))`; rảnh trong Town hồi nhu cầu chậm miễn phí (`townIdleRegenPerSec`) nên hunter hết tiền không bị kẹt |
+| `dead` | Gán khi chết, không chấm điểm | |
+
+Chưa làm: `BuyPotion` (chưa có potion), `Train` (chưa có Training Ground).
+
+**Nhu cầu khẩn cấp** (backstop cứng, ép `returnTown`) **[ĐỀ XUẤT]**: nhu cầu < `urgentHpFrac`/`urgentSatietyFrac`/`urgentMoodFrac`/`urgentStaminaFrac` (hiện 25% / 10% / 10% / 10%), mỗi ngưỡng × `personality(urgent.<need>)` (ví dụ liều lĩnh ×0.5 HP). **[CHỐT]** `applyUrgentBackstop` chỉ bắn khi hunter còn sống, ở field (node có zone), không ở trong building và chưa có goal `returnTown`; nó **ghi đè cả lệnh của người chơi** (`forced`). Chạy ở đầu pass AI và chạy lại trong `urgentBackstopSystem` ngay sau combat + skills (§3.2).
+**Nhu cầu mềm** (`softNeedFrac`, hiện 40%): kéo `needsOk` xuống, tức giảm điểm `hunt` và tăng `returnTown`. Ở field, ngưỡng mềm cũng nhân hệ số personality (tối đa `softNeedFrac`) để hunter liều lĩnh đánh tiếp; ở Town thì không, để hunter vừa hồi sinh vẫn đi chữa trước.
 
 ### 5.3 Chấm điểm vùng săn
 
@@ -150,11 +182,29 @@ Căn bậc hai làm ratio tuyến tính theo chỉ số: hunter gấp đôi DPS 
 
 Ngưỡng là **[ĐỀ XUẤT]** (`formula_params.json`). Yêu cầu vật liệu (§5.7) chỉ đổi **lựa chọn vùng**: sau `fit` ở trên, mỗi vùng khả dụng (fit > 0) nhân `(1 + requestZoneBonus × tỉ lệ giá trị rơi đang được yêu cầu) / max(hệ số đó của các vùng khả dụng)`, nên điểm săn cao nhất không bao giờ tăng so với khi không có yêu cầu và vùng hunter không sống nổi không bao giờ được cộng. Chief dùng lệnh Move để ghi đè: goal `Hunt(zoneChỉĐịnh)` được giữ cho đến khi xong hoặc có nhu cầu khẩn cấp.
 
-### 5.4 Mua đồ
+### 5.4 Mua đồ và cường hóa
 
-- `upgradeGain = (score(mới) − score(cũ)) / score(cũ)`, với `score` là chỉ số chính có trọng số theo class (ví dụ Berserker ưu tiên ATK).
-- Chỉ mua khi `upgradeGain ≥ 5%` và `giá ≤ gold × spendRatio` **[ĐỀ XUẤT]** (`spendRatio` mặc định 0.8).
-- Đồ cũ bán lại cho shop hoặc vào kho Town (TBD theo thiết kế kinh tế).
+**Mua đồ** (`bestShopPurchase`, thực hiện ở `economy.doShop`):
+
+- `gain = (gearMainValue(mới) − slotValue(cũ)) / max(slotValue(cũ), 1)` — so chỉ số chính của gear cùng slot, **chưa** có trọng số theo class.
+- Chỉ mua khi `gain ≥ minUpgradeGain`, level hunter ≥ level gear và `giá ≤ gold × spendRatio × personality(spendRatio)` **[ĐỀ XUẤT]**. Nhiều món đạt: `min(gain, 1)` cao nhất, hòa thì giá thấp hơn, rồi `uid`.
+- Đồ cũ bị bỏ (không bán lại, không vào kho). HP hiện tại không được hồi khi max HP tăng.
+
+**Cường hóa theo kỳ vọng** (`bestEnhance` trong `ai/utility.ts`; thực thi và luật thành/bại ở §4.2). Với mỗi slot có gear, `p = successRate` của bước kế, `step` = chỉ số chính tăng thêm nếu thành công, `loss` = chỉ số mất nếu thất bại (chỉ khi `dropOnFail` và `enhance > 0`):
+
+```
+khả dụng      : p ≥ ENHANCE_MIN_SUCCESS
+                và gold ≥ phí × enhanceReserveMul(p) + upgradeSavings(slot)
+enhanceReserveMul(p) = enhanceGoldReserveMul / p^ENHANCE_RISK_EXP      (bước rủi ro cần nhiều vàng dư hơn)
+upgradeSavings(slot) = khi có gear cùng slot đeo được với giá trị (chất lượng điển hình) ≥ hiện tại × (1 + minUpgradeGain):
+                       UPGRADE_SAVINGS_FRAC × basePrice × TYPICAL_QUALITY_MULT / (spendRatio × personality) nhỏ nhất; ngược lại 0
+                       (không đánh bóng món sắp thay, giữ vàng cho lần mua)
+chọn slot     : p × step / phí lớn nhất (chỉ số kỳ vọng trên mỗi vàng); hòa → thứ tự GEAR_SLOTS
+expectedGain  = p × step − (1 − p) × loss;  expectedRelGain = expectedGain / max(giá trị hiện tại, 1)
+điểm goal     = (ENHANCE_BASE_SCORE + ENHANCE_GAIN_WEIGHT × expectedRelGain) × econMul      (§5.2)
+```
+
+Lưu ý: chọn slot dùng kỳ vọng **không** trừ `loss`, còn điểm goal dùng `expectedGain` đã trừ `loss`. Các hằng `ENHANCE_*`, `UPGRADE_SAVINGS_FRAC`, `TYPICAL_QUALITY_MULT` đang là hằng số trong `ai/utility.ts`, **chưa** nằm trong `formula_params.json` (trái với mục tiêu data-driven §1; nên chuyển khi design chốt).
 
 ### 5.5 Tính cách là hệ số (modifier)
 
@@ -195,12 +245,14 @@ Code: `src/core/systems/trading.ts`, `economy.ts` (`doSell`), tham số trong `f
 - Cache path theo cặp (node đầu, node cuối), mất hiệu lực khi graph đổi.
 - Trong field: đi tới node gần quái, sau đó steering tự do trong bán kính.
 - Trên ~60 hunter: giới hạn 10 truy vấn A*/tick, còn lại xếp hàng.
+- Hiện trạng (`pathfinding.ts`): graph dựng một lần từ `map_node`/`map_edge`, hệ số road = `roadSpeedMul`; cache path theo cặp node không bao giờ bị xóa vì chưa có đặt/xóa building lúc chạy. Chưa có giới hạn A*/tick (chưa cần ở quy mô hiện tại).
 
 ## 7. Combat
 
 - Hunter chọn mục tiêu là quái gần nhất trong tầm nhìn; ưu tiên quái đang đánh mình.
 - Đòn đánh thường lặp theo chu kỳ `ATK SPD` (số nhỏ = nhanh, GDD §4.2).
-- Skill: auto-cast khi hết cooldown và có mục tiêu hợp lệ; ưu tiên theo thứ tự trong config.
+- Skill: auto-cast khi hết cooldown và có mục tiêu hợp lệ; ưu tiên theo thứ tự trong config. Code: `systems/skills.ts` chạy ngay sau combat, tối đa 1 skill/hunter/tick, loại `strike`/`aoe`/`buff`; damage đi qua `combat.damageMonster` (cùng mitigation/crit/thưởng kill).
+- Chết: HP về 0, goal `dead` trong `reviveSec`, rồi hồi sinh ở node quảng trường với `reviveHpFrac` HP và AI mới.
 - Mọi công thức (damage, giảm sát thương theo DEF, crit, evasion, buff stacking) nằm trong `formulas.ts`, có unit test và lấy hệ số từ config `formula_params`.
 - Mỗi đòn trúng: giảm Mood của mục tiêu bị đánh; mỗi đòn hunter đánh: giảm Satiety (GDD §4.2).
 
@@ -238,10 +290,13 @@ client load lúc khởi động → bất biến khi chạy
 - Mỗi bảng có schema (zod hoặc JSON Schema). Build lỗi nếu thiếu cột, sai kiểu hoặc ID tham chiếu không tồn tại.
 - Text không nằm trong bảng gameplay: chỉ lưu `nameKey`/`descKey`, text nằm ở bảng `loc` (một cột mỗi ngôn ngữ).
 - Danh sách theo level dùng mảng (`[v1, v2, …]`), độ dài phải bằng `maxLevel`.
+- Hiện trạng: chưa có tool sheets → JSON; `game/config/*.json` đang sửa tay. Validate bằng schema DSL tự viết (`config/schema.ts`, không dùng zod) theo `TABLE_SPECS` + kiểm tra chéo bảng (map, ref) trong `config/load.ts`; `REQUIRED_FORMULA_KEYS` bắt buộc trong `formula_params`. Chạy `npm run config:check`; client và test gọi `loadConfig` nên config lỗi không chạy được. Version config ở `meta.json` (lưu vào save là `configVersion`).
 
 ### 8.2 Bảng gameplay
 
 Kiểu: `id` string, `ref<X>` = id của bảng X, `int[]`/`float[]` = mảng theo level.
+
+Bảng dưới là **thiết kế đích**. Đã có trong `game/config/` (trường thật xem `TABLE_SPECS`): `class` (statRanges, attackSpeed; **không** có growthPerLevel — mức tăng mỗi level là `levelHpGain/AtkGain/DefGain` chung trong `formula_params`), `job` (thêm `statMult`), `stat_grade`, `personality`, `skill` (kind strike/aoe/buff, `value[]`, `studyLevel[]`, `studyGold[]`…), `trait`, `gear` (slot, level, mainStat, mainValue, craftBuilding, craftSec, materials, basePrice), `gear_quality` (statMult, priceMult, craftChance), `enhance` (`level, successRate, costFrac, dropOnFail`), `material` (price), `monster`, `zone`, `difficulty` (unlockHunters, unlockReincarnation, monsterHp/Atk/DefMul, rewardMul), `building` (dịch vụ có need/restorePerSec/price), `map_node`, `map_edge`, `formula_params`, `loc`, `meta`. Các bảng khác chưa làm.
 
 | Bảng | Trường chính |
 |---|---|
@@ -257,7 +312,7 @@ Kiểu: `id` string, `ref<X>` = id của bảng X, `int[]`/`float[]` = mảng th
 | `gear_option` | id, stat, op, plusRange[min,max], minusRange[min,max], allowedSlots, unique (bool) |
 | `gear_set` | id, nameKey, pieces: ref<gear>[], bonus: [{count: 2/4/6, effect, value}] |
 | `gear_skill` | id, nameKey, trigger, cooldown, effect, values[] |
-| `enhance` | level, successRate, failPenalty (0 hoặc −1 từ +10), cost |
+| `enhance` | level, successRate, costFrac (phí = basePrice × costFrac), dropOnFail (thất bại −1 level) |
 | `material` | id, nameKey, rating, price, zoneIds[], composeTo? |
 | `monster` | id, nameKey, race, level, hp, atk, def, exp, gold, drops: [{matId, chance}], zoneIds[] |
 | `zone` | id, nameKey, difficultyId, monsterPool: [{monsterId, weight}], waypointNodes[] |
@@ -295,8 +350,20 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 ## 9. Save và offline progress
 
 - **Save:** toàn bộ `world` serialize JSON + `schemaVersion` + `configVersion`, lưu IndexedDB mỗi 30 s và khi app ẩn. Có migration theo `schemaVersion`.
+- **Code** (`src/core/save/`): file save = `{ format: 'town-hunter-save', schemaVersion, configVersion, savedAt, world }`. `deserialize(text, config)` từ chối JSON hỏng, file lạ và schema mới hơn build; chạy lần lượt `MIGRATIONS[v]` (v → v+1) tới `WORLD_SCHEMA_VERSION`; trả `migratedFrom` và `configChanged` (save làm với config version khác). **[CHỐT]** Migration nhận **config hiện tại** (`Migration = (world, config) => world`), nên giá trị suy từ config (node xuất phát, mức tăng level) là của config đang chạy, không phải config lúc save. Không sửa migration đã phát hành; đổi shape World thì bump `WORLD_SCHEMA_VERSION` và thêm migration + test trong `tests/save.test.ts`.
+
+| Migration | Mốc | Nội dung |
+|---|---|---|
+| v0 → v1 | prototype → M0 | Thêm `town.arrivalTimerMs = 0` (và `town.gold = 0` nếu thiếu), `hunter.reincarnation = 0`. |
+| v1 → v2 | M0 → M1 | Đặt hunter tại node quảng trường của config (`config.index.squareNode`, như lúc hồi sinh/arrival; fallback `t.square` (0,0) nếu không có), AI mới, `insideBuildingId/attackCdMs/deadMs/kills`; `monsters = []`, `zones = {}`, `stats` mới. |
+| v2 → v3 | M1 → M2 | `equipment`/`bag` rỗng; Town `storage`, `shop`, `crafting`, `autoCraft = true`; stat kinh tế = 0 (giữ giá trị có sẵn). |
+| v3 → v4 | M2 → M3 | `rollStats` ước lượng = `stats` trừ `(level − 1) × levelHpGain/AtkGain/DefGain` của config, kẹp trong khoảng roll của class (`statRanges`); skill/trait/buff rỗng; quái và Town dùng `diff.easy`; `autoReincarnate = true`; stat M3 = 0. |
+| v4 → v5 | lượt cân bằng | Món trong shop thêm `listPrice = price`, `listedAtMs = world.timeMs` (giảm giá/hủy theo tuổi). |
+| v5 → v6 | Trạm Thu Mua theo yêu cầu | `town.requests = {}`, stat `materialsDiscarded`/`gearScrapped` = 0. Kho cũ giữ nguyên. |
+
 - **Offline progress [CHỐT]:** không mô phỏng từng tick. Ước lượng theo tốc độ trung bình đo được trong 10 phút gần nhất (gold/s, EXP/s, vật liệu/s theo từng hunter), nhân với thời gian vắng, trần **8 giờ [ĐỀ XUẤT]**. Hiển thị popup tổng kết.
 - Journey chạy offline theo thời gian thực (GDD §9), tính kết quả lúc mở game.
+- Offline progress và Journey **chưa làm** (M4). Hiện client chỉ chạy tiếp sim từ lúc load; `Simulation.advance` chạy tối đa 600 tick mỗi lần gọi để tránh dồn tick sau khi tab bị ẩn.
 
 ## 10. Hiệu năng
 
@@ -326,6 +393,8 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 | M4 | Bounty, Trading Post, Journey, offline progress | QA checklist GDD §13 đạt |
 | M5 | UI hoàn chỉnh, localization, tuning bằng headless | Bản chơi thử nội bộ |
 | M6 | Online: account, cloud save, IAP; sau đó Raid, PvP, Guild | Theo đặc tả riêng |
+
+Hiện trạng: M0–M3 xong (config `0.3.0-m3`, world v6) cùng một lượt cân bằng; từ M4 mới có Trạm Thu Mua theo yêu cầu vật liệu (§5.7).
 
 ## 13. Việc còn mở
 
