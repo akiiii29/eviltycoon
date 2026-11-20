@@ -245,6 +245,8 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'serviceFullFrac', 'serviceLowBase', 'serviceLowWeight', 'serviceWeight', 'bagReturnScore', 'restScoreWeight',
   'retreatTripMul', 'retreatKillMul', 'retreatHpCap',
   'feeTownTargetMul', 'feeTownTargetMin', 'servicePriceLatePct', 'servicePriceLateLevel',
+  'bountyMaxActive', 'bountyMaxKills', 'bountyCompletionFrac', 'bountyZoneBonus', 'bountyTormentFromOrder', 'bountyTormentDropBonus',
+  'bountyAutoIntervalSec', 'bountyAutoGoldMul', 'bountyAutoRewardFrac', 'bountyAutoKills', 'bountyAutoExpireSec',
 ];
 
 export class ConfigError extends Error {
@@ -316,6 +318,18 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('retreatTripMul', 0, 100);
     range('retreatKillMul', 0, 100);
     range('retreatHpCap', 0, 0.95);
+    // Bounties (TECH_SPEC §5.9).
+    range('bountyMaxActive', 0, 100);
+    range('bountyMaxKills', 1, 1e6);
+    range('bountyCompletionFrac', 0, 1);
+    range('bountyZoneBonus', 0, 10);
+    range('bountyTormentFromOrder', 0, 1000);
+    range('bountyTormentDropBonus', 0, 10);
+    range('bountyAutoIntervalSec', 0.1, 1e6);
+    range('bountyAutoGoldMul', 0, 100);
+    range('bountyAutoRewardFrac', 0, 1);
+    range('bountyAutoKills', 1, 1e6);
+    range('bountyAutoExpireSec', 0, 1e7);
   }
 
   const grades = raw.stat_grade;

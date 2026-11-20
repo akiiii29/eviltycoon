@@ -122,4 +122,14 @@ export const MIGRATIONS: Record<number, Migration> = {
       stats: { materialsDiscarded: 0, gearScrapped: 0, ...stats },
     };
   },
+  // v6 → v7 (Bounty, GDD §9): active bounties, auto-bounty switch (on, like auto-craft), bounty stats.
+  6: (w) => {
+    const town = (w.town ?? {}) as Record<string, unknown>;
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    return {
+      ...w,
+      town: { bounties: [], autoBounty: true, ...town },
+      stats: { bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, ...stats },
+    };
+  },
 };

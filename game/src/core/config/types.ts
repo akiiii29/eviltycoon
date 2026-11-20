@@ -395,6 +395,26 @@ export interface FormulaParams {
   /** Extra service price above servicePriceLateLevel: + servicePriceLatePct / 100 × (level − servicePriceLateLevel) × base. */
   servicePriceLatePct: number;
   servicePriceLateLevel: number;
+  /** Bounties (TECH_SPEC §5.9, systems/bounty.ts). Max active bounties (player + auto) and max kills per bounty. */
+  bountyMaxActive: number;
+  bountyMaxKills: number;
+  /** On completion the kingdom pays the Town round(reward × bountyCompletionFrac) (< 1: a bounty is a net Town sink). */
+  bountyCompletionFrac: number;
+  /** AI zone choice × (1 + bountyZoneBonus × bounty-target share of the zone's spawn weight), normalised like requests. */
+  bountyZoneBonus: number;
+  /** Bounty-target drops × (1 + bountyTormentDropBonus × (difficulty order − bountyTormentFromOrder + 1)) from that order on. */
+  bountyTormentFromOrder: number;
+  bountyTormentDropBonus: number;
+  /**
+   * Auto-bounty: every bountyAutoIntervalSec, if Town gold > bountyAutoGoldMul × townGoldTarget and no auto-bounty is
+   * active, post bountyAutoKills kills for round(bountyAutoRewardFrac × (gold − target)); it expires (refund) after
+   * bountyAutoExpireSec (0 = never).
+   */
+  bountyAutoIntervalSec: number;
+  bountyAutoGoldMul: number;
+  bountyAutoRewardFrac: number;
+  bountyAutoKills: number;
+  bountyAutoExpireSec: number;
   [key: string]: number;
 }
 

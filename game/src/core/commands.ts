@@ -6,6 +6,7 @@ import { setGoal } from './systems/ai';
 import { startCraft } from './systems/crafting';
 import { servicePrice } from './systems/services';
 import { reincarnate } from './systems/progression';
+import { cancelBounty, postBounty, validateBounty } from './systems/bounty';
 
 /** Player/debug commands. Queued by UI, applied at the start of the next tick (TECH_SPEC §3.1). */
 export type Command =
@@ -30,7 +31,16 @@ export type Command =
    * GDD §5: place a Trading Post request — the post buys up to `count` more units of the material
    * (on top of the automatic requests). Sets (does not add to) the outstanding count; 0 cancels it.
    */
-  | { type: 'town.requestMaterial'; materialId: string; count: number };
+  | { type: 'town.requestMaterial'; materialId: string; count: number }
+  /**
+   * GDD §9: post a bounty — `kills` kills of a monster type (anywhere) or in a zone, for `reward` gold in total, taken
+   * from Town gold now (escrow) and paid out per kill (TECH_SPEC §5.9).
+   */
+  | { type: 'town.postBounty'; targetKind: 'monster' | 'zone'; targetId: string; kills: number; reward: number }
+  /** Cancel an active bounty; its unpaid escrow returns to Town gold. */
+  | { type: 'town.cancelBounty'; bountyId: string }
+  /** Toggle automatic bounties when Town gold is above its treasury target. */
+  | { type: 'town.setAutoBounty'; on: boolean };
 
 type Handler<C extends Command> = (ctx: SystemContext, cmd: C) => string | null;
 
@@ -114,6 +124,17 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     const req = ctx.world.town.requests ?? (ctx.world.town.requests = {});
     if (n === 0) delete req[cmd.materialId];
     else req[cmd.materialId] = n;
+    return null;
+  },
+  'town.postBounty': (ctx, cmd) => {
+    const bad = validateBounty(ctx.config, ctx.world, cmd.targetKind, cmd.targetId, cmd.kills, cmd.reward);
+    if (bad) return bad;
+    postBounty(ctx, cmd.targetKind, cmd.targetId, cmd.kills, cmd.reward, false);
+    return null;
+  },
+  'town.cancelBounty': (ctx, cmd) => (cancelBounty(ctx, cmd.bountyId, 'cancelled') ? null : 'unknown bounty'),
+  'town.setAutoBounty': (ctx, cmd) => {
+    ctx.world.town.autoBounty = !!cmd.on;
     return null;
   },
 };

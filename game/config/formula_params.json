@@ -112,5 +112,16 @@
  "feeTownTargetMul": 10,
  "feeTownTargetMin": 5000,
  "servicePriceLatePct": 5,
- "servicePriceLateLevel": 40
+ "servicePriceLateLevel": 40,
+ "bountyMaxActive": 3,
+ "bountyMaxKills": 1000,
+ "bountyCompletionFrac": 0.25,
+ "bountyZoneBonus": 0.3,
+ "bountyTormentFromOrder": 5,
+ "bountyTormentDropBonus": 0.25,
+ "bountyAutoIntervalSec": 60,
+ "bountyAutoGoldMul": 1,
+ "bountyAutoRewardFrac": 0.1,
+ "bountyAutoKills": 30,
+ "bountyAutoExpireSec": 1800
 }
