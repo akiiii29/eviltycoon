@@ -4,6 +4,7 @@ import { GEAR_SLOTS } from '../core/config/types';
 import type { SimEvent } from '../core/events';
 import { hunterStats, needMax } from '../core/formulas';
 import type { Simulation } from '../core/simulation';
+import { taxMoodLoss, taxRate } from '../core/systems/tax';
 import type { GearInstance, Hunter, NeedKey } from '../core/world';
 import { bagCount } from '../core/world';
 
@@ -139,6 +140,7 @@ export class DebugOverlay {
       case 'difficulty': sim.enqueue({ type: 'town.setDifficulty', difficultyId: el.dataset.d! }); break;
       case 'autoreinc': sim.enqueue({ type: 'town.setAutoReincarnate', on: !sim.world.town.autoReincarnate }); break;
       case 'autobounty': sim.enqueue({ type: 'town.setAutoBounty', on: !sim.world.town.autoBounty }); break;
+      case 'tax': sim.enqueue({ type: 'town.setTaxRate', rate: Number(el.dataset.v) }); break;
       case 'cancelbounty': sim.enqueue({ type: 'town.cancelBounty', bountyId: el.dataset.id! }); break;
       case 'reincarnate': sim.enqueue({ type: 'hunter.reincarnate', hunterId: el.dataset.id! }); break;
     }
@@ -152,7 +154,7 @@ export class DebugOverlay {
   pushEvents(events: SimEvent[]): void {
     const config = this.sim.config;
     for (const e of events) {
-      if (e.type === 'hit' || e.type === 'monsterKilled' || e.type === 'bountyProgress') continue; // too noisy for the log
+      if (e.type === 'hit' || e.type === 'monsterKilled' || e.type === 'bountyProgress' || e.type === 'taxCollected') continue; // too noisy for the log
       const line = economyLine(config, e) ?? progressLine(config, e);
       if (line) {
         this.log.unshift(`#${e.tick} ${line}`);
@@ -199,7 +201,24 @@ export class DebugOverlay {
       <div class="debug-sub">Cửa hàng ${town.shop.length}/${cap}</div>
       <div class="shop-list">${shop}</div>
       ${this.renderBounties()}
+      ${this.renderTax()}
       ${this.renderDifficulty()}`;
+  }
+
+  /** Town tax on kill gold (TECH_SPEC §5.10): current rate, total collected, −/+ 5 points within the config bounds. */
+  private renderTax(): string {
+    const { world, config } = this.sim;
+    const f = config.formula;
+    const rate = taxRate(config, world);
+    const step = (d: number) => Math.round(Math.min(f.taxMaxRate, Math.max(f.taxMinRate, rate + d)) * 100) / 100;
+    const btn = (d: number, label: string) => {
+      const v = step(d);
+      return `<button data-a="tax" data-v="${v}"${v === rate ? ' disabled' : ''}>${label}</button>`;
+    };
+    const mood = taxMoodLoss(config, rate);
+    return `
+      <div class="debug-sub">Thuế ${Math.round(rate * 100)}% vàng kill · đã thu ${world.stats.taxCollected ?? 0}g${mood > 0 ? ` · −${mood.toFixed(2)} mood/kill` : ''}</div>
+      <div class="debug-row">${btn(-0.05, '−5%')}${btn(0.05, '+5%')}</div>`;
   }
 
   /** Bounty block (TECH_SPEC §5.9): active bounties with progress, escrow and a cancel button; auto-bounty toggle. */
@@ -351,6 +370,7 @@ function progressLine(config: GameConfig, e: SimEvent): string | null {
     case 'bountyCompleted': return `bounty ${e.bountyId} xong (${e.hunterId}) · vương quốc trả Town +${e.kingdomGold}g`;
     case 'bountyCancelled': return `bounty ${e.bountyId} ${e.reason === 'expired' ? 'hết hạn' : 'bị hủy'} · hoàn ${e.refund}g`;
     case 'difficultyUnlocked': return `mở khóa độ khó ${difficultyName(config, e.difficultyId)}`;
+    case 'taxRateChanged': return `thuế → ${Math.round(e.rate * 100)}%`;
     case 'difficultyChanged': return `độ khó → ${difficultyName(config, e.difficultyId)}`;
     default: return null;
   }

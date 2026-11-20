@@ -427,6 +427,16 @@ export interface FormulaParams {
   bountyAutoRewardFrac: number;
   bountyAutoKills: number;
   bountyAutoExpireSec: number;
+  /**
+   * Town tax on kill gold (TECH_SPEC §5.10, systems/tax.ts): tax = floor(gold × rate), rate = town.taxRate ?? taxRate in
+   * [taxMinRate, taxMaxRate] (the `town.setTaxRate` bounds). Each taxed kill costs the killer
+   * taxMoodPerKill × max(0, rate − taxMoodFreeRate) mood (× personality decay.mood).
+   */
+  taxRate: number;
+  taxMinRate: number;
+  taxMaxRate: number;
+  taxMoodFreeRate: number;
+  taxMoodPerKill: number;
   [key: string]: number;
 }
 

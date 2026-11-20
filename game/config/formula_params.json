@@ -129,5 +129,10 @@
  "bountyAutoGoldMul": 1,
  "bountyAutoRewardFrac": 0.1,
  "bountyAutoKills": 30,
- "bountyAutoExpireSec": 1800
+ "bountyAutoExpireSec": 1800,
+ "taxRate": 0.1,
+ "taxMinRate": 0,
+ "taxMaxRate": 0.5,
+ "taxMoodFreeRate": 0.1,
+ "taxMoodPerKill": 10
 }

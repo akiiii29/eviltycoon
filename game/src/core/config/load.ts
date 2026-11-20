@@ -248,6 +248,7 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'offlineMaxHours', 'offlineEfficiency', 'offlineSampleSec', 'offlineWindowMin', 'offlineMinWindowSec', 'offlineMinAwaySec',
   'bountyMaxActive', 'bountyMaxKills', 'bountyCompletionFrac', 'bountyZoneBonus', 'bountyTormentFromOrder', 'bountyTormentDropBonus',
   'bountyAutoIntervalSec', 'bountyAutoGoldMul', 'bountyAutoRewardFrac', 'bountyAutoKills', 'bountyAutoExpireSec',
+  'taxRate', 'taxMinRate', 'taxMaxRate', 'taxMoodFreeRate', 'taxMoodPerKill',
 ];
 
 export class ConfigError extends Error {
@@ -338,6 +339,16 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('bountyAutoRewardFrac', 0, 1);
     range('bountyAutoKills', 1, 1e6);
     range('bountyAutoExpireSec', 0, 1e7);
+    // Town tax (TECH_SPEC §5.10): 0 ≤ taxMinRate ≤ taxRate ≤ taxMaxRate ≤ 1.
+    range('taxMinRate', 0, 1);
+    range('taxMaxRate', 0, 1);
+    range('taxRate', 0, 1);
+    range('taxMoodFreeRate', 0, 1);
+    range('taxMoodPerKill', 0, 100);
+    if (typeof o.taxRate === 'number' && typeof o.taxMinRate === 'number' && typeof o.taxMaxRate === 'number' &&
+      !(o.taxMinRate <= o.taxRate && o.taxRate <= o.taxMaxRate)) {
+      issues.push({ path: 'formula_params.taxRate', message: 'need taxMinRate ≤ taxRate ≤ taxMaxRate' });
+    }
   }
 
   const grades = raw.stat_grade;

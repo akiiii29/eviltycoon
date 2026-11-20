@@ -178,6 +178,11 @@ export interface World {
     bounties: Bounty[];
     /** v7: post bounties automatically when Town gold is above its treasury target. */
     autoBounty: boolean;
+    /**
+     * Tax rate on kill gold set by `town.setTaxRate` (systems/tax.ts, TECH_SPEC §5.10). Optional, no schema bump:
+     * absent = config `taxRate`.
+     */
+    taxRate?: number;
   };
   /** Arrays (not maps) so iteration order is stable and deterministic. */
   hunters: Hunter[];
@@ -205,6 +210,8 @@ export interface World {
     bountiesCompleted: number;
     bountyGoldPaid: number;
     bountyKingdomGold: number;
+    /** Tax taken from kill gold into Town gold (systems/tax.ts). Optional, no schema bump: absent = 0. */
+    taxCollected?: number;
   };
 }
 

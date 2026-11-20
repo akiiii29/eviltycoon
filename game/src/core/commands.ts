@@ -7,6 +7,7 @@ import { startCraft } from './systems/crafting';
 import { servicePrice } from './systems/services';
 import { reincarnate } from './systems/progression';
 import { cancelBounty, postBounty, validateBounty } from './systems/bounty';
+import { setTaxRate, validateTaxRate } from './systems/tax';
 
 /** Player/debug commands. Queued by UI, applied at the start of the next tick (TECH_SPEC §3.1). */
 export type Command =
@@ -40,7 +41,9 @@ export type Command =
   /** Cancel an active bounty; its unpaid escrow returns to Town gold. */
   | { type: 'town.cancelBounty'; bountyId: string }
   /** Toggle automatic bounties when Town gold is above its treasury target. */
-  | { type: 'town.setAutoBounty'; on: boolean };
+  | { type: 'town.setAutoBounty'; on: boolean }
+  /** Town tax on kill gold (TECH_SPEC §5.10), within [taxMinRate, taxMaxRate]. */
+  | { type: 'town.setTaxRate'; rate: number };
 
 type Handler<C extends Command> = (ctx: SystemContext, cmd: C) => string | null;
 
@@ -135,6 +138,12 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
   'town.cancelBounty': (ctx, cmd) => (cancelBounty(ctx, cmd.bountyId, 'cancelled') ? null : 'unknown bounty'),
   'town.setAutoBounty': (ctx, cmd) => {
     ctx.world.town.autoBounty = !!cmd.on;
+    return null;
+  },
+  'town.setTaxRate': (ctx, cmd) => {
+    const bad = validateTaxRate(ctx.config, cmd.rate);
+    if (bad) return bad;
+    setTaxRate(ctx, cmd.rate);
     return null;
   },
 };
