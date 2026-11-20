@@ -1,14 +1,14 @@
 import type { FormulaParams, GameConfig, GearSlot } from '../src/core/config/types';
 import { EventBuffer } from '../src/core/events';
-import { rollHunter } from '../src/core/hunterFactory';
+import { personalityFactor, rollHunter } from '../src/core/hunterFactory';
 import { NavGraph } from '../src/core/pathfinding';
 import { Rng } from '../src/core/rng';
 import { createWorld } from '../src/core/simulation';
 import type { SystemContext } from '../src/core/system';
 import { academySystem, nextSkillStudy } from '../src/core/systems/academy';
 import {
-  autoCraftReserve, craftGoldCost, craftingSystem, pickRecipe, recipeBeneficiaries, referenceQuality, startCraft,
-  updateShopTurnover,
+  autoCraftReserve, craftGoldCost, craftingSystem, pickRecipe, recipeBeneficiaries, referenceQuality, shopMarkdownSteps, shopScrapAgeSec,
+  startCraft, updateShopTurnover,
 } from '../src/core/systems/crafting';
 import { economySystem, enhanceCost, feeTownCut } from '../src/core/systems/economy';
 import type { Hunter, ShopItem, World } from '../src/core/world';
@@ -23,8 +23,8 @@ function cfg(patch: Partial<FormulaParams> = {}): GameConfig {
     ...base,
     formula: {
       ...base.formula,
-      craftGoldFrac: 0.3, feeTownShare: 0.3, shopStaleSec: 600, shopMarkdownPct: 10, shopMarkdownFloor: 0.5, shopScrapSec: 1800,
-      minUpgradeGain: 0.12, craftLevelAhead: 2, craftAffordFrac: 0,
+      craftGoldFrac: 0.3, feeTownShare: 0.3, shopStaleSec: 600, shopMarkdownPct: 10, shopMarkdownFloor: 0.5, shopFloorHoldSec: 600,
+      minUpgradeGain: 0.12, craftLevelAhead: 2, craftAffordFrac: 0, craftMinSellChance: 0.35,
       ...patch,
     },
   };
@@ -129,7 +129,7 @@ describe('fee split', () => {
 });
 
 describe('shop turnover', () => {
-  it('marks down shopMarkdownPct% of listPrice per shopStaleSec unsold, then scraps after shopScrapSec', () => {
+  it('marks down shopMarkdownPct% of listPrice per shopStaleSec down to the floor, scraps after shopFloorHoldSec there', () => {
     const ctx = makeCtx();
     ctx.world.town.autoCraft = false;
     const a = shopItem(ctx.world, 'gear.w.club', 100, 'q.rare', 0);
@@ -142,16 +142,41 @@ describe('shop turnover', () => {
     expect(at(599)).toEqual([100, 60]);
     expect(at(600)).toEqual([90, 60]);
     expect(at(900)).toEqual([90, 54]);
-    expect(at(1200)).toEqual([80, 54]);
-    expect(at(1799)).toEqual([80, 48]);
-    expect(at(1800)).toEqual([48]); // a scrapped (no refund), b keeps going
+    expect(at(1800)).toEqual([70, 48]);
+    expect(at(3000)).toEqual([50, 36]); // a reaches the floor (5 steps × 600 s)
+    expect(at(3300)).toEqual([50, 30]); // b reaches the floor
+    expect(at(3599)).toEqual([50, 30]); // a has sat at the floor for just under shopFloorHoldSec
+    expect(at(3600)).toEqual([30]); // a scrapped (no refund), b keeps going
     expect(ctx.world.town.shop[0]!.uid).toBe(b.uid);
     expect(a.listPrice).toBe(100);
-    expect(at(2100)).toEqual([]);
+    expect(at(3900)).toEqual([]);
+  });
+
+  it('derives the scrap age from the markdown schedule, so the floor is always reached first', () => {
+    const f = cfg().formula;
+    expect(shopMarkdownSteps(f)).toBe(5);
+    expect(shopScrapAgeSec(f)).toBe(5 * 600 + 600);
+    // Float noise: (1 − 0.7) × 100 / 10 = 3.0000000000000004 must still be 3 steps.
+    expect(shopMarkdownSteps(cfg({ shopMarkdownFloor: 0.7 }).formula)).toBe(3);
+    // Steps that do not divide evenly: 0.45 floor at 30 % → 100, 70, 40 → floor 45 after 2 steps.
+    expect(shopMarkdownSteps(cfg({ shopMarkdownPct: 30, shopMarkdownFloor: 0.45 }).formula)).toBe(2);
+    expect(shopScrapAgeSec(cfg({ shopFloorHoldSec: 0 }).formula)).toBe(3000);
+    expect(shopScrapAgeSec(cfg({ shopFloorHoldSec: -1 }).formula)).toBe(Infinity);
+    // Every item is offered at exactly its floor price before it is scrapped, for any schedule.
+    for (const [pct, floor, stale] of [[10, 0.5, 600], [7, 0.33, 450], [30, 0.45, 600], [10, 0.7, 300], [100, 0.01, 60]] as const) {
+      const config = cfg({ shopMarkdownPct: pct, shopMarkdownFloor: floor, shopStaleSec: stale, shopFloorHoldSec: 1 });
+      const world = createWorld(config, 1);
+      const it = shopItem(world, 'gear.w.club', 1000, 'q.rare', 0);
+      world.timeMs = (shopScrapAgeSec(config.formula) - 1) * 1000;
+      expect(updateShopTurnover(world, config)).toEqual([]);
+      expect(it.price).toBe(Math.round(1000 * floor));
+      world.timeMs += 1000;
+      expect(updateShopTurnover(world, config)).toEqual([it]);
+    }
   });
 
   it('never goes below round(listPrice × shopMarkdownFloor)', () => {
-    const config = cfg({ shopMarkdownPct: 30, shopMarkdownFloor: 0.45, shopScrapSec: 99_999 });
+    const config = cfg({ shopMarkdownPct: 30, shopMarkdownFloor: 0.45, shopFloorHoldSec: -1 });
     const world = createWorld(config, 1);
     shopItem(world, 'gear.w.club', 75, 'q.rare', 0);
     for (const [sec, want] of [[600, 53], [1200, 34], [6000, 34]] as const) { // 52.5→53, 30 < floor 33.75→34
@@ -168,7 +193,7 @@ describe('shop turnover', () => {
     const old = shopItem(ctx.world, 'gear.w.club', 60, 'q.rare', 0);
     for (let i = 1; i < cap; i++) shopItem(ctx.world, 'gear.w.club', 60, 'q.rare', 500_000);
     ctx.world.town.crafting['bld.jeweler'] = { gearId: 'gear.r.charm', remainingMs: 0 };
-    ctx.world.timeMs = 1_800_000; // the first item is exactly shopScrapSec old
+    ctx.world.timeMs = 3_600_000; // the first item is exactly shopScrapAgeSec old (5 × 600 s to the floor + 600 s)
     craftingSystem.update(ctx);
     expect(ctx.world.town.shop).toHaveLength(cap);
     expect(ctx.world.town.shop.some((x) => x.uid === old.uid)).toBe(false);
@@ -231,6 +256,49 @@ describe('smarter auto-craft', () => {
     ctx.world.town.shop = [];
     ctx.world.town.crafting['bld.smithy'] = { gearId: 'gear.w.club', remainingMs: 1000 };
     expect(recipeBeneficiaries(ctx, gear('gear.w.club'))).toBe(0);
+  });
+
+  it('counts stock by copies: one stocked item serves one hunter, not every hunter', () => {
+    const ctx = makeCtx();
+    for (let i = 0; i < 3; i++) addHunter(ctx, { level: 1 }); // three hunters with no weapon
+    shopItem(ctx.world, 'gear.w.club', 80, 'q.epic'); // covers one of them
+    expect(recipeBeneficiaries(ctx, gear('gear.w.club'))).toBe(2);
+    shopItem(ctx.world, 'gear.w.club', 80, 'q.epic');
+    expect(recipeBeneficiaries(ctx, gear('gear.w.club'))).toBe(1);
+    ctx.world.town.crafting['bld.smithy'] = { gearId: 'gear.w.club', remainingMs: 1000 }; // a job is a copy too
+    expect(recipeBeneficiaries(ctx, gear('gear.w.club'))).toBe(0);
+    // A hunter the stock does not serve (it is no upgrade for them) still counts in full:
+    // a Common club (3.2) on sale does not stop a Rare one (4) being worth crafting for all three.
+    ctx.world.town.shop = [];
+    ctx.world.town.crafting['bld.smithy'] = null;
+    shopItem(ctx.world, 'gear.w.club', 48, 'q.common');
+    expect(recipeBeneficiaries(ctx, gear('gear.w.club'))).toBe(3);
+  });
+
+  it('judges every quality roll: counts a hunter only when the rolls that upgrade them reach craftMinSellChance', () => {
+    // Late tier: star armor (114 at Rare) over a Rare void armor (98). Common 91.2 and Uncommon 102.6 are no
+    // upgrade (< +12 %); Rare/Epic/Mythic are (chance 0.2 + 0.1 + 0.05 = 0.35).
+    const strict = makeCtx(cfg({ craftMinSellChance: 0.65 }));
+    addHunter(strict, { level: 80, gold: 1e9 }, { armor: 'gear.a.void' });
+    expect(recipeBeneficiaries(strict, gear('gear.a.star'))).toBe(0); // 65 % of crafts would never sell
+    const loose = makeCtx(cfg({ craftMinSellChance: 0.35 }));
+    addHunter(loose, { level: 80, gold: 1e9 }, { armor: 'gear.a.void' });
+    expect(recipeBeneficiaries(loose, gear('gear.a.star'))).toBe(1);
+    // Well below the recipe every roll is an upgrade, so even the strict rule counts the hunter.
+    strict.world.hunters[0]!.equipment.armor = { uid: 'x', gearId: 'gear.a.frost', qualityId: 'q.rare', enhance: 0 }; // 58 vs void Common 78.4
+    strict.world.hunters[0]!.level = 80;
+    expect(recipeBeneficiaries(strict, gear('gear.a.void'))).toBe(1);
+  });
+
+  it('craftAffordFrac is checked per quality roll (its list price), not only at Rare', () => {
+    const ctx = makeCtx(cfg({ craftAffordFrac: 1, craftMinSellChance: 0.35 }));
+    const h = addHunter(ctx, { level: 80 }, { armor: 'gear.a.void' });
+    const spend = ctx.config.formula.spendRatio * personalityFactor(ctx.config, h, 'spendRatio');
+    const star = gear('gear.a.star');
+    h.gold = Math.ceil((star.basePrice * 1.3) / spend) + 1; // pays Rare and Epic, not Mythic (×1.6): 0.3 < 0.35
+    expect(recipeBeneficiaries(ctx, star)).toBe(0);
+    h.gold = Math.ceil((star.basePrice * 1.6) / spend) + 1; // every upgrading roll affordable: 0.35
+    expect(recipeBeneficiaries(ctx, star)).toBe(1);
   });
 
   it('an unaffordable top pick does not block a cheaper useful one', () => {

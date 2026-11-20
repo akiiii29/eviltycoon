@@ -175,7 +175,7 @@ export interface World {
     learned: number;
     /** v6: unrequested material units hunters threw away at the Trading Post. */
     materialsDiscarded: number;
-    /** v6: shop items removed unsold after shopScrapSec. */
+    /** v6: shop items removed unsold (age ≥ shopScrapAgeSec). */
     gearScrapped: number;
   };
 }

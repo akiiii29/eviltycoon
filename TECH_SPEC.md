@@ -228,14 +228,23 @@ Lệnh "nhắc" của người chơi là một **utility bonus có thời hạn*
 
 Code: `src/core/systems/trading.ts`, `economy.ts` (`doSell`), tham số trong `formula_params.json`.
 
-- **Yêu cầu tự động** (không lưu trong save, tính lại mỗi lần): với mỗi công thức mà `recipeWanters` ≥ 1 (số hunter mà món ở chất lượng tham chiếu là nâng cấp, level ≥ gear.level − `craftLevelAhead`, và ngân sách shop ≥ `craftAffordFrac × basePrice`; khác `recipeBeneficiaries` ở chỗ không trừ đồ đang bán/đang chế), giữ trong kho đủ NL cho `min(wanters, requestMaxCopies)` lần chế. Yêu cầu = phần kho còn thiếu. Tắt auto-craft → không có yêu cầu tự động.
+- **Yêu cầu tự động** (không lưu trong save, tính lại mỗi lần): với mỗi công thức mà `recipeWanters` ≥ 1 (số hunter mua được món theo quy tắc chất lượng ở §5.8; khác `recipeBeneficiaries` ở chỗ không trừ đồ đang bán/đang chế), giữ trong kho đủ NL cho `min(wanters, requestMaxCopies)` lần chế. Yêu cầu = phần kho còn thiếu. Tắt auto-craft → không có yêu cầu tự động.
 - **Yêu cầu của người chơi**: `town.requests` (world v6), đặt bằng lệnh `town.requestMaterial { materialId, count }` (đặt lại số, 0 = hủy; từ chối NL lạ, count không phải số nguyên ≥ 0, count > `requestMaxUnits`). Cộng thêm vào yêu cầu tự động và được lấp trước; giảm dần khi hunter bán.
 - **Khi bán** (theo thứ tự materialId, yêu cầu tính lại cho từng hunter nên 2 hunter cùng tick không lấp trùng):
   - đơn vị được yêu cầu: Town mua giá `round(price × (1 − tradeSaleTax))` khi còn đủ vàng, vào kho; phần được yêu cầu mà Town chưa đủ vàng thì **giữ lại trong bag**;
   - đơn vị vượt yêu cầu: **không vào kho**. Nếu vàng Town > `tradeSurplusFloorMul × autoCraftReserve` thì Town mua "để xuất đi" với giá `round(price × tradeSurplusPriceFrac × (1 − tradeSaleTax))`, chỉ dùng phần vàng trên sàn đó; còn lại hunter **bỏ** tại Trạm (event `materialsDiscarded`, stat `materialsDiscarded`).
   - Ý đồ: Town giàu thì chảy vàng lại cho hunter (giữ nhịp đầu game), Town nghèo thì chỉ chi cho thứ nó dùng; kho không còn chất đống.
 - **Đòn bẩy phụ**: `servicePriceLevelPct` (giá dịch vụ = `round(base × (1 + pct/100 × (level − 1)))`, một hàm `servicePrice` dùng chung cho system, AI và lệnh), `tradeSaleTax` (mặc định 0), `craftAffordFrac`. Giá giảm khi kho dư không cần nữa vì kho chỉ nhận phần được yêu cầu.
-- Shop: món bị bỏ sau `shopScrapSec` sinh event/stat `gearScrapped`.
+
+### 5.8 Shop: auto-craft và giảm giá (GDD §6) **[ĐÃ LÀM]**
+
+Code: `src/core/systems/crafting.ts`, tham số trong `formula_params.json`.
+
+- **Giảm giá**: món chưa bán cứ mỗi `shopStaleSec` giảm `shopMarkdownPct`% giá niêm yết, không dưới `round(listPrice × shopMarkdownFloor)`. Giá tính lại từ tuổi món mỗi tick (idempotent, an toàn với save).
+- **Bỏ món**: tuổi bỏ = `shopScrapAgeSec` = `ceil((1 − floor) × 100 / pct)` bước × `shopStaleSec` + `shopFloorHoldSec` (không dùng `shopScrapSec` nữa) → giá luôn chạm sàn và được chào ở giá sàn `shopFloorHoldSec` giây trước khi bị bỏ (không hoàn tiền, event/stat `gearScrapped`). `shopFloorHoldSec` < 0 = không bao giờ bỏ. Mặc định 600 s / 10% / 0,5 / 600 s → 100→50% trong 3.000 s, bỏ lúc 3.600 s. `config:check` kiểm tra `shopStaleSec` ≥ 1, `shopMarkdownPct` trong (0, 100], `shopMarkdownFloor` trong [0,01; 1] và từ chối key cũ `shopScrapSec`.
+- **Chọn công thức auto-craft** (`pickRecipe`): trong các công thức có đủ NL và vàng Town ≥ giá craft + `autoCraftReserve`, chọn cái có nhiều người hưởng lợi nhất (`recipeBeneficiaries`), rồi gear level cao hơn, rồi gearId; 0 người → không chế.
+- **Người hưởng lợi**: hunter level ≥ gear.level − `craftLevelAhead`; với mỗi chất lượng q, bản q được tính nếu là nâng cấp ≥ `minUpgradeGain` (công thức như AI mua đồ) **và** ngân sách shop ≥ `craftAffordFrac × round(basePrice × q.priceMult)`; hunter được tính khi tổng `craftChance` (chuẩn hóa) của các bản đó ≥ `craftMinSellChance` (0,65 = Uncommon trở lên phải bán được; 0,35 = chỉ cần Rare, gần quy tắc cũ — trùng hẳn khi `craftAffordFrac` = 0). Ngưỡng so với tỷ lệ cộng dồn của `craftChance`, nên đổi `gear_quality.json` thì phải xem lại.
+- **Đồ đã có**: món cùng slot, level ≤ công thức đang bán (chất lượng thật) hoặc đang chế (chất lượng tham chiếu Rare) tính theo **số bản**: hunter vẫn được nâng cấp so với món tốt nhất trong số đó luôn được tính; hunter mà món có sẵn đã phục vụ chỉ được tính phần vượt quá số bản.
 
 ## 6. Di chuyển và pathfinding
 
