@@ -8,7 +8,7 @@ import { createWorld, DEFAULT_SYSTEMS, Simulation } from '../src/core/simulation
 import type { SystemContext } from '../src/core/system';
 import { academySystem, canLearnTrait, nextSkillStudy } from '../src/core/systems/academy';
 import { setGoal } from '../src/core/systems/ai';
-import type { Goal, Hunter } from '../src/core/world';
+import { newAiState, type Goal, type Hunter } from '../src/core/world';
 import { testConfig } from './helpers';
 
 const config = testConfig();
@@ -228,9 +228,28 @@ describe('Academy integration', () => {
     expect(learnedN).toBeGreaterThan(0);
     expect(s.world.stats.learned).toBe(learnedN);
     expect(s.world.stats.kills).toBeGreaterThan(20);
-    // Hunters hunt first (a level-1 hunter keeps its starting gold back), so after 10 min a hunter that spent its
-    // purse on services may still be a few gold short of cost × reserve; most have studied.
+    // Loose on purpose: in a free run whether a hunter studies within 10 min depends on the economy, not the Academy.
+    // Measured (seeds 1–8, 10 min, 8 hunters incl. arrivals): 3–6 of 8 studied. Hunters hunt first (a level-1 hunter
+    // keeps its starting gold back); a hunter that reaches cost × reserve in Town often picks a service/shop goal first
+    // and drops below the reserve again, and arrivals at 6–8 min have no time. A per-seed count would break on every
+    // AI/economy tuning change, so the strict check is the controlled run below.
     const studied = s.world.hunters.filter((h) => Object.keys(h.skills).length > 0).length;
     expect(studied).toBeGreaterThanOrEqual(Math.ceil(s.world.hunters.length / 2));
+  });
+
+  it.each([1, 3, 7])('every hunter that can afford a skill in Town (needs full, nothing else to buy) studies it within a minute (seed %i)', (seed) => {
+    const s = new Simulation(config, createWorld(config, seed));
+    for (let i = 0; i < 4; i++) s.enqueue({ type: 'debug.spawnHunter' });
+    s.step();
+    const team = [...s.world.hunters];
+    expect(team).toHaveLength(4);
+    for (const h of team) {
+      h.level = 2; // past the level-1 "keep the starting gold" rule
+      h.gold = 5_000;
+      h.ai = newAiState(); // the spawn tick already picked a hunt goal; decide again with the new purse
+      expect(bestLearn(config, h)?.kind).toBe('skill');
+    }
+    for (let t = 0; t < 600; t++) s.step();
+    for (const h of team) expect(Object.keys(h.skills).length, h.id).toBeGreaterThan(0);
   });
 });

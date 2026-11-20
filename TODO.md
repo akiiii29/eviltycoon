@@ -35,8 +35,8 @@ Số liệu hiện tại (headless 12 giờ `tools/headless.ts 720 <seed> 120`, 
   - Không sửa: điểm săn ×1,15 là chủ ý của tính cách. Nguyên nhân chính xác (khi nào điểm săn thắng dải cường hóa ~1,04–1,10) chưa đo; nếu design muốn Liều lĩnh cường hóa ngang hunter khác thì cần hệ số `goal.enhance` riêng cho tính cách này.
 - ✅ Các hằng số cường hóa và điểm goal ở Town đã chuyển từ `src/core/ai/utility.ts` vào `formula_params.json` (giá trị giữ nguyên, pacing 240 phút seed 2 giống từng byte): `enhanceRiskExp`, `enhanceMinSuccess`, `upgradeSavingsFrac`, `aiTypicalQualityMult`, `enhanceBaseScore`, `enhanceGainWeight`, `shopBaseScore`, `shopGainWeight`, `sellBaseScore`, `sellFillWeight`, `learnSkillScore`, `learnTraitScore`, `econMulFloor`, `serviceFullFrac`, `serviceLowBase`, `serviceLowWeight`, `serviceWeight`, `bagReturnScore`, `restScoreWeight`.
 - ✅ Trùng tên `enhanceCost`: bản trong `ai/utility.ts` đổi thành `expectedEnhanceCost` (bản ở `systems/economy.ts` giữ nguyên).
-- 🟡 Test tích hợp Học Viện (`tests/academy.test.ts`) đã nới thành "≥ một nửa hunter đi học".
-- 🟡 Lệnh tái sinh thủ công cho phép khi hunter đang ở ngoài field (AI đã được reset để tự về); cân nhắc yêu cầu ở Town.
+- ✅ Test tích hợp Học Viện (`tests/academy.test.ts`): thêm bản chặt, tất định — mọi hunter đủ vàng ở Town (Lv2, needs đầy) đều học skill trong 1 phút (seed 1/3/7). Bản chạy tự do 10 phút vẫn "≥ một nửa": đo seed 1–8 chỉ 3–6/8 hunter học, vì hunter đủ `cost × reserve` ở Town hay chọn dịch vụ/shop trước rồi tụt dưới ngưỡng, hunter đến lúc 6–8 phút chưa kịp; con số theo seed sẽ vỡ mỗi lần tune AI/kinh tế.
+- ✅ Lệnh tái sinh thủ công chỉ nhận khi hunter ở Town (như tái sinh tự động); ở field bị từ chối `hunter is not in town` (`commands.ts`, test `progression.test.ts`); nút trong overlay bị disable ở field.
 
 ## 3. Nhịp tiến trình & combat
 
@@ -67,7 +67,9 @@ Số liệu hiện tại (headless 12 giờ `tools/headless.ts 720 <seed> 120`, 
   - 🟡 Còn lại: số liệu thưởng/đề xuất mới chỉ kiểm bằng một lần headless 600 phút seed 1; chưa có AI/tự động gửi (hunter phải đứng ở Town nên người chơi phải gọi về trước); NL thưởng vào kho thẳng, không qua yêu cầu Trạm Thu Mua; đội về không săn phần còn lại của khoảng offline; chưa có UI ngoài debug overlay; vàng thưởng là tiền mới vào Town (không phải chỗ tiêu, `cost` là chỗ tiêu nhỏ). Migration: v7→v8 để trống cho building (nhánh song song), journey là v8→v9 — khi merge cần xếp lại.
 - ✅ Tiến trình offline (TECH_SPEC §9): `src/core/offline.ts` ước lượng theo tốc độ trung bình 10 phút gần nhất (mẫu lưu trong envelope save, không đổi schema), trần `offlineMaxHours` 8, `offlineEfficiency` 1, chặn đồng hồ lùi/save không có thời gian; client áp dụng lúc boot và khi tab hiện lại, save ngay, popup tổng kết. Test `tests/offline.test.ts` (kể cả so với chạy thật 60 phút).
   - 🟡 Còn lại: ước lượng tuyến tính hụt nhiều khi game đang tăng tốc (sau 60 phút chơi: kill −28…−43 %, level ~½ thực tế; sau 150–240 phút sai ~±15 %). Gold dùng ròng sàn 0, không so được với thực tế (offline không mua/cường hóa). Offline không craft, không bán/mua shop, không tái sinh (EXP ở max level mất), không có hunter mới đến dù còn slot. Popup mới kiểm bằng DOM (nội dung đúng), chưa xem ảnh chụp.
-- ⚪ Kiểm thử theo checklist GDD §13.
+- 🟡 **QA nghiệm thu M4** (`docs/QA_M4.md`, dựng từ TECH_SPEC vì GDD không có trong repo — phải đối chiếu lại với GDD §13): mọi mục đạt; tự động ở `tests/m4-acceptance.test.ts` (phiên 20 phút đủ hệ thống + bất biến, save/load giữa chừng giống từng byte, offline có journey + công trình, migration v0…v8 và v9 không building, từ chối lệnh), kiểm tay trong trình duyệt (thuế ±, bounty đặt/hủy/tự động, journey gửi/gọi về/thất bại, nâng/hủy building, popup offline với save lùi giờ và save v6 tạo tay). Không thấy lỗi core; sửa 3 lỗi overlay/renderer (log building không có nội dung, nút gửi journey khi không ai ở Town, 10/13 quái vẽ đỏ) và thêm nút debug đặt bounty.
+  - 🟡 Phát hiện (không phải lỗi): popup offline đầu game hiện "vàng +0" cho mọi hunter (gold ròng sàn 0) — người chơi dễ thấy vô lý; hunter vừa về từ journey (< 120 s mẫu) không được cộng offline; offline không đếm thời gian xây (đã biết).
+  - ⚪ Chưa kiểm tay: xây Nhà Kho (TH3), Torment, journey thành công, tái sinh thủ công (có test tự động).
 
 ### M4 (tiếp)
 - ✅ **Town Hall và xây/nâng cấp/đặt building** (TECH_SPEC §5.12, `src/core/systems/town.ts`, `config/building.json` + `building_plot.json`, world v8): building có level (giá vàng + NL kho + thời gian), Town Hall chặn level building khác, mở ô đất và loại building; Lò Rèn/Kim Hoàn giới hạn tier đồ chế được; dịch vụ hồi nhanh hơn/đắt hơn, shop thêm chỗ, Lò Cường Hóa +tỉ lệ thành công, Học Viện giảm giá học, Trạm Thu Mua trả giá NL dư cao hơn, Nhà Kho (mới) tăng số bản yêu cầu NL; lệnh `town.build`/`town.upgrade`/`town.cancelUpgrade`/`town.setAutoInvest`; **tự đầu tư** (bật sẵn) tiêu vàng Town trên mục tiêu ngân khố (bước gấp khi hunter sắp chạm trần tier được tiêu sâu hơn), Trạm Thu Mua yêu cầu NL nâng cấp, nhập NL thiếu sau 15 phút giá ×2.
@@ -104,8 +106,8 @@ Số liệu hiện tại (headless 12 giờ `tools/headless.ts 720 <seed> 120`, 
 
 - ⚪ Sprite nhân vật từ PX2D, scene pixel-art Three.js cho Town và các vùng (GDD §11); hiện là ô màu placeholder.
 - ⚪ Camera pan/zoom, chọn hunter bằng click.
-- 🟡 Renderer tô màu vùng: chỉ Đồng Cỏ có màu riêng, các vùng còn lại dùng chung màu.
-- 🟡 Log `skillCast` trong overlay có thể quá nhiều.
+- ✅ Renderer: mỗi vùng một màu nền (`render.ts` `zoneColor`, vùng mới lấy màu dự phòng theo thứ tự config); 13 loại quái đều có màu (trước 10 loại vẽ đỏ).
+- ✅ Log `skillCast` trong overlay gộp thành 1 dòng mỗi 5 s game (`SkillCastLog`: số lần, số mục tiêu, top 3 hunter); test `tests/client.test.ts`.
 
 ## 6. Save / migration
 

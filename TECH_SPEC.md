@@ -531,7 +531,7 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 | M6 | Client & nội dung: UI hoàn chỉnh (GDD §10), sprite/scene pixel-art và camera pan/zoom/chọn bằng click (GDD §11), UI cho yêu cầu vật liệu/bounty/building, vi/en, tutorial, headless xuất CSV; thay toàn bộ dữ liệu trích từ game thương mại (TODO §7), chốt nền tảng (GDD §2) và bố cục map | Bản chơi thử nội bộ, không còn dữ liệu sao chép |
 | M7 | Online: account, cloud save, IAP; Raid, PvP, Guild, World Boss, Tower Defense, chat, ranking | Theo đặc tả riêng |
 
-Hiện trạng: M0–M3 xong; M4 đã có Trading Post theo yêu cầu (§5.7), Bounty (§5.9), thuế (§5.10), Journey (§5.11), Town Hall/building (§5.12), offline progress (§9) — world v9. Còn QA checklist GDD §13.
+Hiện trạng: M0–M3 xong; M4 đã có Trading Post theo yêu cầu (§5.7), Bounty (§5.9), thuế (§5.10), Journey (§5.11), Town Hall/building (§5.12), offline progress (§9) — world v9. QA nghiệm thu: `docs/QA_M4.md` (dựng từ TECH_SPEC, chờ đối chiếu GDD §13).
 
 ### 12.1 Bảng phủ (chống bỏ sót)
 
@@ -548,7 +548,7 @@ Mọi hệ thống nhắc trong GDD hoặc có bảng ở §8 phải nằm trong
 | Journey (GDD §9, bảng `journey`) | M4 | ✅ (§5.11; chưa có AI/tự gửi, chưa có UI ngoài debug) |
 | Town Hall, xây/nâng/đặt building, slot, cấp shop giới hạn tier (GDD §5, bảng `building`, `building_plot`) | M4 | ✅ (§5.12; building M5 dùng ô trống) |
 | Thuế (§3.1, §5.10) | M4 | ✅ |
-| QA checklist (GDD §13) | M4 | ⚪ |
+| QA checklist (GDD §13) | M4 | 🟡 `docs/QA_M4.md` dựng từ TECH_SPEC, mọi mục đạt (tự động: `tests/m4-acceptance.test.ts`; tay: trình duyệt); phải đối chiếu lại với GDD §13 gốc |
 | Invitation, `hunter_tier`, Donate/Banish (GDD §4.1–4.2) | M5 | ⚪ (tier hunter đã có) |
 | 9 bậc nghề, 7 slot đồ (GDD §6) | M5 | ⚪ |
 | Nâng tier đồ, `gear_option`, `gear_set`, `gear_skill` | M5 | ⚪ |

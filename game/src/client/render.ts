@@ -12,7 +12,12 @@ const CLASS_COLORS: Record<string, number> = {
   'class.arcanist': 0x5bc0de,
   'class.reaver': 0x9b59b6,
 };
-const MONSTER_COLORS: Record<string, number> = { 'mon.slime': 0x7ee081, 'mon.boar': 0xa0522d, 'mon.golem': 0x8a8a8a };
+const MONSTER_COLORS: Record<string, number> = {
+  'mon.slime': 0x7ee081, 'mon.boar': 0xa0522d, 'mon.golem': 0x8a8a8a,
+  'mon.bogling': 0x9acd32, 'mon.fenstalker': 0x2e8b57, 'mon.cinderimp': 0xff7f3f, 'mon.ashdrake': 0xb22222,
+  'mon.rimewolf': 0xe8f4ff, 'mon.icewarden': 0x4fa3e0, 'mon.drownedknight': 0x8fbcd4, 'mon.tidecaller': 0x20b2aa,
+  'mon.voidcrawler': 0xd070ff, 'mon.hollowlord': 0xf0e0ff,
+};
 const SERVICE_COLORS: Record<NeedKey, number> = { hp: 0xe8e8e8, satiety: 0xe0a458, mood: 0xb46bd6, stamina: 0x5b8fd6 };
 const KIND_COLORS: Record<Exclude<BuildingKind, 'service'>, number> = {
   tradingPost: 0xd4c34a,
@@ -23,6 +28,28 @@ const KIND_COLORS: Record<Exclude<BuildingKind, 'service'>, number> = {
   townHall: 0xe8d9a8,
   storehouse: 0x8a6d4a,
 };
+
+/**
+ * Ground tint per zone (placeholder art), roughly by theme and distinct from the Town ground (0x4f6b45), the
+ * background (0x2b3a2e) and the roads. Unknown zones get a colour from ZONE_FALLBACK by config order.
+ */
+const ZONE_COLORS: Record<string, number> = {
+  'zone.meadow': 0x5f8f4e, // grass
+  'zone.ruins': 0x8a7f6a, // weathered stone
+  'zone.marsh': 0x3f6f62, // murky teal
+  'zone.crags': 0x7a5a48, // ash-brown rock
+  'zone.glacier': 0x9fc4d6, // ice
+  'zone.citadel': 0x4f5f86, // sunken slate blue
+  'zone.abyss': 0x4a3358, // dark violet
+};
+const ZONE_FALLBACK = [0xb08a4a, 0x6f8a3a, 0x8a4a5a, 0x4a7a8a, 0x9a6a9a];
+
+export function zoneColor(config: GameConfig, zoneId: string): number {
+  const c = ZONE_COLORS[zoneId];
+  if (c !== undefined) return c;
+  const i = Math.max(0, config.zones.findIndex((z) => z.id === zoneId));
+  return ZONE_FALLBACK[i % ZONE_FALLBACK.length]!;
+}
 
 /** Monsters spawned under higher difficulties are drawn darker (order 0 = untinted). */
 function monsterColor(config: GameConfig, defId: string, difficultyId: string): THREE.Color {
@@ -88,7 +115,7 @@ export class Renderer {
     // Zones: tinted disc around each field node.
     for (const n of config.nodes) {
       if (!n.zoneId) continue;
-      const color = n.zoneId === 'zone.meadow' ? 0x5f8f4e : 0x6b6157;
+      const color = zoneColor(config, n.zoneId);
       const disc = new THREE.Mesh(new THREE.CircleGeometry(9, 24), new THREE.MeshBasicMaterial({ color }));
       disc.position.set(n.x, n.y, -0.9);
       this.scene.add(disc);

@@ -128,7 +128,11 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
   'hunter.reincarnate': (ctx, cmd) => {
     const bad = controllable(ctx, cmd.hunterId);
     if (bad) return bad;
-    return reincarnate(ctx, findHunter(ctx.world, cmd.hunterId)!);
+    const h = findHunter(ctx.world, cmd.hunterId)!;
+    // Same rule as auto-reincarnation (progressionSystem): only in Town, so a level-1 hunter never wakes up in a
+    // max-level zone. Order it home with Move first.
+    if (ctx.config.index.nodes.get(h.nodeId)?.zoneId) return 'hunter is not in town';
+    return reincarnate(ctx, h);
   },
   'town.setDifficulty': (ctx, cmd) => {
     if (!ctx.config.index.difficulties.has(cmd.difficultyId)) return 'unknown difficulty';

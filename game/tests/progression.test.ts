@@ -176,6 +176,27 @@ describe('reincarnation', () => {
     expect(h.reincarnation).toBe(1);
   });
 
+  it('manual command requires the hunter to be in Town (rejected in the field)', () => {
+    const s = makeSim(1);
+    const h = s.world.hunters[0]!;
+    s.world.town.autoReincarnate = false;
+    maxOut(h);
+    const townNode = h.nodeId;
+    h.nodeId = fieldNode();
+    s.enqueue({ type: 'hunter.reincarnate', hunterId: h.id });
+    s.step();
+    expect(h.reincarnation).toBe(0);
+    expect(h.level).toBe(MAX_LEVEL);
+    expect(eventsOf(s, 'commandRejected')).toEqual([
+      expect.objectContaining({ command: 'hunter.reincarnate', reason: 'hunter is not in town' }),
+    ]);
+
+    h.nodeId = townNode;
+    s.enqueue({ type: 'hunter.reincarnate', hunterId: h.id });
+    s.step();
+    expect(h.reincarnation).toBe(1);
+  });
+
   it('auto-reincarnates only when enabled, alive, outside buildings and in town', () => {
     const s = makeSim(1);
     const h = s.world.hunters[0]!;

@@ -19,6 +19,54 @@ export interface OverlayActions {
 const NEEDS: NeedKey[] = ['hp', 'satiety', 'mood', 'stamina'];
 const NEED_LABEL: Record<NeedKey, string> = { hp: 'HP', satiety: 'No', mood: 'Vui', stamina: 'Sức' };
 const MAX_LOG = 12;
+/** skillCast events are summed over this many ticks (5 s game time) into one log line (TODO §5: log spam). */
+export const SKILL_LOG_WINDOW_TICKS = 50;
+/** Debug overlay "post bounty" buttons: a zone bounty of this size. */
+const DEBUG_BOUNTY_KILLS = 10;
+const DEBUG_BOUNTY_REWARD = 100;
+
+/**
+ * Aggregates skillCast events into one line per window of SKILL_LOG_WINDOW_TICKS (by event tick, so x4 speed or a
+ * paused game behave the same). Pure (no DOM) so it can be unit-tested. A tick going backwards (Load / Reset) closes
+ * the open window.
+ */
+export class SkillCastLog {
+  private start = -1;
+  private casts = 0;
+  private targets = 0;
+  private perHunter = new Map<string, number>();
+
+  constructor(private window = SKILL_LOG_WINDOW_TICKS) {}
+
+  /** Lines (oldest first) closed by reaching `tick`; call with every event tick and the current world tick. */
+  advance(tick: number): string[] {
+    if (this.start < 0) return [];
+    if (tick >= this.start && tick < this.start + this.window) return [];
+    return [this.flush()];
+  }
+
+  /** Add a cast; returns lines of windows it closed. */
+  add(tick: number, hunterId: string, targets: number): string[] {
+    const out = this.advance(tick);
+    if (this.start < 0) this.start = tick;
+    this.casts += 1;
+    this.targets += Math.max(1, targets);
+    this.perHunter.set(hunterId, (this.perHunter.get(hunterId) ?? 0) + 1);
+    return out;
+  }
+
+  private flush(): string {
+    const top = [...this.perHunter].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+    const shown = top.slice(0, 3).map(([id, n]) => `${id} ×${n}`).join(', ');
+    const more = top.length > 3 ? ` +${top.length - 3} hunter` : '';
+    const line = `#${this.start} kỹ năng ×${this.casts} (${this.targets} mục tiêu, ${this.window / 10}s): ${shown}${more}`;
+    this.start = -1;
+    this.casts = 0;
+    this.targets = 0;
+    this.perHunter.clear();
+    return line;
+  }
+}
 
 function name(config: GameConfig, nameKey: string | undefined, fallback: string): string {
   return nameKey ? t(config, nameKey) : fallback;
@@ -87,6 +135,7 @@ export class DebugOverlay {
   private logEl: HTMLElement;
   private log: string[] = [];
   private status = '';
+  private skillLog = new SkillCastLog();
   /** Hunters picked for the next journey (overlay-only state; stale ids are dropped when sending). */
   private team = new Set<string>();
 
@@ -152,6 +201,9 @@ export class DebugOverlay {
       case 'cancelupgrade': sim.enqueue({ type: 'town.cancelUpgrade', buildingInstanceId: el.dataset.id! }); break;
       case 'autoinvest': sim.enqueue({ type: 'town.setAutoInvest', on: !sim.world.town.autoInvest }); break;
       case 'tax': sim.enqueue({ type: 'town.setTaxRate', rate: Number(el.dataset.v) }); break;
+      case 'postbounty':
+        sim.enqueue({ type: 'town.postBounty', targetKind: 'zone', targetId: el.dataset.z!, kills: DEBUG_BOUNTY_KILLS, reward: DEBUG_BOUNTY_REWARD });
+        break;
       case 'cancelbounty': sim.enqueue({ type: 'town.cancelBounty', bountyId: el.dataset.id! }); break;
       case 'reincarnate': sim.enqueue({ type: 'hunter.reincarnate', hunterId: el.dataset.id! }); break;
       case 'team': {
@@ -182,8 +234,14 @@ export class DebugOverlay {
 
   pushEvents(events: SimEvent[]): void {
     const config = this.sim.config;
+    const closed = (lines: string[]) => { for (const l of lines) this.log.unshift(l); };
     for (const e of events) {
       if (e.type === 'hit' || e.type === 'monsterKilled' || e.type === 'bountyProgress' || e.type === 'taxCollected') continue; // too noisy for the log
+      if (e.type === 'skillCast') {
+        closed(this.skillLog.add(e.tick, e.hunterId, e.targets));
+        continue;
+      }
+      closed(this.skillLog.advance(e.tick));
       const line = economyLine(config, e) ?? progressLine(config, e);
       if (line) {
         this.log.unshift(`#${e.tick} ${line}`);
@@ -198,6 +256,7 @@ export class DebugOverlay {
       else if (e.type === 'levelUp') extra = ` Lv${e.level}`;
       this.log.unshift(`#${e.tick} ${e.type} ${detail}${extra}`);
     }
+    closed(this.skillLog.advance(this.sim.world.tick));
     if (this.log.length > MAX_LOG) this.log.length = MAX_LOG;
   }
 
@@ -256,7 +315,7 @@ export class DebugOverlay {
         `đề xuất ${d.recommendedPower} · ${Math.round(d.durationSec / 60)} phút · phí ${d.cost}g · thưởng ${d.gold}g, ${d.exp} EXP<br>` +
         `<span class="journey-prev">${esc(prev)}</span> ` +
         `<button data-a="journey" data-j="${esc(d.id)}"${picked.length > 0 ? '' : ' disabled'}>gửi đội chọn</button>` +
-        `<button data-a="journeybest" data-j="${esc(d.id)}">gửi ${f.journeyTeamMax} mạnh nhất</button></div>`;
+        `<button data-a="journeybest" data-j="${esc(d.id)}"${bestJourneyTeam(config, world, d).length > 0 ? '' : ' disabled'}>gửi ${f.journeyTeamMax} mạnh nhất</button></div>`;
     }).join('');
     return `
       <div class="debug-sub">Hành trình ${(world.journeys ?? []).length}/${f.journeyMaxActive} · thành công ${world.stats.journeysSucceeded ?? 0} · thất bại ${world.stats.journeysFailed ?? 0} · đội chọn: ${esc([...this.team].join(', ') || '—')}</div>
@@ -330,9 +389,13 @@ export class DebugOverlay {
       `<div class="bounty">${b.auto ? '[tự động] ' : ''}${esc(bountyTargetName(config, b.targetKind, b.targetId))} ` +
       `${b.progress}/${b.kills} · thưởng ${b.reward}g (còn ${b.escrow}g) ` +
       `<button data-a="cancelbounty" data-id="${esc(b.id)}">hủy</button></div>`).join('') || '<div class="bounty">—</div>';
+    // Debug post: a zone bounty of DEBUG_BOUNTY_KILLS kills for DEBUG_BOUNTY_REWARD gold (the command validates it).
+    const post = config.zones.map((z) =>
+      `<button data-a="postbounty" data-z="${esc(z.id)}">+${esc(t(config, z.nameKey))}</button>`).join('');
     return `
       <div class="debug-sub">Bounty ${(town.bounties ?? []).length}/${config.formula.bountyMaxActive} · xong ${world.stats.bountiesCompleted ?? 0} · trả ${world.stats.bountyGoldPaid ?? 0}g</div>
       ${list}
+      <div class="debug-row bounty-post">đặt ${DEBUG_BOUNTY_KILLS} kill / ${DEBUG_BOUNTY_REWARD}g: ${post}</div>
       <div class="debug-row"><button data-a="autobounty">bounty tự động: ${town.autoBounty ? 'BẬT' : 'TẮT'}</button></div>`;
   }
 
@@ -415,6 +478,7 @@ export class DebugOverlay {
       const job = config.index.jobsByClass.get(h.classId)?.[h.jobTier];
       const jobLabel = job ? jobName(config, job.id) : `job ${h.jobTier}`;
       const canReinc = h.level >= config.formula.maxLevel;
+      const inField = !!config.index.nodes.get(h.nodeId)?.zoneId;
       const goal = this.goalText(h);
       const equip = GEAR_SLOTS.map((s) => {
         const it = h.equipment[s];
@@ -426,7 +490,7 @@ export class DebugOverlay {
         .map(([id, name]) => `<button data-a="move" data-id="${esc(h.id)}" data-zone="${esc(id!)}">→${esc(name!)}</button>`).join('');
       return `<div class="hunter">
         <div class="hunter-top"><b>${esc(h.id)}</b> ${esc(cls)} <span class="reinc">R${h.reincarnation}</span> · ${esc(jobLabel)} · <span class="tier-${h.tier}">${h.tier}</span> · Lv${h.level}
-          ${canReinc ? `<button data-a="reincarnate" data-id="${esc(h.id)}">Tái sinh</button>` : ''}<button data-a="team" data-id="${esc(h.id)}">${this.team.has(h.id) ? '−đội' : '+đội'}</button><button data-a="restore" data-id="${esc(h.id)}">hồi</button><button data-a="remove" data-id="${esc(h.id)}">×</button></div>
+          ${canReinc ? `<button data-a="reincarnate" data-id="${esc(h.id)}"${inField ? ' disabled title="phải ở Town (→Town trước)"' : ''}>Tái sinh</button>` : ''}<button data-a="team" data-id="${esc(h.id)}">${this.team.has(h.id) ? '−đội' : '+đội'}</button><button data-a="restore" data-id="${esc(h.id)}">hồi</button><button data-a="remove" data-id="${esc(h.id)}">×</button></div>
         <div class="hunter-sub">ATK ${Math.round(st.atk)} DEF ${Math.round(st.def)} HP ${Math.round(st.hp)} · ${h.gold}g · ${h.kills} kill · túi ${bagCount(h)}/${config.formula.bagCapacity} · ${esc(pers)}</div>
         <div class="hunter-equip">${esc(equip)}</div>
         ${this.renderProgress(h)}
@@ -457,10 +521,9 @@ function economyLine(config: GameConfig, e: SimEvent): string | null {
   }
 }
 
-/** Readable log line for M3 progression events (null = use the generic line). skillCast is logged too (compact). */
+/** Readable log line for M3 progression events (null = use the generic line). skillCast is aggregated (SkillCastLog). */
 function progressLine(config: GameConfig, e: SimEvent): string | null {
   switch (e.type) {
-    case 'skillCast': return `${e.hunterId} dùng ${skillName(config, e.skillId)}${e.targets > 1 ? ` ×${e.targets}` : ''}`;
     case 'jobChanged': return `${e.hunterId} chuyển nghề → ${jobName(config, e.jobId)}`;
     case 'reincarnated': return `${e.hunterId} tái sinh lần ${e.count}`;
     case 'learned': {
@@ -474,6 +537,9 @@ function progressLine(config: GameConfig, e: SimEvent): string | null {
     case 'journeyCompleted': return `hành trình ${journeyName(config, e.journeyId)} ${e.success ? 'thành công' : 'thất bại'}${e.offline ? ' (offline)' : ''} · +${e.rewards.gold}g · ${e.rewards.exp} EXP/người${e.rewards.items.length ? ` · ${e.rewards.items.length} đồ hiếm` : ''}`;
     case 'journeyRecalled': return `hành trình ${journeyName(config, e.journeyId)} bị gọi về (${e.hunterIds.join(', ')})`;
     case 'difficultyUnlocked': return `mở khóa độ khó ${difficultyName(config, e.difficultyId)}`;
+    case 'buildingStarted': return `${e.auto ? 'tự đầu tư' : 'xây/nâng'}: ${buildingName(config, e.buildingId)} → Lv${e.toLevel} -${e.gold}g${e.materials ? `, ${e.materials} NL` : ''}${e.importGold ? ` (nhập ${e.importGold}g)` : ''}`;
+    case 'buildingCompleted': return `${buildingName(config, e.buildingId)} xong → Lv${e.level}`;
+    case 'buildingCancelled': return `hủy ${buildingName(config, e.buildingId)} · hoàn ${e.refund}g`;
     case 'taxRateChanged': return `thuế → ${Math.round(e.rate * 100)}%`;
     case 'difficultyChanged': return `độ khó → ${difficultyName(config, e.difficultyId)}`;
     default: return null;
