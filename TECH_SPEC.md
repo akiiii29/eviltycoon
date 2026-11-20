@@ -79,13 +79,13 @@ Quy ước: **[CHỐT]** là quyết định kỹ thuật; **[ĐỀ XUẤT]** l�
 | `events` | Event bus một chiều sim → UI/render (hit, kill, levelUp, purchase…) để chơi VFX/âm thanh/toast. Sim không bao giờ đọc lại. |
 | `config/` | Schema DSL (`schema.ts`), `TABLE_SPECS` + kiểm tra chéo + index (`load.ts`), kiểu (`types.ts`). |
 
-Bounty: `systems/bounty` (§5.9). Thuế: `systems/tax` (§5.10) — thuế trên vàng rơi từ quái, thu ngay lúc kill. Journey: `systems/journey` (§5.11). Build/upgrade building chưa làm (M4); invitation (M5) — xem §12.
+Bounty: `systems/bounty` (§5.9). Thuế: `systems/tax` (§5.10) — thuế trên vàng rơi từ quái, thu ngay lúc kill. Journey: `systems/journey` (§5.11). Town Hall, xây/nâng building, ô đất, tự đầu tư: `systems/town` (§5.12). Invitation (M5) — xem §12.
 
 ### 3.2 Vòng lặp **[CHỐT]**
 
 - Fixed-step simulation: **10 tick/giây** (`dt = 100 ms`). Render nội suy vị trí giữa 2 tick.
 - Thứ tự system mỗi tick (`DEFAULT_SYSTEMS` trong `src/core/simulation.ts`):
-  `commands → arrivals → ai → movement → combat → skills → urgentBackstop → services → economy → academy → crafting → bounty → journey → needs → progression → spawn`, rồi `tick += 1`, `timeMs += dt`, lưu RNG state vào world.
+  `commands → arrivals → ai → movement → combat → skills → urgentBackstop → services → economy → academy → crafting → town → bounty → journey → needs → progression → spawn`, rồi `tick += 1`, `timeMs += dt`, lưu RNG state vào world.
   - `commands`: lệnh enqueue giữa 2 tick được áp dụng đầu `step()`, trước mọi system.
   - `urgentBackstop` chạy lại backstop khẩn cấp của AI (§5.2) **sau combat và skills**, để đòn đánh làm nhu cầu tụt dưới ngưỡng được xử lý ngay trong tick đó (không chờ tick sau).
   - Không có pha `cleanup` riêng: combat xóa quái chết cuối pass của nó. Không có pha `emit events`: event được ghi vào buffer khi phát sinh, client lấy bằng `drainEvents()`.
@@ -315,6 +315,42 @@ Code: `src/core/systems/journey.ts` (system `journey` chạy sau `bounty`, trư�
 - **Event**: `journeyStarted` (sức mạnh, tỉ lệ, phí), `journeyCompleted { success, successChance, rewards: { gold, exp, materials, items }, offline }`, `journeyRecalled`. Debug overlay: khối "Hành trình" (chuyến đang chạy: thời gian còn, sức mạnh, %, nút gọi về; mỗi điểm đến: đề xuất, thời gian, phí, thưởng, xem trước % cho đội đã chọn bằng nút "+đội" ở từng hunter hoặc đội 3 mạnh nhất ở Town, nút gửi). `tools/headless.ts` với `HEADLESS_JOURNEY="journeyId@phút[xN],..."` gửi 3 hunter mạnh nhất đang ở Town (`bestJourneyTeam`) và in nhật ký chuyến + chuyến đang chạy.
 - **Số đo** (headless 600 phút seed 1, `journey.mossway@20x4, emberglow@150x3, saltdeep@420x2`): đội Lv5–7 vào Lối Rêu Cũ sức 2,9–3,8 (53–87 %), Lv10 4,7 (95 %); Đèo Than Hồng xuất phát được lúc 230 phút (cần 3 hunter cùng ở Town) với đội Lv39–46 sức 6–8 (95 %); Vực Muối Lặng đội Lv58–63 sức 3,5 (72 %), Lv65–69 4,1 (95 %). Thưởng EXP đặt ≈ 1–1,2× EXP săn cùng thời gian ở mốc level đó (bù việc không săn; **ước lượng** từ nhịp level ghi ở TODO §3, chưa đo trực tiếp), vàng là tiền mới vào Town (lớn hơn `cost`). Chưa tune kỹ; cần design chốt.
 
+### 5.12 Town Hall và building (GDD §5) **[ĐÃ LÀM — số liệu ĐỀ XUẤT]**
+
+Code: `src/core/systems/town.ts` (system `town` chạy sau `crafting`, trước `bounty`), effect nối vào `services.ts`, `crafting.ts`, `trading.ts`, `academy.ts`, `economy.ts` (cường hóa), `ai/utility.ts`, `systems/ai.ts` (cửa building). Config: `building.json` (loại building, mảng theo level), `building_plot.json` (ô đất), tham số `townInvest*`/`invest*`/`build*` ở cuối `formula_params.json`. World v8: `town.buildings`, `town.autoInvest`, `town.investPlan`, stat `buildingsBuilt`/`buildingUpgrades`/`investGold`/`investMaterials`/`investImportGold`.
+
+- **Mô hình**: `building` = **loại** (không còn vị trí); mảng theo level dài `maxLevel` (§8.1), phần tử i = level i+1. `upgradeCost[i] = {gold, materials, sec}` là giá để lên level i+1 (`upgradeCost[0]` = giá xây). `building_plot` = ô cố định trên map với **node cửa riêng** (`doorNode`), `townHallLevel` mở ô, `startBuilding`/`startLevel` = building có sẵn trong game mới. `world.town.buildings[]` = building đang đứng trên ô (id = id ô, theo thứ tự ô trong config), `level` (0 = đang xây lần đầu, chưa dùng được), `upgrade` đang chạy. **Mỗi loại tối đa 1 bản** nên các system vẫn gọi building theo id loại.
+- **Nav graph không đổi lúc chạy**: mọi ô (kể cả ô trống) đã có node cửa nối sẵn trong `map_node`/`map_edge`; cửa của ô chỉ thành đích đến (`buildingDoor`) khi building trên đó có level ≥ 1. AI bỏ qua dịch vụ/Trạm/Shop/Lò/Học Viện chưa xây. (Thay cho "graph cập nhật khi đặt/xóa building" ở §6.)
+- **Town Hall** (`kind: townHall`, đúng 1, phải có sẵn): level của mọi building khác ≤ level Town Hall; mở ô (`plot.townHallLevel`) và loại (`requires.townHallLevel`).
+- **Hiệu ứng theo level** (level 1 = đúng số liệu trước khi có building, nên game mới chơi như cũ):
+
+  | Loại | Trường | Giá trị L1 → max |
+  |---|---|---|
+  | service (4) | `restorePerSec[]`, `price[]` (giá gốc trước `servicePrice`) | ×1 → ×1,6 tốc hồi; giá ×1 → ×1,32 |
+  | craft (Lò Rèn, Kim Hoàn) | `maxGearLevel[]` — **tier đồ chế được** (gear.level ≤ trần) | 15, 23, 31, 41, 51, 61, 71, 81 |
+  | shop | `capacity[]` | 12 → 20 |
+  | forge (Lò Cường Hóa) | `enhanceBonus[]` cộng vào successRate (AI dùng cùng tỉ lệ) | 0 → +0,08 |
+  | academy | `studyGoldMul[]` nhân giá học skill | 1 → 0,8 |
+  | tradingPost | `surplusPriceMul[]` nhân `tradeSurplusPriceFrac` | 1 → 1,3 |
+  | storehouse (mới, xây được, cần Town Hall 3) | `requestCopies[]` cộng vào số bản yêu cầu NL tự động | +1 → +3 |
+
+  Trần tier áp ở `startCraft` (lý do `gear tier locked by building level`), `pickRecipe`, yêu cầu NL tự động (không mua NL cho công thức chưa chế được) và `upgradeSavings` của AI (không để dành cho đồ chưa ai chế được).
+- **Ô đất**: 10 building cũ giữ chỗ và cửa cũ; Town Hall ở ô trong (`d.townhall`); 3 ô trống `plot.ne`/`plot.se`/`plot.sw` mở ở Town Hall 2/4/6.
+- **Lệnh**: `town.build { buildingId, plotId }`, `town.upgrade { buildingInstanceId }` (id = id ô), `town.cancelUpgrade { buildingInstanceId }` (hoàn đủ vàng + NL; hủy xây lần đầu thì trả ô), `town.setAutoInvest { on }`. Từ chối (`commandRejected`): `unknown building`, `unknown plot`, `plot occupied`, `already built`, `plot locked by Town Hall level`, `building locked by Town Hall level`, `unknown building instance`, `upgrade in progress`, `max level`, `locked by Town Hall level`, `construction slots full` (`buildMaxConcurrent` 2), `missing materials`, `not enough town gold`, `no upgrade in progress`. Lệnh người chơi cần đủ NL trong kho (không nhập).
+- **Thanh toán**: vàng (× `buildCostMul`) và NL trong kho trả **ngay khi bắt đầu** và **rời khỏi nền kinh tế** (event `buildingStarted { gold, materials, importGold }`); building vẫn chạy ở level cũ tới khi xong (`sec × buildTimeMul`, event `buildingCompleted`).
+- **Tự đầu tư** (`town.autoInvest`, mặc định bật; mỗi `townInvestIntervalSec` 10 s theo `world.tick`, không rút RNG):
+  1. **Bước gấp**: Lò Rèn/Kim Hoàn có trần < gear.level của một công thức với gear.level ≤ level hunter cao nhất (kể cả hunter đang Journey) + `craftLevelAhead` + `investCraftLeadLevels` (4) → nâng building đó, hoặc nâng Town Hall nếu Town Hall đang chặn. Được tiêu tới sàn `investUrgentReserveMul` (5) × `autoCraftReserve`. Nhiều bước gấp: ưu tiên bước đã đủ NL, rồi kế hoạch đang chờ, rồi thứ tự config.
+  2. **Bước thường**: bước rẻ nhất (ưu tiên bước đã đủ NL) trong mọi nâng cấp/xây hợp lệ (xây vào ô trống đầu tiên), chỉ khi vàng Town − giá ≥ `investTargetMul` (1) × `townGoldTarget` (§5.7).
+  3. Kế hoạch lưu ở `town.investPlan`. **Trạm Thu Mua yêu cầu NL** của mọi bước gấp và của kế hoạch thường (`investMaterialNeed`, cộng vào yêu cầu tự động §5.7, kể cả khi tắt auto-craft) → kho có mục đích và AI ưu tiên vùng rơi NL đó. NL nâng cấp lấy từ vùng hunter đang săn lúc cần (Lò Rèn L2 quặng/lõi … L8 hư không/bóng; building khác dùng NL vùng giữa/cuối) để không kẹt ở vùng đã bỏ. Thiếu NL quá `investImportSec` (900 s) thì **nhập** phần thiếu với giá `investImportPriceMul` (2) × giá NL (vàng cũng rời nền kinh tế).
+- **Migration v7 → v8**: mọi `startBuilding` ở level thấp nhất giữ nguyên cách chơi của save: Lò Rèn/Kim Hoàn đủ cao cho mọi công thức gear.level ≤ max(level hunter + `craftLevelAhead`, đồ đang mặc / bán / chế), Town Hall ≥ building cao nhất; còn lại level 1.
+- **Debug/tool**: overlay có khối "Công trình" (level/max, trần tier, tiến độ nâng, giá kế tiếp, nút nâng/hủy, ô trống với nút xây, nút tự đầu tư và kế hoạch). `tools/headless.ts` in `build invest` (vàng, nhập, NL, số xong, level từng building) mỗi mốc và trừ vào phần dư `fees`; `tools/pacing.ts` in trần tier + level building mỗi mốc và tổng đầu tư cuối run.
+- **Số đo** (headless/pacing seed 1–5, Dễ, có thuế 10%; trước = `23c50f7` → sau):
+  - Nhịp: Lv20 đầu tiên 68–88 → 67–89 phút; Lv50 4,57–5,02 → 4,72–5,13 giờ; tái sinh đầu 13,15–14,45 → **12,53–13,65 giờ** (cả 5 seed trong 8–14 giờ). Trần tier bám sát: Lò Rèn/Kim Hoàn luôn ≥ (level hunter cao nhất − 2…+5) từ 2 giờ trở đi.
+  - Lúc 12 giờ: vàng Town 21,5–26,9k → **13,4–22,8k** (4 giờ: 8,1–9,2k → 2,9–5,4k; 8 giờ: 11,9–25,6k → 5,6–17,4k); vàng hunter tb 5,9–7,6k → 4,9–6,5k; Lv tb 79,6–85,3 → 83,3–87,1; shop 5–8 → 3–6 món; chết (12 giờ) 7 → 17 (seed 6–10: 11 → 7; 10 seed 18 → 24).
+  - **Đầu tư**: 160–198k vàng / 15 giờ (nhập 3–7k), ≈ 13–18k (0–4 giờ), 48–61k (4–8 giờ), 65–79k (8–12 giờ). Lò Rèn/Kim Hoàn/Town Hall max (8) lúc ~10–11 giờ; dịch vụ/shop/lò/học viện 1–5. Phần phí bị quy tắc ngân khố + 20% phí cố định "đốt" 8–12 giờ 149–171k → 102–124k: phần lớn số vàng trước đây bị đốt giờ đi vào building. Bounty tự động đặt ít hơn (12 giờ: 51–68 → 26–40) vì vàng Town ít khi trên mục tiêu.
+  - Không thuế (`taxRate` 0, bản trước khi ưu tiên bước gấp đủ NL): vàng Town 12 giờ 23,0–26,5k → 19,2–25,5k, tái sinh đầu 13,05–14,33 → 12,75–13,40 giờ, đầu tư 144–199k / 15 giờ.
+- **Quy tắc ngân khố vẫn giữ**: bước thường chỉ tiêu phần trên mục tiêu, và khi Lò Rèn/Kim Hoàn/Town Hall đã max (~10–11 giờ) vàng Town lại lên gần mục tiêu, nên quy tắc vẫn là lực kéo cuối game. Muốn bỏ nó cần thêm chỗ tiêu cuối game (building M5 trên ô trống, cấp cao hơn).
+
 ## 6. Di chuyển và pathfinding
 
 - Map là **waypoint graph**: node (vị trí, zoneId, loại: road/field/building-door) và cạnh (khoảng cách).
@@ -323,7 +359,7 @@ Code: `src/core/systems/journey.ts` (system `journey` chạy sau `bounty`, trư�
 - Cache path theo cặp (node đầu, node cuối), mất hiệu lực khi graph đổi.
 - Trong field: đi tới node gần quái, sau đó steering tự do trong bán kính.
 - Trên ~60 hunter: giới hạn 10 truy vấn A*/tick, còn lại xếp hàng.
-- Hiện trạng (`pathfinding.ts`): graph dựng một lần từ `map_node`/`map_edge`, hệ số road = `roadSpeedMul`; cache path theo cặp node không bao giờ bị xóa vì chưa có đặt/xóa building lúc chạy. Chưa có giới hạn A*/tick (chưa cần ở quy mô hiện tại).
+- Hiện trạng (`pathfinding.ts`): graph dựng một lần từ `map_node`/`map_edge`, hệ số road = `roadSpeedMul`; cache path theo cặp node không bao giờ bị xóa: building đặt trên ô có sẵn node cửa (§5.12), graph không đổi lúc chạy. Chưa có giới hạn A*/tick (chưa cần ở quy mô hiện tại).
 
 ## 7. Combat
 
@@ -395,7 +431,8 @@ Bảng dưới là **thiết kế đích**. Đã có trong `game/config/` (trư�
 | `monster` | id, nameKey, race, level, hp, atk, def, exp, gold, drops: [{matId, chance}], zoneIds[] |
 | `zone` | id, nameKey, difficultyId, monsterPool: [{monsterId, weight}], waypointNodes[] |
 | `difficulty` | id, order, unlock: {hunterCount, reincarnation} (GDD §8), monsterMultiplier |
-| `building` | id, nameKey, category (service/craft/buff/core), maxCount, maxLevel, size, buildCost[], upgradeCost: [{gold, mats}] per level, capacity[], output[], requires: {townHallLevel} |
+| `building` | id, nameKey, kind, maxLevel, requires: {townHallLevel}, upgradeCost: [{gold, materials, sec}] × maxLevel (phần tử 0 = giá xây), mảng hiệu ứng theo level theo kind (§5.12). Đã làm; chưa có maxCount (= 1), size |
+| `building_plot` | id, doorNode, townHallLevel, startBuilding?, startLevel?, x, y, w, h (§5.12). Đã làm |
 | `service` | buildingId, need (hp/satiety/mood/stamina), restoreAmount[], price[], stockPerCycle[], cycleSec |
 | `consumable` | id, nameKey, effect, keepTime[], value[], cooldown, price[], craftMaterials |
 | `rune` | id, effect, grades, valueByGrade[], dropChance[] |
@@ -440,7 +477,7 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 | v4 → v5 | lượt cân bằng | Món trong shop thêm `listPrice = price`, `listedAtMs = world.timeMs` (giảm giá/hủy theo tuổi). |
 | v5 → v6 | Trạm Thu Mua theo yêu cầu | `town.requests = {}`, stat `materialsDiscarded`/`gearScrapped` = 0. Kho cũ giữ nguyên. |
 | v6 → v7 | Bounty | `town.bounties = []`, `town.autoBounty = true`, stat bounty = 0. |
-| v7 → v8 | (dành cho Town Hall/building, nhánh song song) | Ở nhánh Journey là pass-through; khi merge, migration building thế chỗ này. |
+| v7 → v8 | Town Hall/building | `town.buildings` = mọi `startBuilding` của `building_plot` ở level giữ nguyên cách chơi (Lò Rèn/Kim Hoàn đủ cho công thức ≤ level hunter + `craftLevelAhead` và đồ đang có, Town Hall ≥ building cao nhất, còn lại 1), `autoInvest = true`, `investPlan = null`, stat building = 0 (§5.12). |
 | v8 → v9 | Journey | `journeys = []` (giữ mảng nếu đã có), stat `journey*` = 0. Chỉ điền trường thiếu nên đúng ở cả hai phía migration building. |
 
 - **Offline progress [CHỐT]:** không mô phỏng từng tick. Ước lượng theo tốc độ trung bình đo được trong 10 phút gần nhất (gold/s, EXP/s, vật liệu/s theo từng hunter), nhân với thời gian vắng, trần **8 giờ [ĐỀ XUẤT]**. Hiển thị popup tổng kết. **[ĐÃ LÀM]**
@@ -487,12 +524,12 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 | M1 ✅ | 1 Town + 1 zone, waypoint/road, 5 class, needs, AI cơ bản (Hunt/Return/4 dịch vụ) | Hunter tự săn và tự quay về đúng ngưỡng |
 | M2 ✅ | Shop, craft, gear + quality + enhance, BuyGear/SellMaterials | Vòng săn → bán → craft → mua chạy kín |
 | M3 ✅ | Skill, trait, level, chuyển nghề, reincarnation, difficulty | Mở được difficulty Normal theo điều kiện GDD §8 |
-| M4 | Town & chế độ chơi: Trading Post theo yêu cầu ✅, Bounty ✅, offline progress ✅, Journey ✅; **Town Hall, xây/nâng cấp/đặt building, slot building, cấp building giới hạn tier đồ** (GDD §5, bảng `building` §8; graph cập nhật khi đặt/xóa building §6), thuế ✅ | QA checklist GDD §13 đạt; vàng/NL Town có chỗ tiêu ra khỏi nền kinh tế |
+| M4 | Town & chế độ chơi: Trading Post theo yêu cầu ✅, Bounty ✅, offline progress ✅, Journey ✅; Town Hall, xây/nâng cấp/đặt building, slot building, cấp building giới hạn tier đồ, tự đầu tư ✅ (§5.12), thuế ✅ | QA checklist GDD §13 đạt; vàng/NL Town có chỗ tiêu ra khỏi nền kinh tế |
 | M5 | Chiều sâu hunter & trang bị: Invitation + `hunter_tier` (GDD §4.1–4.2), Donate/Banish; đủ 9 bậc nghề (hiện 3) và 7 slot đồ (GDD §6, hiện 3); nâng tier đồ (Dark Stone), `gear_option` / `gear_set` / `gear_skill`; `consumable` (potion, Alchemist) + goal BuyPotion; Training Ground + goal Train; Bank, Courage Headstone, Fountain of Life, Library of Wisdom; `rune`, `relic`, thú cưỡi, `growth_property`; ghép NL (`material.composeTo`); `exp_curve` theo lần tái sinh; bật Mood ảnh hưởng chỉ số (GDD §4.2); lệnh người chơi học skill/trait | Mọi bảng §8 (trừ `raid`) có code dùng; cân bằng lại bằng headless |
 | M6 | Client & nội dung: UI hoàn chỉnh (GDD §10), sprite/scene pixel-art và camera pan/zoom/chọn bằng click (GDD §11), UI cho yêu cầu vật liệu/bounty/building, vi/en, tutorial, headless xuất CSV; thay toàn bộ dữ liệu trích từ game thương mại (TODO §7), chốt nền tảng (GDD §2) và bố cục map | Bản chơi thử nội bộ, không còn dữ liệu sao chép |
 | M7 | Online: account, cloud save, IAP; Raid, PvP, Guild, World Boss, Tower Defense, chat, ranking | Theo đặc tả riêng |
 
-Hiện trạng: M0–M3 xong; M4 đã có Trading Post theo yêu cầu (§5.7), Bounty (§5.9), thuế (§5.10), Journey (§5.11), offline progress (§9) — world v9 (v8 dành cho building). Còn Town Hall/building.
+Hiện trạng: M0–M3 xong; M4 đã có Trading Post theo yêu cầu (§5.7), Bounty (§5.9), thuế (§5.10), Journey (§5.11), Town Hall/building (§5.12), offline progress (§9) — world v9. Còn QA checklist GDD §13.
 
 ### 12.1 Bảng phủ (chống bỏ sót)
 
@@ -507,7 +544,7 @@ Mọi hệ thống nhắc trong GDD hoặc có bảng ở §8 phải nằm trong
 | Bounty (GDD §9) | M4 | ✅ |
 | Offline progress (§9) | M4 | ✅ |
 | Journey (GDD §9, bảng `journey`) | M4 | ✅ (§5.11; chưa có AI/tự gửi, chưa có UI ngoài debug) |
-| Town Hall, xây/nâng/đặt building, slot, cấp shop giới hạn tier (GDD §5, bảng `building`) | M4 | ⚪ |
+| Town Hall, xây/nâng/đặt building, slot, cấp shop giới hạn tier (GDD §5, bảng `building`, `building_plot`) | M4 | ✅ (§5.12; building M5 dùng ô trống) |
 | Thuế (§3.1, §5.10) | M4 | ✅ |
 | QA checklist (GDD §13) | M4 | ⚪ |
 | Invitation, `hunter_tier`, Donate/Banish (GDD §4.1–4.2) | M5 | ⚪ (tier hunter đã có) |
