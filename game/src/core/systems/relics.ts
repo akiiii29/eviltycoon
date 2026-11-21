@@ -4,7 +4,7 @@ import type { World } from '../world';
 import { townGoldTarget } from './trading';
 
 /**
- * Relics (TECH_SPEC §5.15, config/relic.json): Town-wide permanent upgrades with levels, paid with Town gold (leaves the
+ * Relics (TECH_SPEC §5.16, config/relic.json): Town-wide permanent upgrades with levels, paid with Town gold (leaves the
  * economy) and Town Storage materials. Effects are read where a World is at hand (progressionStats.relicValue):
  * expPct (every EXP gain, progress.gainExp), runeDropPct (rune drop chances, runes.dropRune), growthCostPct (growth
  * property price, academy.nextGrowth). No stat effect, so hunterStats stays a function of the hunter alone.

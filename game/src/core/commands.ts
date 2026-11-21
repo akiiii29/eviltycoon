@@ -97,7 +97,7 @@ export type Command =
   | { type: 'hunter.rerollPersonality'; hunterId: string }
   /** Debug: add invitation tickets (no gameplay source yet). */
   | { type: 'debug.grantTicket'; invitationId: string; count: number }
-  // ---- M5 progression depth (TECH_SPEC §4.1, §5.15) ----
+  // ---- M5 progression depth (TECH_SPEC §4.1, §5.16) ----
   /**
    * Choose the hunter's branch of the job tree by naming a job of it (a branch job or a later one of the same branch).
    * Stored as `jobBranch` (kept across reincarnation); changes job now when that job is next and unlocked. Rejected when

@@ -6,7 +6,7 @@ import type { Hunter } from './world';
  * Add EXP and apply level-ups (M3): capped at formula.maxLevel (EXP stops accumulating at the cap),
  * base stat gains per level, and one trait point every `traitPointLevelStep` levels.
  * EXP per level comes from `exp_curve` by reincarnation count (M5, progressionStats.expRequired); the Relic of Wisdom
- * (relic effect expPct) adds its percent to every gain (TECH_SPEC §5.15).
+ * (relic effect expPct) adds its percent to every gain (TECH_SPEC §5.16).
  * Job changes and reincarnation are handled by the progression system, not here.
  */
 export function gainExp(ctx: SystemContext, h: Hunter, amount: number): void {

@@ -6,7 +6,7 @@ import { isAlive, type Hunter, type World } from '../world';
 import { feeTownCut } from './economy';
 
 /**
- * Mounts (TECH_SPEC §5.15): a hunter buys one at the Shop door with its own gold (Town gets the fee cut, the rest is a gold
+ * Mounts (TECH_SPEC §5.16): a hunter buys one at the Shop door with its own gold (Town gets the fee cut, the rest is a gold
  * sink); move speed × moveSpeedMul (formulas.moveSpeed) for good, also across reincarnation. Only a faster mount than the
  * one owned may be bought (the old one is given up).
  */

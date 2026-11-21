@@ -79,8 +79,10 @@ export type SimEvent =
   | { type: 'journeyCompleted'; tick: number; journeyUid: string; journeyId: string; hunterIds: string[]; success: boolean; successChance: number; rewards: JourneyRewards; offline: boolean }
   /** Recalled by the player: members return now with no reward (cost is not refunded). */
   | { type: 'journeyRecalled'; tick: number; journeyUid: string; journeyId: string; hunterIds: string[] }
+  /** Training Ground session started (TECH_SPEC §5.15): EXP granted, gold paid (Town got `townGold` of it), level after. */
+  | { type: 'trained'; tick: number; hunterId: string; exp: number; price: number; townGold: number; level: number }
   | { type: 'commandRejected'; tick: number; command: string; reason: string }
-  /** M5 progression depth (TECH_SPEC §5.15). */
+  /** M5 progression depth (TECH_SPEC §5.16). */
   | { type: 'runeDropped'; tick: number; hunterId: string; runeId: string; grade: number }
   | { type: 'runeSocketed'; tick: number; hunterId: string; slot: number; runeId: string; grade: number }
   | { type: 'mountBought'; tick: number; hunterId: string; mountId: string; price: number }

@@ -315,6 +315,21 @@
   "road": false
  },
  {
+  "a": "t.e",
+  "b": "d.plot.e",
+  "road": false
+ },
+ {
+  "a": "t.nw",
+  "b": "d.plot.nw.outer",
+  "road": false
+ },
+ {
+  "a": "t.se",
+  "b": "d.plot.se.outer",
+  "road": false
+ },
+ {
   "a": "t.square",
   "b": "t.portal",
   "road": false

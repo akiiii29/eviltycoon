@@ -6,7 +6,7 @@ import { buildingLevel } from './town';
 import { autoMaterialDemand, baseMaterialNeed } from './trading';
 
 /**
- * Material composition (TECH_SPEC §5.15, `material.composeTo`): at the Trading Post, `count` units of a material in Town
+ * Material composition (TECH_SPEC §5.16, `material.composeTo`): at the Trading Post, `count` units of a material in Town
  * Storage become one unit of its composeTo material (one step; tier essences never compose). Ratios are set so N × price
  * > the result's price: composing loses gold value and only pays when a material is short.
  *  - Command `town.compose { materialId (the source), count (units to make) }`.

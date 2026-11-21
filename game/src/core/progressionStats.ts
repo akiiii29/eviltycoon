@@ -1,5 +1,5 @@
 /**
- * M5 progression-depth inputs of formulas.hunterStats / moveSpeed / gainExp (TECH_SPEC §4.1, §5.15). Pure: config + hunter
+ * M5 progression-depth inputs of formulas.hunterStats / moveSpeed / gainExp (TECH_SPEC §4.1, §5.16). Pure: config + hunter
  * only (no World), so hunterStats keeps its signature and statsCache can snapshot every input from the hunter.
  *
  *   job        jobOf(h): h.jobId when it is a job of the hunter's class at h.jobTier, else the first job of that tier
@@ -87,7 +87,7 @@ export function expRequired(config: GameConfig, level: number, reincarnation: nu
   return row.exp[Math.max(0, Math.min(reincarnation, row.exp.length - 1))]!;
 }
 
-/** Sum of the value of every relic with this effect at its current Town level (TECH_SPEC §5.15; 0 when none bought). */
+/** Sum of the value of every relic with this effect at its current Town level (TECH_SPEC §5.16; 0 when none bought). */
 export function relicValue(config: GameConfig, world: World, effect: RelicEffect): number {
   const lv = world.town.relics;
   if (!lv) return 0;

@@ -114,7 +114,7 @@ export interface StatOptions {
  * Effective stats:
  *   hp/atk/def = ((base + growth) × jobMult × statBias × (1 + reinc × reincStatBonus) + gear) × stackPct(trait% + rune%, buff%) [× mood for atk/def]
  *   crit/eva   = base + job + trait points + rune points + buff points (converted to chances by critChance / dodgeChance, which cap)
- * (M5 job tree, growth properties and runes: progressionStats.ts, TECH_SPEC §5.15.)
+ * (M5 job tree, growth properties and runes: progressionStats.ts, TECH_SPEC §5.16.)
  *   atkSpeed   = max(minAttackInterval, base interval ÷ stackPct(traitSpeed%, buffSpeed%))
  */
 export function hunterStats(config: GameConfig, h: Hunter, opts: StatOptions = {}): EffectiveStats {
@@ -141,9 +141,11 @@ function computeHunterStats(config: GameConfig, h: Hunter, steady: boolean): Eff
   const perm = (stat: ModStat) => traitTotal(config, h, stat) + runeTotal(config, h, stat);
   const pct = (stat: ModStat) => stackPct(perm(stat), buffs ? buffTotal(h, stat) : 0, f);
   const mood = buffs ? moodStatMult(h.needs.mood / f.needMax, f) : 1;
-  s.hp *= pct('hpPct');
-  s.atk *= pct('atkPct') * mood;
-  s.def *= pct('defPct') * mood;
+  // Town aura (monument, TECH_SPEC §5.15): its own multiplicative category, steady and live; absent = × 1.
+  const aura = (stat: ModStat) => 1 + (h.aura?.[stat] ?? 0) / PERCENT;
+  s.hp *= pct('hpPct') * aura('hpPct');
+  s.atk *= pct('atkPct') * mood * aura('atkPct');
+  s.def *= pct('defPct') * mood * aura('defPct');
   s.crit += (job?.crit ?? 0) + perm('crit') + (buffs ? buffTotal(h, 'crit') : 0);
   s.eva += (job?.eva ?? 0) + perm('eva') + (buffs ? buffTotal(h, 'eva') : 0);
   s.atkSpeed = Math.max(f.minAttackInterval, s.atkSpeed / pct('atkSpeedPct'));

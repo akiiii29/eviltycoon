@@ -84,8 +84,14 @@ export interface MapEdge {
   road: boolean;
 }
 
-export type BuildingKind = 'service' | 'tradingPost' | 'craft' | 'shop' | 'forge' | 'academy' | 'townHall' | 'storehouse';
-export const BUILDING_KINDS: readonly BuildingKind[] = ['service', 'tradingPost', 'craft', 'shop', 'forge', 'academy', 'townHall', 'storehouse'];
+export type BuildingKind =
+  | 'service' | 'tradingPost' | 'craft' | 'shop' | 'forge' | 'academy' | 'townHall' | 'storehouse'
+  // M5 special buildings (TECH_SPEC §5.15), at most one of each:
+  | 'training' | 'bank' | 'monument' | 'fountain' | 'library';
+export const BUILDING_KINDS: readonly BuildingKind[] = [
+  'service', 'tradingPost', 'craft', 'shop', 'forge', 'academy', 'townHall', 'storehouse',
+  'training', 'bank', 'monument', 'fountain', 'library',
+];
 
 /**
  * Stat modifiers shared by traits and skill buffs (M3).
@@ -218,6 +224,23 @@ export interface BuildingDef {
   supplyCap?: number[];
   /** Potion seller (the Infirmary, TECH_SPEC §5.14): max potions in stock over every tier (per level). */
   potionCap?: number[];
+  // ---- M5 special buildings (TECH_SPEC §5.15), per level ----
+  /**
+   * training only: EXP one session grants, as a fraction of expToNext(hunter level); and how close to the town's top hunter
+   * level training can bring a hunter (it may train while level < top level − trainLevelGap).
+   */
+  trainExpFrac?: number[];
+  trainLevelGap?: number[];
+  /** bank only: multiplier on the non-urgent auto-investment floor (investTargetMul × townGoldTarget); no gold is created. */
+  investFloorMul?: number[];
+  /** monument only: permanent town aura, percent ATK / DEF for every hunter (own category in hunterStats). */
+  auraAtkPct?: number[];
+  auraDefPct?: number[];
+  /** fountain only: multiplier on townIdleRegenPerSec, and on the death timer (reviveSec). */
+  townRegenMul?: number[];
+  reviveSecMul?: number[];
+  /** library only: percent extra EXP from kills (not from training or journeys). */
+  killExpPct?: number[];
 }
 
 export type ConsumableKind = 'supply' | 'potion';
@@ -673,7 +696,22 @@ export interface FormulaParams {
   autoInviteIntervalSec: number;
   personalityRerollGold: number;
   /**
-   * M5 progression depth (TECH_SPEC §4.1, §5.15). Runes: sockets per hunter, max runes in the Town rune stash (the lowest
+   * Training Ground (TECH_SPEC §5.15): a session lasts trainSessionSec inside; price = round(trainGoldPerExp × EXP granted)
+   * (through economy.feeTownCut); the AI trains only with gold ≥ price × trainGoldReserveMul + its gear savings;
+   * score trainScore × econMul.
+   */
+  trainSessionSec: number;
+  trainGoldPerExp: number;
+  trainGoldReserveMul: number;
+  trainScore: number;
+  /** M5 special buildings (TECH_SPEC §5.15); auto-invest weights, same scheme as investValueService, see systems/town.investValue. */
+  investValueTraining: number;
+  investValueBank: number;
+  investValueMonument: number;
+  investValueFountain: number;
+  investValueLibrary: number;
+  /**
+   * M5 progression depth (TECH_SPEC §4.1, §5.16). Runes: sockets per hunter, max runes in the Town rune stash (the lowest
    * grade beyond it is discarded).
    */
   runeSlots: number;

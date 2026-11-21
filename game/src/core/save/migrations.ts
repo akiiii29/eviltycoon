@@ -217,9 +217,13 @@ export const MIGRATIONS: Record<number, Migration> = {
   // v13 → v14 (waiting queue, invitations, auto-invite, donate/banish; TECH_SPEC §4.1): empty queue and timers, no tickets,
   // stats 0. Only fills missing fields, so it is safe whatever v13 ends up being.
   13: (w) => fillMissingHunterQueue(w),
-  // v14 → v15: reserved for the special-buildings branch (the lead renumbers on merge); pass-through here.
-  14: (w) => w,
-  // v15 → v16 (M5 progression depth, TECH_SPEC §4.1, §5.15): every hunter (in town, on a journey, in the portal) gets the
+  // v14 → v15 (M5 special buildings, TECH_SPEC §5.15): new stats at 0. Hunter.aura / trainMs are optional (absent = no
+  // aura / not training); the aura is re-synced from the building level on the first tick. Only missing fields are filled.
+  14: (w) => {
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    return { ...w, stats: { trainSessions: 0, trainGold: 0, trainExp: 0, libraryExp: 0, ...stats } };
+  },
+  // v15 → v16 (M5 progression depth, TECH_SPEC §4.1, §5.16): every hunter (in town, on a journey, in the portal) gets the
   // explicit jobId of its tier (the only job of tiers 0..2 before the job tree); Town rune stash empty, no relic, auto-rune
   // on, auto-relic off; new counters 0. Idempotent: existing fields win.
   15: (w, config) => {

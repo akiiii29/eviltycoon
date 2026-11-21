@@ -4,7 +4,7 @@ import type { System, SystemContext } from '../system';
 import { isAlive, type Hunter, type Monster, type RuneItem, type World } from '../world';
 
 /**
- * Runes (TECH_SPEC §5.15, config/rune.json). A kill of a monster of level ≥ a rune's minMonsterLevel can drop that rune:
+ * Runes (TECH_SPEC §5.16, config/rune.json). A kill of a monster of level ≥ a rune's minMonsterLevel can drop that rune:
  * ONE RNG draw per kill against the summed chances (dropChance[grade − 1] of every eligible rune × grade, × (1 +
  * runeDropPct / 100) of the Relic of Fortune); no draw when no rune is eligible (low zones keep their RNG stream).
  * Drops go to the Town rune stash (best first, at most runeStashMax: the worst is discarded). Runes are socketed into

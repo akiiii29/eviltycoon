@@ -138,6 +138,24 @@
   "kind": "door"
  },
  {
+  "id": "d.plot.e",
+  "x": 17,
+  "y": -4,
+  "kind": "door"
+ },
+ {
+  "id": "d.plot.nw.outer",
+  "x": -17,
+  "y": 17,
+  "kind": "door"
+ },
+ {
+  "id": "d.plot.se.outer",
+  "x": 18,
+  "y": -14,
+  "kind": "door"
+ },
+ {
   "id": "t.portal",
   "x": 2,
   "y": -3,

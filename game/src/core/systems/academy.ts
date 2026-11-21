@@ -31,7 +31,7 @@ export function canLearnTrait(config: GameConfig, h: Hunter, traitId: string): b
 }
 
 /**
- * Next growth property level (TECH_SPEC §5.15) and its gold cost, or null (unknown, maxed). Gold is NOT checked here.
+ * Next growth property level (TECH_SPEC §5.16) and its gold cost, or null (unknown, maxed). Gold is NOT checked here.
  * With `world` the cost is round(cost × (1 − growthCostPct / 100)) of the Town's Relic of Patronage.
  */
 export function nextGrowth(config: GameConfig, h: Hunter, growthId: string, world?: World): { level: number; cost: number } | null {
@@ -111,7 +111,7 @@ function learnTrait(ctx: SystemContext, h: Hunter, traitId: string): void {
   ctx.events.emit(world.tick, { type: 'learned', hunterId: h.id, kind: 'trait', id: traitId, level, cost: def.pointCost });
 }
 
-/** Growth property (TECH_SPEC §5.15): gold like a skill (Town gets the fee cut, the rest is a sink), kept for life. */
+/** Growth property (TECH_SPEC §5.16): gold like a skill (Town gets the fee cut, the rest is a sink), kept for life. */
 function learnGrowth(ctx: SystemContext, h: Hunter, growthId: string): void {
   const { world, config } = ctx;
   const next = nextGrowth(config, h, growthId, world);

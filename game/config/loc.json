@@ -690,6 +690,31 @@
   "en": "Storehouse"
  },
  {
+  "key": "bld.training.name",
+  "vi": "Sân Luyện Võ",
+  "en": "Drill Yard"
+ },
+ {
+  "key": "bld.bank.name",
+  "vi": "Quỹ Tín Dụng",
+  "en": "Strongroom"
+ },
+ {
+  "key": "bld.fountain.name",
+  "vi": "Giếng Hồi Sức",
+  "en": "Wellspring"
+ },
+ {
+  "key": "bld.monument.name",
+  "vi": "Bia Dũng Khí",
+  "en": "Valor Stele"
+ },
+ {
+  "key": "bld.library.name",
+  "vi": "Tàng Thư Các",
+  "en": "Lore Archive"
+ },
+ {
   "key": "journey.mossway.name",
   "vi": "Lối Rêu Cũ",
   "en": "Old Mossway"

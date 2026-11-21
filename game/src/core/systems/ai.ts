@@ -3,6 +3,7 @@ import type { System, SystemContext } from '../system';
 import { dist, findMonster, isAlive, type Goal, type Hunter } from '../world';
 import { enterPortal } from './progression';
 import { buildingDoor } from './town';
+import { trainingBuilding } from './training';
 
 /** Destination node for a goal. */
 function destination(ctx: SystemContext, h: Hunter, goal: Goal): string | null {
@@ -20,6 +21,10 @@ function destination(ctx: SystemContext, h: Hunter, goal: Goal): string | null {
     case 'buyPotion': return config.index.potionSeller ? buildingDoor(config, world, config.index.potionSeller) : null;
     case 'buyMount': return buildingDoor(config, world, config.index.shop);
     case 'reincarnate': return config.index.portalNode;
+    case 'train': {
+      const b = trainingBuilding(config);
+      return b ? buildingDoor(config, world, b.id) : null;
+    }
     case 'dead': return null;
   }
 }
@@ -195,6 +200,8 @@ export const aiSystem: System = {
             continue; // performed by the economy system at the door, which clears the goal
           case 'learn':
             continue; // performed by the academy system at the door, which clears the goal
+          case 'train':
+            continue; // performed by the training system at the door (TECH_SPEC §5.15), which clears the goal
           case 'buyMount':
             continue; // performed by the mounts system at the Shop door, which clears the goal
           case 'reincarnate':

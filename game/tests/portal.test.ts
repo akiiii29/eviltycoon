@@ -10,7 +10,7 @@ import { deserialize, SAVE_FORMAT, serialize } from '../src/core/save/save';
 import { createWorld, Simulation } from '../src/core/simulation';
 import { allHunters, townHunterCount } from '../src/core/systems/journey';
 import { isDifficultyUnlockable, portalStayOf } from '../src/core/systems/progression';
-import { newAiState, type Hunter } from '../src/core/world';
+import { newAiState, WORLD_SCHEMA_VERSION, type Hunter } from '../src/core/world';
 import { testConfig } from './helpers';
 
 const config = testConfig();
