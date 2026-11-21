@@ -3,8 +3,9 @@
  *
  * The post only buys REQUESTED materials:
  *  - automatic requests, derived every time from auto-craft needs (never stored): for every recipe that
- *    would upgrade w ≥ 1 hunters (recipeWanters), keep materials for min(w, requestMaxCopies) crafts in
- *    Town Storage; the request is whatever storage lacks;
+ *    would upgrade w ≥ 1 hunters (recipeWanters, at the highest craftable gear tier with a wanter: crafting.demandTier),
+ *    keep materials (incl. that tier's essence) for min(w, requestMaxCopies) crafts in Town Storage; the request is
+ *    whatever storage lacks;
  *  - player requests (`town.requests`, set by the `town.requestMaterial` command), on top of the automatic
  *    ones and decremented as hunters sell.
  * Unrequested materials (anything beyond the request) are never stored, so storage cannot pile up:
@@ -14,7 +15,8 @@
  */
 import type { GameConfig, ZoneDef } from '../config/types';
 import type { World } from '../world';
-import { autoCraftReserve, recipeWanters } from './crafting';
+import { autoCraftReserve, demandTier } from './crafting';
+import { recipeMaterials } from './gearTier';
 import { extraRequestCopies, gearCraftable, investMaterialNeed, surplusPriceMul } from './town';
 
 export type Demand = Record<string, number>;
@@ -30,10 +32,11 @@ export function autoMaterialDemand(config: GameConfig, world: World): Demand {
   if (world.town.autoCraft && copies > 0) {
     for (const g of config.gear) {
       if (!gearCraftable(config, world, g)) continue;
-      const w = recipeWanters(config, world, g);
-      if (w <= 0) continue;
-      const n = Math.min(w, copies);
-      for (const m of g.materials) need[m.materialId] = (need[m.materialId] ?? 0) + m.count * n;
+      // Gear tiers (TECH_SPEC §5.8): materials (incl. essence) of the highest craftable tier someone wants.
+      const t = demandTier(config, world, g);
+      if (!t) continue;
+      const n = Math.min(t.wanters, copies);
+      for (const m of recipeMaterials(config, g, t.difficultyId)) need[m.materialId] = (need[m.materialId] ?? 0) + m.count * n;
     }
   }
   const invest = investMaterialNeed(config, world);

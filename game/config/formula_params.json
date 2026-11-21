@@ -164,5 +164,9 @@
  "investValueStorehouse": 0.5,
  "investValueTownHall": 0.3,
  "investValueCraft": 0.2,
- "investReadyMul": 2
+ "investReadyMul": 2,
+ "dismantleReturnFrac": 0.5,
+ "gearStorageMax": 24,
+ "craftEssencePerLevel": 0.05,
+ "diffAutoAdvanceFrac": 0.5
 }

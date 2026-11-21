@@ -109,8 +109,13 @@ function sourceName(config: GameConfig, id: string): string {
   const k = config.index.skills.get(id)?.nameKey ?? config.index.traits.get(id)?.nameKey;
   return name(config, k, id);
 }
+/** Gear tier prefix (TECH_SPEC §5.8), e.g. "Tempered " — empty for the base tier. */
+function tierPrefix(config: GameConfig, difficultyId: string | undefined): string {
+  const k = difficultyId ? config.index.difficulties.get(difficultyId)?.gearPrefixKey : undefined;
+  return k ? `${t(config, k)} ` : '';
+}
 function gearLabel(config: GameConfig, g: GearInstance): string {
-  return `${gearName(config, g.gearId)} [${qualityName(config, g.qualityId)}] +${g.enhance}`;
+  return `${tierPrefix(config, g.difficultyId)}${gearName(config, g.gearId)} [${qualityName(config, g.qualityId)}] +${g.enhance}`;
 }
 
 function fmtTime(ms: number): string {
@@ -195,6 +200,7 @@ export class DebugOverlay {
       case 'autocraft': sim.enqueue({ type: 'town.setAutoCraft', on: !sim.world.town.autoCraft }); break;
       case 'difficulty': sim.enqueue({ type: 'town.setDifficulty', difficultyId: el.dataset.d! }); break;
       case 'autoreinc': sim.enqueue({ type: 'town.setAutoReincarnate', on: !sim.world.town.autoReincarnate }); break;
+      case 'autodiff': sim.enqueue({ type: 'town.setAutoDifficulty', on: !sim.world.town.autoDifficulty }); break;
       case 'autobounty': sim.enqueue({ type: 'town.setAutoBounty', on: !sim.world.town.autoBounty }); break;
       case 'build': sim.enqueue({ type: 'town.build', buildingId: el.dataset.b!, plotId: el.dataset.p! }); break;
       case 'upgrade': sim.enqueue({ type: 'town.upgrade', buildingInstanceId: el.dataset.id! }); break;
@@ -414,7 +420,7 @@ export class DebugOverlay {
     return `
       <div class="debug-sub">Độ khó: <b class="diff-cur">${esc(difficultyName(config, town.difficulty))}</b></div>
       <div class="debug-row diff-btns">${btns}</div>
-      <div class="debug-row"><button data-a="autoreinc">tự tái sinh: ${town.autoReincarnate ? 'BẬT' : 'TẮT'}</button></div>`;
+      <div class="debug-row"><button data-a="autoreinc">tự tái sinh: ${town.autoReincarnate ? 'BẬT' : 'TẮT'}</button> <button data-a="autodiff">tự tăng độ khó: ${town.autoDifficulty ? 'BẬT' : 'TẮT'}</button></div>`;
   }
 
   /** M3 progression lines for one hunter: skills, traits, buffs. */
@@ -461,7 +467,7 @@ export class DebugOverlay {
       tick <b>${world.tick}</b> · time <b>${fmtTime(world.timeMs)}</b> · ${this.sim.paused ? '<b>PAUSED</b>' : `x${this.sim.speed}`}<br>
       hunters ${world.hunters.length}${(world.journeys ?? []).length ? ` (+${(world.journeys ?? []).reduce((a, j) => a + j.hunters.length, 0)} đi xa)` : ''}${(world.portal ?? []).length ? ` (+${(world.portal ?? []).length} trong cổng)` : ''}/${config.formula.hunterSlots} · next arrival ${Math.max(0, config.formula.arrivalIntervalSec - world.town.arrivalTimerMs / 1000).toFixed(0)}s<br>
       town gold <b>${world.town.gold}</b> · monsters ${world.monsters.length} · kills ${world.stats.kills} · deaths ${world.stats.deaths} · services ${world.stats.serviceUses}<br>
-      bán NL ${world.stats.materialsSold} · bỏ NL ${world.stats.materialsDiscarded ?? 0} · bỏ đồ ${world.stats.gearScrapped ?? 0} · shop ${world.town.shop.length} · chế ${world.stats.crafted} · mua ${world.stats.gearBought} · cường hóa ${world.stats.enhanceSuccess}/${world.stats.enhanceTries}<br>
+      bán NL ${world.stats.materialsSold} · bỏ NL ${world.stats.materialsDiscarded ?? 0} · bỏ đồ ${world.stats.gearScrapped ?? 0} · rã đồ ${world.stats.gearDismantled ?? 0} · kho đồ ${(world.town.gearStorage ?? []).length} · shop ${world.town.shop.length} · chế ${world.stats.crafted} · mua ${world.stats.gearBought} · cường hóa ${world.stats.enhanceSuccess}/${world.stats.enhanceTries}<br>
       kỹ năng ${world.stats.skillCasts} · chuyển nghề ${world.stats.jobChanges} · tái sinh ${world.stats.reincarnations} · học ${world.stats.learned}
       ${(world.portal ?? []).length ? `<br>Cổng Tái Sinh: ${esc((world.portal ?? []).map((p) => `${p.hunter.id} R${p.hunter.reincarnation} còn ${fmtTime(p.remainingMs)}`).join(', '))}` : ''}
       ${this.status ? `<br><span class="debug-status">${esc(this.status)}</span>` : ''}`;
@@ -513,7 +519,10 @@ function economyLine(config: GameConfig, e: SimEvent): string | null {
     case 'materialsDiscarded': return `${e.hunterId} bỏ ${e.units} NL không được yêu cầu`;
     case 'gearScrapped': return `cửa hàng bỏ ${gearName(config, e.gearId)} [${qualityName(config, e.qualityId)}] (ế)`;
     case 'craftStarted': return `${buildingName(config, e.buildingId)} bắt đầu chế ${gearName(config, e.gearId)}`;
-    case 'gearCrafted': return `${buildingName(config, e.buildingId)} chế xong ${gearName(config, e.gearId)} [${qualityName(config, e.qualityId)}]`;
+    case 'gearCrafted': return `${buildingName(config, e.buildingId)} chế xong ${tierPrefix(config, e.difficultyId)}${gearName(config, e.gearId)} [${qualityName(config, e.qualityId)}]`;
+    case 'gearDismantled': return `rã ${tierPrefix(config, e.difficultyId)}${gearName(config, e.gearId)} [${qualityName(config, e.qualityId)}] → ${Object.entries(e.materials).map(([id, n]) => `${n} ${materialName(config, id)}`).join(', ') || 'không còn gì'}`;
+    case 'gearReclaimed': return `${e.hunterId} trả ${e.itemUids.length} món đồ về kho Town${e.reason === 'reincarnation' ? ' (tái sinh)' : ''}`;
+    case 'gearRelisted': return `cửa hàng bày bán lại ${gearName(config, e.gearId)} ${e.price}g`;
     case 'gearBought': return `${e.hunterId} mua ${gearName(config, e.gearId)} -${e.price}g`;
     case 'enhanceResult': {
       const slot = slotName(config, e.slot);

@@ -100,7 +100,7 @@ function maxOut(h: Hunter) {
 }
 
 describe('reincarnation', () => {
-  it('resets level/job/stats to roll, keeps gear/skills/traits, adds trait points and raises effective stats', () => {
+  it('resets level/job/stats to roll, reclaims gear into Town storage, keeps skills/traits, adds trait points and raises effective stats', () => {
     const s = makeSim(1, WALK);
     const h = s.world.hunters[0]!;
     s.world.town.autoReincarnate = false;
@@ -113,12 +113,14 @@ describe('reincarnation', () => {
     maxOut(h);
     h.needs.hp = 1;
 
-    // Compare against a level-1, tier-0, 0-reincarnation version with the same gear/traits.
-    const before = hunterStats(config, { ...h, level: 1, jobTier: 0, stats: { ...h.rollStats }, buffs: [] });
+    // Compare against a level-1, tier-0, 0-reincarnation version with the same traits and no gear (it is reclaimed).
+    const before = hunterStats(config, { ...h, level: 1, jobTier: 0, stats: { ...h.rollStats }, buffs: [], equipment: {} });
 
     s.enqueue({ type: 'hunter.reincarnate', hunterId: h.id });
     untilReincarnated(s, h);
-    expect(eventsOf(s, 'reincarnated')).toEqual([expect.objectContaining({ hunterId: h.id, count: 1 })]);
+    const evs = s.drainEvents();
+    expect(evs.filter((e) => e.type === 'reincarnated')).toEqual([expect.objectContaining({ hunterId: h.id, count: 1 })]);
+    expect(evs.filter((e) => e.type === 'gearReclaimed')).toEqual([expect.objectContaining({ hunterId: h.id, itemUids: ['g1'], reason: 'reincarnation' })]);
     expect(h.nodeId).toBe(config.index.portalNode);
     expect(h.reincarnation).toBe(1);
     expect(h.level).toBe(1);
@@ -128,7 +130,10 @@ describe('reincarnation', () => {
     expect(h.stats).not.toBe(h.rollStats);
     expect(h.traitPoints).toBe(tp + config.formula.traitPointsPerReinc);
     expect(h.buffs).toEqual([]);
-    expect(h.equipment[gear.slot]).toMatchObject({ uid: 'g1', enhance: 2 });
+    // Reclaim (TECH_SPEC §5.8): the item keeps its stats in Town gear storage, with the base tier.
+    expect(h.equipment[gear.slot]).toBeUndefined();
+    expect(s.world.town.gearStorage).toEqual([{ uid: 'g1', gearId: gear.id, qualityId: config.qualities[0]!.id, enhance: 2, difficultyId: config.difficulties[0]!.id }]);
+    expect(s.world.stats.gearReclaimed).toBe(1);
     expect(h.skills).toEqual({ 'skill.x': 3 });
     expect(h.traits).toEqual({ [config.traits[0]!.id]: 2 });
     const after = hunterStats(config, h);

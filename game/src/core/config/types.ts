@@ -119,6 +119,17 @@ export interface DifficultyDef {
   monsterAtkMul: number;
   monsterDefMul: number;
   rewardMul: number;
+  /**
+   * Gear tier of this difficulty (TECH_SPEC §5.8): gear crafted at this tier has main stat × gearStatMul and
+   * price/craft gold × gearPriceMul (absent = 1). The first difficulty is the base tier (1, no essence).
+   */
+  gearStatMul?: number;
+  gearPriceMul?: number;
+  /** Loc key of the tier prefix shown before the gear name (absent = no prefix). */
+  gearPrefixKey?: string;
+  /** Material dropped only by monsters spawned under this difficulty (chance essenceDropChance per kill); tier crafts need it. */
+  essenceId?: string;
+  essenceDropChance?: number;
 }
 
 /** Gold, Town Storage materials and build time to reach one building level (TECH_SPEC §5.12). */
@@ -540,6 +551,21 @@ export interface FormulaParams {
   defSoftKnee: number;
   /** Kills per HP bar that count as journey power 1 per member (formulas.zonePower); the AI uses zoneRefKills. */
   journeyRefKills: number;
+  /**
+   * Gear tiers (TECH_SPEC §5.8): a dismantled item (shop item at scrap age, stored gear over gearStorageMax, command)
+   * returns floor(count × dismantleReturnFrac) of every material of its recipe (incl. tier essence) to Town Storage.
+   * 0 = old behaviour (scrapped, nothing back).
+   */
+  dismantleReturnFrac: number;
+  /** Max reclaimed items kept in Town gear storage; the oldest beyond it are dismantled. */
+  gearStorageMax: number;
+  /** Essence units a tier craft needs: max(1, round(gear.level × craftEssencePerLevel)). */
+  craftEssencePerLevel: number;
+  /**
+   * Auto difficulty (town.autoDifficulty): step up to the next unlocked difficulty when at least
+   * ceil(diffAutoAdvanceFrac × hunters) hunters have reincarnation ≥ its unlockReincarnation. > 1 = never.
+   */
+  diffAutoAdvanceFrac: number;
   [key: string]: number;
 }
 
