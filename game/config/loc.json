@@ -813,5 +813,455 @@
   "key": "pot.hp.7.name",
   "vi": "Thuốc hồi máu hư không",
   "en": "Void healing draught"
+ },
+ {
+  "key": "gear.head.padded.name",
+  "vi": "Mũ Độn",
+  "en": "Padded Helm"
+ },
+ {
+  "key": "gear.glove.padded.name",
+  "vi": "Găng Độn",
+  "en": "Padded Gauntlets"
+ },
+ {
+  "key": "gear.shoe.padded.name",
+  "vi": "Giày Độn",
+  "en": "Padded Boots"
+ },
+ {
+  "key": "gear.head.hide.name",
+  "vi": "Mũ Da",
+  "en": "Hide Helm"
+ },
+ {
+  "key": "gear.glove.hide.name",
+  "vi": "Găng Da",
+  "en": "Hide Gauntlets"
+ },
+ {
+  "key": "gear.shoe.hide.name",
+  "vi": "Giày Da",
+  "en": "Hide Boots"
+ },
+ {
+  "key": "gear.head.plate.name",
+  "vi": "Mũ Thép Tấm",
+  "en": "Plate Helm"
+ },
+ {
+  "key": "gear.glove.plate.name",
+  "vi": "Găng Thép Tấm",
+  "en": "Plate Gauntlets"
+ },
+ {
+  "key": "gear.shoe.plate.name",
+  "vi": "Giày Thép Tấm",
+  "en": "Plate Boots"
+ },
+ {
+  "key": "gear.ring.charm.name",
+  "vi": "Nhẫn Gel",
+  "en": "Gel Ring"
+ },
+ {
+  "key": "gear.belt.charm.name",
+  "vi": "Đai Gel",
+  "en": "Gel Belt"
+ },
+ {
+  "key": "gear.ring.fang.name",
+  "vi": "Nhẫn Nanh",
+  "en": "Fang Ring"
+ },
+ {
+  "key": "gear.belt.fang.name",
+  "vi": "Đai Nanh",
+  "en": "Fang Belt"
+ },
+ {
+  "key": "gear.ring.core.name",
+  "vi": "Nhẫn Lõi Đá",
+  "en": "Corestone Ring"
+ },
+ {
+  "key": "gear.belt.core.name",
+  "vi": "Đai Lõi Đá",
+  "en": "Corestone Belt"
+ },
+ {
+  "key": "gear.head.reed.name",
+  "vi": "Mũ Đan Lau",
+  "en": "Reedweave Helm"
+ },
+ {
+  "key": "gear.glove.reed.name",
+  "vi": "Găng Đan Lau",
+  "en": "Reedweave Gauntlets"
+ },
+ {
+  "key": "gear.shoe.reed.name",
+  "vi": "Giày Đan Lau",
+  "en": "Reedweave Boots"
+ },
+ {
+  "key": "gear.head.cinder.name",
+  "vi": "Mũ Vảy Tro",
+  "en": "Cinderscale Helm"
+ },
+ {
+  "key": "gear.glove.cinder.name",
+  "vi": "Găng Vảy Tro",
+  "en": "Cinderscale Gauntlets"
+ },
+ {
+  "key": "gear.shoe.cinder.name",
+  "vi": "Giày Vảy Tro",
+  "en": "Cinderscale Boots"
+ },
+ {
+  "key": "gear.head.drake.name",
+  "vi": "Mũ Tim Hồng",
+  "en": "Emberheart Helm"
+ },
+ {
+  "key": "gear.glove.drake.name",
+  "vi": "Găng Tim Hồng",
+  "en": "Emberheart Gauntlets"
+ },
+ {
+  "key": "gear.shoe.drake.name",
+  "vi": "Giày Tim Hồng",
+  "en": "Emberheart Boots"
+ },
+ {
+  "key": "gear.head.frost.name",
+  "vi": "Mũ Sương Giá",
+  "en": "Rimeguard Helm"
+ },
+ {
+  "key": "gear.glove.frost.name",
+  "vi": "Găng Sương Giá",
+  "en": "Rimeguard Gauntlets"
+ },
+ {
+  "key": "gear.shoe.frost.name",
+  "vi": "Giày Sương Giá",
+  "en": "Rimeguard Boots"
+ },
+ {
+  "key": "gear.head.brine.name",
+  "vi": "Mũ Thép Muối",
+  "en": "Brinesteel Helm"
+ },
+ {
+  "key": "gear.glove.brine.name",
+  "vi": "Găng Thép Muối",
+  "en": "Brinesteel Gauntlets"
+ },
+ {
+  "key": "gear.shoe.brine.name",
+  "vi": "Giày Thép Muối",
+  "en": "Brinesteel Boots"
+ },
+ {
+  "key": "gear.head.tide.name",
+  "vi": "Mũ Triều Cường",
+  "en": "Tidewall Helm"
+ },
+ {
+  "key": "gear.glove.tide.name",
+  "vi": "Găng Triều Cường",
+  "en": "Tidewall Gauntlets"
+ },
+ {
+  "key": "gear.shoe.tide.name",
+  "vi": "Giày Triều Cường",
+  "en": "Tidewall Boots"
+ },
+ {
+  "key": "gear.head.void.name",
+  "vi": "Mũ Hư Không",
+  "en": "Voidshroud Helm"
+ },
+ {
+  "key": "gear.glove.void.name",
+  "vi": "Găng Hư Không",
+  "en": "Voidshroud Gauntlets"
+ },
+ {
+  "key": "gear.shoe.void.name",
+  "vi": "Giày Hư Không",
+  "en": "Voidshroud Boots"
+ },
+ {
+  "key": "gear.head.star.name",
+  "vi": "Mũ Vô Tinh",
+  "en": "Starless Helm"
+ },
+ {
+  "key": "gear.glove.star.name",
+  "vi": "Găng Vô Tinh",
+  "en": "Starless Gauntlets"
+ },
+ {
+  "key": "gear.shoe.star.name",
+  "vi": "Giày Vô Tinh",
+  "en": "Starless Boots"
+ },
+ {
+  "key": "gear.ring.venom.name",
+  "vi": "Nhẫn Độc Đầm",
+  "en": "Fenvenom Ring"
+ },
+ {
+  "key": "gear.belt.venom.name",
+  "vi": "Đai Độc Đầm",
+  "en": "Fenvenom Belt"
+ },
+ {
+  "key": "gear.ring.scale.name",
+  "vi": "Nhẫn Vảy Rồng",
+  "en": "Drakescale Ring"
+ },
+ {
+  "key": "gear.belt.scale.name",
+  "vi": "Đai Vảy Rồng",
+  "en": "Drakescale Belt"
+ },
+ {
+  "key": "gear.ring.ember.name",
+  "vi": "Nhẫn Than Hồng",
+  "en": "Ember Ring"
+ },
+ {
+  "key": "gear.belt.ember.name",
+  "vi": "Đai Than Hồng",
+  "en": "Ember Belt"
+ },
+ {
+  "key": "gear.ring.frost.name",
+  "vi": "Nhẫn Tinh Băng",
+  "en": "Frostcrystal Ring"
+ },
+ {
+  "key": "gear.belt.frost.name",
+  "vi": "Đai Tinh Băng",
+  "en": "Frostcrystal Belt"
+ },
+ {
+  "key": "gear.ring.pearl.name",
+  "vi": "Nhẫn Ngọc Chìm",
+  "en": "Drowned Pearl Ring"
+ },
+ {
+  "key": "gear.belt.pearl.name",
+  "vi": "Đai Ngọc Chìm",
+  "en": "Drowned Pearl Belt"
+ },
+ {
+  "key": "gear.ring.sigil.name",
+  "vi": "Nhẫn Ấn Triều",
+  "en": "Tidesigil Ring"
+ },
+ {
+  "key": "gear.belt.sigil.name",
+  "vi": "Đai Ấn Triều",
+  "en": "Tidesigil Belt"
+ },
+ {
+  "key": "gear.ring.shade.name",
+  "vi": "Nhẫn Tơ Bóng",
+  "en": "Shadesilk Ring"
+ },
+ {
+  "key": "gear.belt.shade.name",
+  "vi": "Đai Tơ Bóng",
+  "en": "Shadesilk Belt"
+ },
+ {
+  "key": "gear.ring.star.name",
+  "vi": "Nhẫn Vô Tinh",
+  "en": "Starless Ring"
+ },
+ {
+  "key": "gear.belt.star.name",
+  "vi": "Đai Vô Tinh",
+  "en": "Starless Belt"
+ },
+ {
+  "key": "gr.c.name",
+  "vi": "C",
+  "en": "C"
+ },
+ {
+  "key": "gr.b.name",
+  "vi": "B",
+  "en": "B"
+ },
+ {
+  "key": "gr.a.name",
+  "vi": "A",
+  "en": "A"
+ },
+ {
+  "key": "gr.s.name",
+  "vi": "S",
+  "en": "S"
+ },
+ {
+  "key": "gr.ss.name",
+  "vi": "SS",
+  "en": "SS"
+ },
+ {
+  "key": "gr.sss.name",
+  "vi": "SSS",
+  "en": "SSS"
+ },
+ {
+  "key": "opt.atk.name",
+  "vi": "Tấn công +{v}%",
+  "en": "Attack +{v}%"
+ },
+ {
+  "key": "opt.def.name",
+  "vi": "Phòng thủ +{v}%",
+  "en": "Defense +{v}%"
+ },
+ {
+  "key": "opt.hp.name",
+  "vi": "Máu +{v}%",
+  "en": "HP +{v}%"
+ },
+ {
+  "key": "opt.speed.name",
+  "vi": "Tốc đánh +{v}%",
+  "en": "Attack speed +{v}%"
+ },
+ {
+  "key": "opt.crit.name",
+  "vi": "Chí mạng +{v}",
+  "en": "Crit +{v}"
+ },
+ {
+  "key": "opt.eva.name",
+  "vi": "Né +{v}",
+  "en": "Evasion +{v}"
+ },
+ {
+  "key": "opt.leech.name",
+  "vi": "Hút máu {v}%",
+  "en": "Lifesteal {v}%"
+ },
+ {
+  "key": "opt.gold.name",
+  "vi": "Vàng nhặt +{v}%",
+  "en": "Gold found +{v}%"
+ },
+ {
+  "key": "opt.exp.name",
+  "vi": "Kinh nghiệm +{v}%",
+  "en": "EXP +{v}%"
+ },
+ {
+  "key": "opt.loot.name",
+  "vi": "Tỉ lệ rơi NL +{v}%",
+  "en": "Material drop +{v}%"
+ },
+ {
+  "key": "opt.thrift.name",
+  "vi": "Tiết kiệm nhu cầu +{v}%",
+  "en": "Need saving +{v}%"
+ },
+ {
+  "key": "opt.n.atk.name",
+  "vi": "Tấn công {v}%",
+  "en": "Attack {v}%"
+ },
+ {
+  "key": "opt.n.def.name",
+  "vi": "Phòng thủ {v}%",
+  "en": "Defense {v}%"
+ },
+ {
+  "key": "opt.n.hp.name",
+  "vi": "Máu {v}%",
+  "en": "HP {v}%"
+ },
+ {
+  "key": "opt.n.speed.name",
+  "vi": "Tốc đánh {v}%",
+  "en": "Attack speed {v}%"
+ },
+ {
+  "key": "opt.n.gold.name",
+  "vi": "Vàng nhặt {v}%",
+  "en": "Gold found {v}%"
+ },
+ {
+  "key": "opt.n.thrift.name",
+  "vi": "Tiết kiệm nhu cầu {v}%",
+  "en": "Need saving {v}%"
+ },
+ {
+  "key": "opt.u.fury.name",
+  "vi": "Cuồng Nộ: tấn công +{v}%",
+  "en": "Fury: attack +{v}%"
+ },
+ {
+  "key": "opt.u.bastion.name",
+  "vi": "Thành Lũy: máu +{v}%",
+  "en": "Bastion: HP +{v}%"
+ },
+ {
+  "key": "opt.u.keen.name",
+  "vi": "Sắc Bén: chí mạng +{v}",
+  "en": "Keen: crit +{v}"
+ },
+ {
+  "key": "opt.u.thirst.name",
+  "vi": "Khát Máu: hút máu {v}%",
+  "en": "Thirst: lifesteal {v}%"
+ },
+ {
+  "key": "opt.u.ember.name",
+  "vi": "Kỹ năng: Bùng Than",
+  "en": "Skill: Ember Burst"
+ },
+ {
+  "key": "opt.u.stone.name",
+  "vi": "Kỹ năng: Da Đá",
+  "en": "Skill: Stoneskin"
+ },
+ {
+  "key": "set.emberheart.name",
+  "vi": "Bộ Tim Hồng",
+  "en": "Emberheart Set"
+ },
+ {
+  "key": "set.tidewall.name",
+  "vi": "Bộ Triều Cường",
+  "en": "Tidewall Set"
+ },
+ {
+  "key": "set.starless.name",
+  "vi": "Bộ Vô Tinh",
+  "en": "Starless Set"
+ },
+ {
+  "key": "gsk.emberburst.name",
+  "vi": "Bùng Than",
+  "en": "Ember Burst"
+ },
+ {
+  "key": "gsk.stoneskin.name",
+  "vi": "Da Đá",
+  "en": "Stoneskin"
+ },
+ {
+  "key": "gsk.starfall.name",
+  "vi": "Sao Rơi",
+  "en": "Starfall"
  }
 ]

@@ -1,6 +1,7 @@
 import type { GameConfig, GearDef, GearQualityDef } from '../config/types';
 import { GEAR_SLOTS } from '../config/types';
-import { gearMainValue, hunterStats, slotValue } from '../formulas';
+import { expectedGearExtra, expectedGearScore, gearMainValue, gearScore, hunterStats, slotValue } from '../formulas';
+import { copyGearDepth, gradeOf, rollGearOptions } from '../gear';
 import { personalityFactor } from '../hunterFactory';
 import type { System, SystemContext } from '../system';
 import type { GearInstance, Hunter, ShopItem, World } from '../world';
@@ -38,20 +39,24 @@ export function craftGoldCost(config: GameConfig, gear: GearDef, difficultyId?: 
   return Math.round(gear.basePrice * config.formula.craftGoldFrac * tierPriceMul(config, difficultyId));
 }
 
-/** List price of a fresh craft: round(basePrice × quality priceMult × tier gearPriceMul). */
-export function craftListPrice(config: GameConfig, gear: GearDef, q: GearQualityDef, difficultyId?: string): number {
-  return Math.round(gear.basePrice * q.priceMult * tierPriceMul(config, difficultyId));
+/**
+ * List price of a fresh craft: round(basePrice × quality priceMult × tier gearPriceMul × grade priceMult).
+ * `gradeId` absent = the first (no-option) grade, priceMult 1 in the shipped table.
+ */
+export function craftListPrice(config: GameConfig, gear: GearDef, q: GearQualityDef, difficultyId?: string, gradeId?: string): number {
+  return Math.round(gear.basePrice * q.priceMult * tierPriceMul(config, difficultyId) * gradeOf(config, { gradeId }).priceMult);
 }
 
 /**
- * Shop price of a used (reclaimed) item: round(basePrice × priceMult × tier gearPriceMul × (1 + enhance × enhanceStatPerLevel)),
- * i.e. the craft price scaled like its main stat by the enhance level. 0 for unknown gear/quality.
+ * Shop price of a used (reclaimed) item: round(basePrice × priceMult × tier gearPriceMul × grade priceMult ×
+ * (1 + enhance × enhanceStatPerLevel)), i.e. the craft price scaled like its main stat by the enhance level. 0 for unknown gear/quality.
  */
 export function gearListPrice(config: GameConfig, g: GearInstance): number {
   const def = config.index.gear.get(g.gearId);
   const q = config.index.qualities.get(g.qualityId);
   if (!def || !q) return 0;
-  return Math.round(def.basePrice * q.priceMult * tierPriceMul(config, g.difficultyId) * (1 + g.enhance * config.formula.enhanceStatPerLevel));
+  return Math.round(def.basePrice * q.priceMult * tierPriceMul(config, g.difficultyId) * gradeOf(config, g).priceMult *
+    (1 + g.enhance * config.formula.enhanceStatPerLevel));
 }
 
 function maxHunterLevel(world: World): number {
@@ -176,28 +181,36 @@ export function updateShopTurnover(world: World, config: GameConfig): ShopItem[]
 }
 
 /**
- * Same-slot items already on sale (actual quality and tier) or being crafted (reference quality, job tier), counting only
- * items whose gear level ≤ this recipe's (usable no later than the new item): their best value and how many copies there are.
+ * Same-slot items already on sale (actual quality, tier and option lines) or being crafted (reference quality, job tier,
+ * expected option lines), counting only items whose gear level ≤ this recipe's (usable no later than the new item).
+ * The value is per hunter (gearScore / expectedGearScore, M5), so the stock is returned as a list.
  */
-function coveredStock(config: GameConfig, world: World, gear: GearDef, refQualityId: string): { value: number; copies: number } {
-  let value = 0;
-  let copies = 0;
+interface Covered { item: GearInstance; def: GearDef; job: boolean }
+
+function coveredStock(config: GameConfig, world: World, gear: GearDef, refQualityId: string): Covered[] {
+  const out: Covered[] = [];
   for (const it of world.town.shop) {
     const d = config.index.gear.get(it.gearId);
-    if (d && d.slot === gear.slot && d.level <= gear.level) {
-      value = Math.max(value, gearMainValue(config, it));
-      copies++;
-    }
+    if (d && d.slot === gear.slot && d.level <= gear.level) out.push({ item: it, def: d, job: false });
   }
   for (const k in world.town.crafting) {
     const job = world.town.crafting[k];
     const d = job ? config.index.gear.get(job.gearId) : undefined;
     if (job && d && d.slot === gear.slot && d.level <= gear.level) {
-      value = Math.max(value, gearMainValue(config, { uid: '', gearId: d.id, qualityId: refQualityId, enhance: 0, difficultyId: job.difficultyId }));
-      copies++;
+      out.push({ item: { uid: '', gearId: d.id, qualityId: refQualityId, enhance: 0, difficultyId: job.difficultyId }, def: d, job: true });
     }
   }
-  return { value, copies };
+  return out;
+}
+
+/** Best value of the covered stock for one hunter (0 when there is none). */
+function coveredValue(config: GameConfig, h: Hunter, stock: readonly Covered[]): number {
+  let v = 0;
+  for (const c of stock) {
+    const x = c.job ? expectedGearScore(config, h, c.def, gearMainValue(config, c.item)) : gearScore(config, h, c.item, c.def.slot);
+    if (x > v) v = x;
+  }
+  return v;
 }
 
 /**
@@ -218,10 +231,10 @@ export function recipeBeneficiaries(ctx: SystemContext, gear: GearDef, difficult
   const refQ = referenceQuality(config);
   if (!refQ) return 0;
   const stock = coveredStock(config, world, gear, refQ.id);
-  const all = countUpgrades(config, world, gear, 0, difficultyId);
-  if (stock.copies === 0) return all;
-  const beyond = countUpgrades(config, world, gear, stock.value, difficultyId);
-  return beyond + Math.max(0, all - beyond - stock.copies);
+  const all = countUpgrades(config, world, gear, null, difficultyId);
+  if (stock.length === 0) return all;
+  const beyond = countUpgrades(config, world, gear, stock, difficultyId);
+  return beyond + Math.max(0, all - beyond - stock.length);
 }
 
 /**
@@ -230,7 +243,7 @@ export function recipeBeneficiaries(ctx: SystemContext, gear: GearDef, difficult
  * the next copies are bought while the current one is still on the shelf.
  */
 export function recipeWanters(config: GameConfig, world: World, gear: GearDef, difficultyId?: string): number {
-  return countUpgrades(config, world, gear, 0, difficultyId);
+  return countUpgrades(config, world, gear, null, difficultyId);
 }
 
 /**
@@ -273,8 +286,12 @@ function craftRolls(config: GameConfig, gear: GearDef, difficultyId?: string): C
   return rolls;
 }
 
-/** Hunters for whom this recipe's sellable rolls (see recipeBeneficiaries) reach craftMinSellChance, judged over max(slot value, covered). */
-function countUpgrades(config: GameConfig, world: World, gear: GearDef, covered: number, difficultyId?: string): number {
+/**
+ * Hunters for whom this recipe's sellable rolls (see recipeBeneficiaries) reach craftMinSellChance, judged over
+ * max(slot value, best covered stock for them). Roll values are the quality's main value + the hunter's expected
+ * option lines / set bonus (formulas.expectedGearExtra, M5).
+ */
+function countUpgrades(config: GameConfig, world: World, gear: GearDef, covered: readonly Covered[] | null, difficultyId?: string): number {
   const f = config.formula;
   const rolls = craftRolls(config, gear, difficultyId);
   if (!rolls) return 0;
@@ -283,11 +300,12 @@ function countUpgrades(config: GameConfig, world: World, gear: GearDef, covered:
   for (const h of world.hunters) {
     if (h.level < gear.level - f.craftLevelAhead) continue;
     const budget = h.gold * f.spendRatio * personalityFactor(config, h, 'spendRatio');
-    const ref = Math.max(slotValue(config, h, gear.slot), covered);
+    const ref = Math.max(slotValue(config, h, gear.slot), covered ? coveredValue(config, h, covered) : 0);
+    const extra = expectedGearExtra(config, h, gear);
     let chance = 0;
     for (const r of rolls) {
       if (r.minBudget > 0 && budget < r.minBudget) continue;
-      if ((r.value - ref) / Math.max(ref, 1) >= f.minUpgradeGain) chance += r.chance;
+      if ((r.value + extra - ref) / Math.max(ref, 1) >= f.minUpgradeGain) chance += r.chance;
     }
     if (chance > 0 && chance >= minChance - 1e-9) n++;
   }
@@ -397,7 +415,7 @@ export function reclaimGear(ctx: SystemContext, h: Hunter, reason: 'reincarnatio
   for (const slot of GEAR_SLOTS) {
     const g = h.equipment[slot];
     if (!g) continue;
-    store.push({ uid: g.uid, gearId: g.gearId, qualityId: g.qualityId, enhance: g.enhance, difficultyId: g.difficultyId ?? baseTier(config) });
+    store.push(copyGearDepth({ uid: g.uid, gearId: g.gearId, qualityId: g.qualityId, enhance: g.enhance, difficultyId: g.difficultyId ?? baseTier(config) }, g));
     uids.push(g.uid);
     delete h.equipment[slot];
   }
@@ -424,16 +442,16 @@ export function storedGearBuyers(config: GameConfig, world: World, g: GearInstan
   const def = config.index.gear.get(g.gearId);
   if (!def) return 0;
   const f = config.formula;
-  const value = gearMainValue(config, g);
   const minBudget = (f.craftAffordFrac ?? 0) * gearListPrice(config, g);
   let n = 0;
   for (const h of world.hunters) {
     if (h.level < def.level) continue;
     if (h.gold * f.spendRatio * personalityFactor(config, h, 'spendRatio') < minBudget) continue;
+    const value = gearScore(config, h, g, def.slot);
     let ref = slotValue(config, h, def.slot);
     for (const it of world.town.shop) {
       const d = config.index.gear.get(it.gearId);
-      if (d && d.slot === def.slot && d.level <= h.level) ref = Math.max(ref, gearMainValue(config, it));
+      if (d && d.slot === def.slot && d.level <= h.level) ref = Math.max(ref, gearScore(config, h, it, d.slot));
     }
     if ((value - ref) / Math.max(ref, 1) >= f.minUpgradeGain) n++;
   }
@@ -504,12 +522,18 @@ export const craftingSystem: System = {
         const gear = config.index.gear.get(job.gearId);
         if (gear) {
           const q = ctx.rng.weighted(config.qualities, (x) => x.craftChance);
+          // M5 (TECH_SPEC §4.2): grade + option lines, drawn right after the quality.
+          const depth = rollGearOptions(config, ctx.rng, gear.slot);
           const uid = 'g' + world.nextId++;
           const tier = tierDef(config, job.difficultyId).id;
-          const price = craftListPrice(config, gear, q, tier);
-          world.town.shop.push({ uid, gearId: gear.id, qualityId: q.id, enhance: 0, difficultyId: tier, price, listPrice: price, listedAtMs: world.timeMs });
+          const price = craftListPrice(config, gear, q, tier, depth.gradeId);
+          const item: ShopItem = { uid, gearId: gear.id, qualityId: q.id, enhance: 0, difficultyId: tier, price, listPrice: price, listedAtMs: world.timeMs };
+          world.town.shop.push(copyGearDepth(item, depth as GearInstance));
           world.stats.crafted += 1;
-          ctx.events.emit(world.tick, { type: 'gearCrafted', buildingId: b.id, itemUid: uid, gearId: gear.id, qualityId: q.id, difficultyId: tier });
+          ctx.events.emit(world.tick, {
+            type: 'gearCrafted', buildingId: b.id, itemUid: uid, gearId: gear.id, qualityId: q.id, difficultyId: tier,
+            ...(depth.gradeId ? { gradeId: depth.gradeId } : {}),
+          });
         }
         world.town.crafting[b.id] = null;
         continue; // start the next one on a later tick

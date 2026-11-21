@@ -1,4 +1,5 @@
 import { bestEnhance, bestShopPurchase, enhanceReserveMul, scoreGoals } from '../src/core/ai/utility';
+import { GEAR_SLOTS, type GearSlot } from '../src/core/config/types';
 import { NavGraph } from '../src/core/pathfinding';
 import { createWorld, Simulation } from '../src/core/simulation';
 import type { Hunter, ShopItem, World } from '../src/core/world';
@@ -19,6 +20,15 @@ function freshHunter(): Hunter {
   h.ai.goal = null;
   h.nodeId = config.index.squareNode;
   return h;
+}
+
+/** Every slot except `keep` gets maxed level-1 gear (nothing to enhance there, no upgrade to save for at level 1). */
+function fillMaxed(h: Hunter, keep?: GearSlot): void {
+  for (const slot of GEAR_SLOTS) {
+    if (slot === keep) continue;
+    const g = config.gear.find((x) => x.slot === slot && x.level === 1)!;
+    h.equipment[slot] = { uid: 'm-' + slot, gearId: g.id, qualityId: 'q.rare', enhance: config.enhance.length };
+  }
 }
 
 function freshWorld(shop: ShopItem[] = []): World {
@@ -136,8 +146,7 @@ describe('M2 AI: enhancing', () => {
     const h = freshHunter();
     h.equipment.weapon = { uid: 'eq', gearId: 'gear.w.club', qualityId: 'q.rare', enhance: 0 };
     // Fill the other slots with maxed level-1 gear: nothing else to enhance and no gear upgrade to save for (§5.4).
-    h.equipment.armor = { uid: 'ea', gearId: 'gear.a.padded', qualityId: 'q.rare', enhance: config.enhance.length };
-    h.equipment.accessory = { uid: 'er', gearId: 'gear.r.charm', qualityId: 'q.rare', enhance: config.enhance.length };
+    fillMaxed(h, 'weapon');
     const row = config.enhance[0]!;
     const cost = Math.round(60 * row.costFrac); // 6
     const need = Math.ceil(cost * enhanceReserveMul(config, row.successRate));
@@ -157,17 +166,17 @@ describe('M2 AI: enhancing', () => {
   it('picks the best expected stat gain per gold and skips maxed gear', () => {
     const h = freshHunter();
     h.gold = 100000;
-    h.equipment.weapon = { uid: 'w', gearId: 'gear.w.iron', qualityId: 'q.rare', enhance: 0 }; // 50
-    h.equipment.armor = { uid: 'a', gearId: 'gear.a.padded', qualityId: 'q.rare', enhance: 2 }; // round(60×0.2)=12
-    h.equipment.accessory = { uid: 'r', gearId: 'gear.r.charm', qualityId: 'q.rare', enhance: config.enhance.length }; // maxed
+    fillMaxed(h); // every other slot maxed
+    h.equipment.weapon = { uid: 'w', gearId: 'gear.w.iron', qualityId: 'q.rare', enhance: 0 };
+    h.equipment.body = { uid: 'a', gearId: 'gear.a.padded', qualityId: 'q.rare', enhance: 2 };
     // Expected stat gain per gold = successRate × mainValue × enhanceStatPerLevel / cost
-    // (current table: iron 1.0 × 18 × 0.06 / 50 = 0.0216; padded +2: 0.9 × 4 × 0.06 / 12 = 0.018 → iron, although dearer).
     const [r0, r2] = [config.enhance[0]!, config.enhance[2]!];
-    const ironPerGold = (r0.successRate * 18) / Math.round(500 * r0.costFrac);
-    const paddedPerGold = (r2.successRate * 4) / Math.round(60 * r2.costFrac);
-    expect(bestEnhance(config, h)?.slot).toBe(ironPerGold >= paddedPerGold ? 'weapon' : 'armor');
+    const iron = config.index.gear.get('gear.w.iron')!, padded = config.index.gear.get('gear.a.padded')!;
+    const ironPerGold = (r0.successRate * iron.mainValue) / Math.round(iron.basePrice * r0.costFrac);
+    const paddedPerGold = (r2.successRate * padded.mainValue) / Math.round(padded.basePrice * r2.costFrac);
+    expect(bestEnhance(config, h)?.slot).toBe(ironPerGold >= paddedPerGold ? 'weapon' : 'body');
     delete h.equipment.weapon;
-    expect(bestEnhance(config, h)?.slot).toBe('armor');
-    expect(bestEnhance(config, h)?.cost).toBe(12);
+    expect(bestEnhance(config, h)?.slot).toBe('body');
+    expect(bestEnhance(config, h)?.cost).toBe(Math.round(padded.basePrice * r2.costFrac));
   });
 });

@@ -1,0 +1,8 @@
+[
+  { "id": "gr.c", "nameKey": "gr.c.name", "chance": 0.5, "options": 0, "uniques": 0, "negChance": 0, "valueMul": 1, "priceMult": 1 },
+  { "id": "gr.b", "nameKey": "gr.b.name", "chance": 0.27, "options": 1, "uniques": 0, "negChance": 0.35, "valueMul": 1, "priceMult": 1.04 },
+  { "id": "gr.a", "nameKey": "gr.a.name", "chance": 0.13, "options": 2, "uniques": 0, "negChance": 0.3, "valueMul": 1.05, "priceMult": 1.08 },
+  { "id": "gr.s", "nameKey": "gr.s.name", "chance": 0.07, "options": 3, "uniques": 0, "negChance": 0.25, "valueMul": 1.1, "priceMult": 1.14 },
+  { "id": "gr.ss", "nameKey": "gr.ss.name", "chance": 0.025, "options": 4, "uniques": 1, "negChance": 0.2, "valueMul": 1.15, "priceMult": 1.22 },
+  { "id": "gr.sss", "nameKey": "gr.sss.name", "chance": 0.005, "options": 5, "uniques": 1, "negChance": 0.15, "valueMul": 1.25, "priceMult": 1.32 }
+]

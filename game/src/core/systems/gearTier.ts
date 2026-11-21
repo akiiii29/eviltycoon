@@ -31,11 +31,14 @@ export function tierPriceMul(config: GameConfig, difficultyId: string | undefine
   return tierDef(config, difficultyId).gearPriceMul ?? 1;
 }
 
-/** Essence units a tier craft of this gear needs: max(1, round(gear.level × craftEssencePerLevel)); 0 for the base tier. */
+/**
+ * Essence units a tier craft of this gear needs: max(1, round(gear.level × craftEssencePerLevel × essenceMul)); 0 for the
+ * base tier. essenceMul (M5) = the piece's share of its slot group, so a full 8-slot kit needs about what 3 pieces did.
+ */
 export function essenceCount(config: GameConfig, gear: GearDef, difficultyId: string | undefined): number {
   const d = tierDef(config, difficultyId);
   if (!d.essenceId) return 0;
-  return Math.max(1, Math.round(gear.level * config.formula.craftEssencePerLevel));
+  return Math.max(1, Math.round(gear.level * config.formula.craftEssencePerLevel * (gear.essenceMul ?? 1)));
 }
 
 /** Recipe materials at a tier: the gear's materials plus the tier's essence (base tier: the plain recipe). */

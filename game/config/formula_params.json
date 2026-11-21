@@ -179,5 +179,13 @@
  "potionCooldownSec": 8,
  "reviveFeeBase": 20,
  "reviveFeePerLevel": 15,
- "reviveBrokeDelayMul": 4
+ "reviveBrokeDelayMul": 4,
+ "gearPctCap": 40,
+ "gearPctFloor": -30,
+ "gearNeedSaveCap": 30,
+ "gearWorthLifesteal": 0.006,
+ "gearWorthGoldPct": 0.0015,
+ "gearWorthExpPct": 0.003,
+ "gearWorthDropPct": 0.001,
+ "gearWorthNeedSavePct": 0.0015
 }

@@ -115,7 +115,10 @@ function tierPrefix(config: GameConfig, difficultyId: string | undefined): strin
   return k ? `${t(config, k)} ` : '';
 }
 function gearLabel(config: GameConfig, g: GearInstance): string {
-  return `${tierPrefix(config, g.difficultyId)}${gearName(config, g.gearId)} [${qualityName(config, g.qualityId)}] +${g.enhance}`;
+  // M5 (TECH_SPEC §4.2): grade and option lines, e.g. "{S} (Attack +4.2%, Crit +2)".
+  const grade = g.gradeId ? ` {${t(config, config.index.gearGrades.get(g.gradeId)?.nameKey ?? g.gradeId)}}` : '';
+  const opts = (g.options ?? []).map((o) => t(config, config.index.gearOptions.get(o.id)?.nameKey ?? o.id).replace('{v}', String(o.value)));
+  return `${tierPrefix(config, g.difficultyId)}${gearName(config, g.gearId)} [${qualityName(config, g.qualityId)}]${grade} +${g.enhance}${opts.length ? ` (${opts.join(', ')})` : ''}`;
 }
 
 function fmtTime(ms: number): string {

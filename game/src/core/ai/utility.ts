@@ -1,7 +1,7 @@
 /** Goal scoring (TECH_SPEC §5). Pure functions: given state, return scored candidates. */
 import { GEAR_SLOTS, NEED_KEYS, type GameConfig, type GearSlot, type ModStat, type NeedKey } from '../config/types';
 import {
-  duel, expectedHit, gearMainValue, type EffectiveStats, planStats, liveCrowd, monsterStats, monsterTypeStats, moveSpeed, needFrac, needMax,
+  duel, expectedGearScore, expectedHit, gearMainValue, gearScore, type EffectiveStats, planStats, liveCrowd, monsterStats, monsterTypeStats, moveSpeed, needFrac, needMax,
   slotValue, urgentFrac, zoneCrowd, zoneOccupancy, type ZoneOccupancy, zoneScores, type ZoneScore,
 } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
@@ -303,7 +303,7 @@ export function bestShopPurchase(config: GameConfig, world: World, h: Hunter): {
     const def = config.index.gear.get(item.gearId);
     if (!def || h.level < def.level || item.price > budget) continue;
     const cur = slotValue(config, h, def.slot);
-    const gain = (gearMainValue(config, item) - cur) / Math.max(cur, 1);
+    const gain = (gearScore(config, h, item, def.slot) - cur) / Math.max(cur, 1); // M5: options/sets in main-stat units
     if (gain < f.minUpgradeGain) continue;
     if (!best) { best = { item, gain }; continue; }
     const a = Math.min(gain, 1);
@@ -368,15 +368,17 @@ export function savingsTarget(config: GameConfig, h: Hunter, slot: GearSlot, wor
   if (world) {
     for (const it of world.town.shop) {
       const def = config.index.gear.get(it.gearId);
-      const v = def ? gearMainValue(config, it) : 0;
+      const v = def ? gearScore(config, h, it, def.slot) : 0;
       if (!def || def.slot !== slot || def.level > h.level || v < line) continue;
       consider(it.price, v);
     }
     for (const k in world.town.crafting) {
       const job = world.town.crafting[k];
       const def = job ? config.index.gear.get(job.gearId) : undefined;
-      if (!def || def.slot !== slot || def.level > h.level || def.mainValue < line) continue;
-      consider(def.basePrice * f.aiTypicalQualityMult, def.mainValue);
+      if (!def || def.slot !== slot || def.level > h.level) continue;
+      const v = expectedGearScore(config, h, def, def.mainValue); // M5: + expected option lines / set bonus
+      if (v < line) continue;
+      consider(def.basePrice * f.aiTypicalQualityMult, v);
     }
   }
   let frac = f.upgradeSavingsConcreteFrac;
@@ -385,7 +387,7 @@ export function savingsTarget(config: GameConfig, h: Hunter, slot: GearSlot, wor
     for (const def of config.gear) {
       if (def.slot !== slot || def.level > h.level) continue;
       if (world && !gearCraftable(config, world, def)) continue;
-      const v = def.mainValue * f.aiTypicalQualityMult;
+      const v = expectedGearScore(config, h, def, def.mainValue * f.aiTypicalQualityMult);
       if (v < line) continue;
       consider(def.basePrice * f.aiTypicalQualityMult, v);
     }
@@ -452,10 +454,12 @@ export function bestEnhance(config: GameConfig, h: Hunter, world?: World): Enhan
     const c = expectedEnhanceCost(config, h, slot, world);
     const g = h.equipment[slot];
     if (!c || !g || c.successRate < minSuccess) continue;
-    const cur = gearMainValue(config, g);
-    const step = gearMainValue(config, { ...g, enhance: g.enhance + 1 }) - cur;
+    const main = gearMainValue(config, g);
+    // M5: the relative gain is over the slot's full value (options/sets included); enhance only scales the main value.
+    const cur = slotValue(config, h, slot);
+    const step = gearMainValue(config, { ...g, enhance: g.enhance + 1 }) - main;
     const row = config.enhance[g.enhance]!;
-    const loss = row.dropOnFail && g.enhance > 0 ? cur - gearMainValue(config, { ...g, enhance: g.enhance - 1 }) : 0;
+    const loss = row.dropOnFail && g.enhance > 0 ? main - gearMainValue(config, { ...g, enhance: g.enhance - 1 }) : 0;
     const expectedGain = c.successRate * step - (1 - c.successRate) * loss;
     if (expectedGain < minNet * c.successRate * step - 1e-9) continue;
     const reserve = c.cost * enhanceReserveMul(config, c.successRate);

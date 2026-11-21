@@ -1,4 +1,4 @@
-import type { SkillDef } from '../config/types';
+import type { GearSkillDef, SkillDef } from '../config/types';
 import { hunterStats } from '../formulas';
 import { SpatialHash } from '../spatial';
 import type { System, SystemContext } from '../system';
@@ -45,9 +45,12 @@ function readySkill(ctx: SystemContext, h: Hunter): SkillDef | undefined {
   return undefined;
 }
 
-/** Cast one skill. Returns the number of monsters hit (0 for buffs). */
-function cast(ctx: SystemContext, h: Hunter, sk: SkillDef, target: Monster): number {
-  const lvl = Math.min(h.skills[sk.id]!, sk.value.length);
+/**
+ * Cast one skill at `level` (default: the learned level). Returns the number of monsters hit (0 for buffs).
+ * `sourceId` keys the buff (default the skill id; gear skills use their own id so they never replace a learned buff).
+ */
+function cast(ctx: SystemContext, h: Hunter, sk: SkillDef, target: Monster, level?: number, sourceId = sk.id): number {
+  const lvl = Math.max(1, Math.min(level ?? h.skills[sk.id]!, sk.value.length));
   const value = sk.value[lvl - 1]!;
   switch (sk.kind) {
     case 'strike': {
@@ -71,12 +74,31 @@ function cast(ctx: SystemContext, h: Hunter, sk: SkillDef, target: Monster): num
     case 'buff': {
       if (!sk.buffStat) return 0;
       const keep = sk.keepSec?.[lvl - 1] ?? 0;
-      const buff = { sourceId: sk.id, stat: sk.buffStat, value, remainingMs: keep * 1000 };
-      const i = h.buffs.findIndex((b) => b.sourceId === sk.id);
+      const buff = { sourceId, stat: sk.buffStat, value, remainingMs: keep * 1000 };
+      const i = h.buffs.findIndex((b) => b.sourceId === sourceId);
       if (i >= 0) h.buffs[i] = buff;
       else h.buffs.push(buff);
       return 0;
     }
+  }
+}
+
+/**
+ * M5 gear skills (TECH_SPEC §4.2), called by combat right after an auto-attack on `target`: each gear skill of the
+ * equipment that is off cooldown (h.skillCdMs[gearSkillId]) rolls its chance (one RNG draw each; none when the hunter has
+ * no gear skill, or the target died for a damage skill) and on a hit casts its skill at skillLevel through `cast`.
+ */
+export function procGearSkills(ctx: SystemContext, h: Hunter, target: Monster, skills: readonly GearSkillDef[]): void {
+  for (const gs of skills) {
+    if ((h.skillCdMs[gs.id] ?? 0) > 0) continue;
+    const sk = ctx.config.index.skills.get(gs.skillId);
+    if (!sk || (sk.kind !== 'buff' && target.hp <= 0)) continue;
+    if (!ctx.rng.chance(gs.chance)) continue;
+    const targets = cast(ctx, h, sk, target, gs.skillLevel, gs.id);
+    aoeGridBuilt = false; // outside the skills pass: never keep the index (combat filters dead monsters afterwards)
+    h.skillCdMs[gs.id] = gs.cooldownSec * 1000;
+    ctx.world.stats.gearSkillProcs = (ctx.world.stats.gearSkillProcs ?? 0) + 1;
+    ctx.events.emit(ctx.world.tick, { type: 'skillCast', hunterId: h.id, skillId: gs.id, targets });
   }
 }
 

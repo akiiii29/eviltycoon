@@ -84,7 +84,7 @@ describe('buying', () => {
   it('buys, equips (dropping price), pays the town and replaces the old item without healing', () => {
     const ctx = makeCtx();
     const h = addHunter(ctx, { gold: 100, level: 1 });
-    h.equipment.accessory = { uid: 'old', gearId: 'gear.r.charm', qualityId: 'q.common', enhance: 0 };
+    h.equipment.necklace = { uid: 'old', gearId: 'gear.r.charm', qualityId: 'q.common', enhance: 0 };
     h.needs.hp = 10;
     const town0 = ctx.world.town.gold;
     const it = shopItem(ctx.world, 'gear.r.charm', 70);
@@ -94,7 +94,7 @@ describe('buying', () => {
     expect(h.gold).toBe(30);
     expect(ctx.world.town.gold).toBe(town0 + 70);
     expect(ctx.world.town.shop).toHaveLength(0);
-    expect(h.equipment.accessory).toEqual({ uid: it.uid, gearId: 'gear.r.charm', qualityId: 'q.rare', enhance: 0 });
+    expect(h.equipment.necklace).toEqual({ uid: it.uid, gearId: 'gear.r.charm', qualityId: 'q.rare', enhance: 0 });
     expect(h.needs.hp).toBe(10);
     expect(ctx.world.stats.gearBought).toBe(1);
     expect(ofType(ctx.events.drain(), 'gearBought')).toMatchObject([{ itemUid: it.uid, price: 70 }]);
@@ -178,7 +178,7 @@ describe('enhancing', () => {
     expect(h.gold).toBe(gold0);
     expect(h.ai.goal).toBeNull();
 
-    arrive(h, { type: 'enhance', slot: 'armor' });
+    arrive(h, { type: 'enhance', slot: 'body' });
     economySystem.update(ctx);
     expect(h.ai.goal).toBeNull();
 
@@ -316,7 +316,7 @@ describe('hp after buying', () => {
   it('clamps current hp if the new max is lower', () => {
     const ctx = makeCtx();
     const h = addHunter(ctx, { gold: 1000, level: 9 });
-    h.equipment.accessory = { uid: 'big', gearId: 'gear.r.core', qualityId: 'q.mythic', enhance: 0 };
+    h.equipment.necklace = { uid: 'big', gearId: 'gear.r.core', qualityId: 'q.mythic', enhance: 0 };
     h.needs.hp = hunterStats(config, h).hp;
     const it = shopItem(ctx.world, 'gear.r.charm', 70);
     arrive(h, { type: 'shop', itemUid: it.uid });

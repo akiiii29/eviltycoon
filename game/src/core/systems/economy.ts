@@ -1,5 +1,6 @@
 import type { GameConfig, GearSlot } from '../config/types';
 import { hunterStats } from '../formulas';
+import { copyGearDepth } from '../gear';
 import type { System, SystemContext } from '../system';
 import { isAlive, type GearInstance, type Hunter, type ShopItem, type World } from '../world';
 import { materialDemand, salePrice, sellOrder, surplusBudget, surplusPrice, townFeeShare } from './trading';
@@ -106,6 +107,7 @@ function doShop(ctx: SystemContext, h: Hunter, itemUid: string): void {
   // Equip a plain GearInstance (shop-only fields price/listPrice/listedAtMs are dropped).
   const g: GearInstance = { uid: item.uid, gearId: item.gearId, qualityId: item.qualityId, enhance: item.enhance };
   if (item.difficultyId !== undefined) g.difficultyId = item.difficultyId; // gear tier (TECH_SPEC §5.8)
+  copyGearDepth(g, item); // v13 grade + option lines (TECH_SPEC §4.2)
   h.equipment[def.slot] = g; // previous item is discarded
   // No free heal when max HP rises; only clamp if the new max is lower.
   h.needs.hp = Math.min(h.needs.hp, hunterStats(config, h).hp);

@@ -214,9 +214,75 @@ export interface BuildingPlotDef {
   h: number;
 }
 
-export type GearSlot = 'weapon' | 'armor' | 'accessory';
-export const GEAR_SLOTS: readonly GearSlot[] = ['weapon', 'armor', 'accessory'];
+/**
+ * M5 (world v13, TECH_SPEC §4.2): 8 slots — weapon (ATK), armor group head/body/gloves/shoes (DEF),
+ * accessories necklace/ring/belt (HP). Order matters (tie-breaks, reclaim order): weapon first, then armor, accessories.
+ */
+export type GearSlot = 'weapon' | 'head' | 'body' | 'gloves' | 'shoes' | 'necklace' | 'ring' | 'belt';
+export const GEAR_SLOTS: readonly GearSlot[] = ['weapon', 'head', 'body', 'gloves', 'shoes', 'necklace', 'ring', 'belt'];
 export type MainStat = 'atk' | 'def' | 'hp';
+
+/**
+ * Stats a gear option / set bonus can carry (TECH_SPEC §4.2): the combat ModStats (applied in formulas.hunterStats as
+ * their own "gear" category) plus effects read by the economy hooks:
+ * lifesteal = % of damage dealt healed; goldPct / expPct = kill gold / EXP +%; dropPct = material drop chance +%;
+ * needSavePct = satiety/stamina/mood drain −% (negative = drains faster).
+ */
+export type GearStat = ModStat | 'lifesteal' | 'goldPct' | 'expPct' | 'dropPct' | 'needSavePct';
+export const GEAR_STATS: readonly GearStat[] = [...MOD_STATS, 'lifesteal', 'goldPct', 'expPct', 'dropPct', 'needSavePct'];
+
+/** Gear grade (config/gear_grade.json): rolled at craft, sets how many extra option lines the item gets. */
+export interface GearGradeDef {
+  id: string;
+  nameKey: string;
+  /** Craft roll weight (sum 1). */
+  chance: number;
+  /** Extra option lines (0..5); `uniques` of them come from the unique pool. */
+  options: number;
+  uniques: number;
+  /** Chance that a non-unique line is drawn from the negative pool. */
+  negChance: number;
+  /** Rolled option values × valueMul. */
+  valueMul: number;
+  /** List price × priceMult. */
+  priceMult: number;
+}
+
+export type GearOptionKind = 'positive' | 'negative' | 'unique';
+
+/** One option line (config/gear_option.json). Value rolled uniformly in [min, max] × grade valueMul. */
+export interface GearOptionDef {
+  id: string;
+  nameKey: string;
+  kind: GearOptionKind;
+  /** Stat it adds (absent only on a gear-skill line). */
+  stat?: GearStat;
+  /** The line grants this gear skill instead of a stat. */
+  gearSkillId?: string;
+  min: number;
+  max: number;
+  weight: number;
+  /** Slots it may roll on (absent = all). */
+  slots?: GearSlot[];
+}
+
+/** A gear set (config/gear_set.json); pieces = gear rows with this setId, counted once per slot. Bonuses are cumulative. */
+export interface GearSetDef {
+  id: string;
+  nameKey: string;
+  bonuses: { pieces: number; stat?: GearStat; value?: number; gearSkillId?: string }[];
+}
+
+/** A gear skill (config/gear_skill.json): on each auto-attack, `chance` to cast `skillId` at `skillLevel` (any class). */
+export interface GearSkillDef {
+  id: string;
+  nameKey: string;
+  trigger: 'attack';
+  chance: number;
+  cooldownSec: number;
+  skillId: string;
+  skillLevel: number;
+}
 
 export interface MaterialDef {
   id: string;
@@ -239,6 +305,10 @@ export interface GearDef {
   materials: { materialId: string; count: number }[];
   /** Shop price at Rare quality (×quality.priceMult). */
   basePrice: number;
+  /** M5: tier essence × essenceMul (the piece's share of its slot group; absent = 1). */
+  essenceMul?: number;
+  /** M5: gear set this piece belongs to (config/gear_set.json). */
+  setId?: string;
 }
 
 export interface GearQualityDef {
@@ -617,6 +687,22 @@ export interface FormulaParams {
   reviveFeeBase: number;
   reviveFeePerLevel: number;
   reviveBrokeDelayMul: number;
+  /**
+   * M5 gear options / sets (TECH_SPEC §4.2): the gear category of % modifiers (options + set bonuses) is summed per stat and
+   * clamped to [gearPctFloor, gearPctCap] (it may go negative); needSavePct is clamped to ±gearNeedSaveCap.
+   */
+  gearPctCap: number;
+  gearPctFloor: number;
+  gearNeedSaveCap: number;
+  /**
+   * AI worth of the non-combat gear stats (ai valuation, formulas.gearScore), as Δln(power) per point:
+   * power = √(DPS × effective HP), so e.g. 0.005 = one point is worth +1 % ATK. Combat stats are valued from the hunter's stats.
+   */
+  gearWorthLifesteal: number;
+  gearWorthGoldPct: number;
+  gearWorthExpPct: number;
+  gearWorthDropPct: number;
+  gearWorthNeedSavePct: number;
   [key: string]: number;
 }
 
@@ -675,6 +761,11 @@ export interface GameConfig {
   journeys: JourneyDef[];
   /** Stock recipes in config order (TECH_SPEC §5.14). */
   consumables: ConsumableDef[];
+  /** M5 gear depth (TECH_SPEC §4.2): grades in config order (index 0 = the no-option grade old gear has), options, sets, gear skills. */
+  gearGrades: GearGradeDef[];
+  gearOptions: GearOptionDef[];
+  gearSets: GearSetDef[];
+  gearSkills: GearSkillDef[];
   loc: LocEntry[];
   /** Lookups built by the loader. */
   index: {
@@ -704,6 +795,10 @@ export interface GameConfig {
     difficulties: Map<string, DifficultyDef>;
     journeys: Map<string, JourneyDef>;
     consumables: Map<string, ConsumableDef>;
+    gearGrades: Map<string, GearGradeDef>;
+    gearOptions: Map<string, GearOptionDef>;
+    gearSets: Map<string, GearSetDef>;
+    gearSkills: Map<string, GearSkillDef>;
     /** The building that sells potions (first building with potionCap), or null. */
     potionSeller: string | null;
     /** The single town square node (spawn / revive / return point). */

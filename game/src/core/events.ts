@@ -22,7 +22,7 @@ export type SimEvent =
   /** A shop item left unsold at its floor price for shopFloorHoldSec was removed (no refund). */
   | { type: 'gearScrapped'; tick: number; itemUid: string; gearId: string; qualityId: string; price: number }
   | { type: 'craftStarted'; tick: number; buildingId: string; gearId: string }
-  | { type: 'gearCrafted'; tick: number; buildingId: string; itemUid: string; gearId: string; qualityId: string; difficultyId?: string }
+  | { type: 'gearCrafted'; tick: number; buildingId: string; itemUid: string; gearId: string; qualityId: string; difficultyId?: string; gradeId?: string }
   /**
    * TECH_SPEC §5.8: an item was dismantled — `materials` (floor(count × dismantleReturnFrac) of its recipe incl. tier essence)
    * went to Town Storage. `source`: shop = unsold at scrap age (instead of gearScrapped), storage = gear storage over

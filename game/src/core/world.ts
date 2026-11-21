@@ -7,9 +7,10 @@ export type { GearSlot, NeedKey } from './config/types';
  * Bump when the World shape changes and add a migration in save/migrations.ts.
  * v8 = Town buildings (TECH_SPEC §5.12); v9 = journeys (TECH_SPEC §5.11);
  * v10 = gear tiers per difficulty, Town gear storage (reclaim), dismantle, auto difficulty (TECH_SPEC §5.8);
- * v11 = service supplies, potions, revive fee (TECH_SPEC §5.14); v12 = reincarnation portal (`portal`, TECH_SPEC §5.13).
+ * v11 = service supplies, potions, revive fee (TECH_SPEC §5.14); v12 = reincarnation portal (`portal`, TECH_SPEC §5.13);
+ * v13 = 8 gear slots, gear grades and option lines (TECH_SPEC §4.2).
  */
-export const WORLD_SCHEMA_VERSION = 12;
+export const WORLD_SCHEMA_VERSION = 13;
 
 export type Grade = 'normal' | 'high' | 'highest';
 export type HunterTier = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
@@ -58,6 +59,18 @@ export interface GearInstance {
    * migration writes the base difficulty id on every existing item.
    */
   difficultyId?: string;
+  /**
+   * v13: grade (config/gear_grade.json) rolled at craft and its option lines (TECH_SPEC §4.2). Both absent = the first
+   * (no-option) grade: old gear, journey loot. Keep both absent rather than empty so plain items compare equal.
+   */
+  gradeId?: string;
+  options?: GearOption[];
+}
+
+/** v13: one rolled option line of a gear instance; `value` is the rolled stat value (0 on a gear-skill line). */
+export interface GearOption {
+  id: string;
+  value: number;
 }
 
 export interface ShopItem extends GearInstance {
@@ -371,6 +384,8 @@ export interface World {
     potionGold: number;
     reviveFees: number;
     reviveBroke: number;
+    /** v13: gear-skill procs (TECH_SPEC §4.2). Optional: absent = 0. */
+    gearSkillProcs?: number;
   };
 }
 

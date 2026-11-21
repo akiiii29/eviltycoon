@@ -1,6 +1,7 @@
 import { validateTables, type ConfigIssue, type FieldSpec, type TableSpec } from './schema';
 import {
-  BUILDING_KINDS, GEAR_SLOTS, MOD_STATS, NEED_KEYS, STAT_KEYS,
+  BUILDING_KINDS, GEAR_SLOTS, GEAR_STATS, MOD_STATS, NEED_KEYS, STAT_KEYS,
+  type GearGradeDef, type GearOptionDef, type GearSetDef, type GearSkillDef,
   type BuildingDef, type BuildingPlotDef, type ConsumableDef, type DifficultyDef, type JourneyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
   type MapEdge, type MapNode, type MaterialDef, type MonsterDef, type ZoneDef,
 } from './types';
@@ -180,6 +181,68 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
         of: { kind: 'object', fields: { materialId: { kind: 'ref', table: 'material' }, count: { kind: 'int', min: 1 } } },
       },
       basePrice: { kind: 'int', min: 0 },
+      essenceMul: { kind: 'number', min: 0.01, max: 10, optional: true },
+      setId: { kind: 'ref', table: 'gear_set', optional: true },
+    },
+  },
+  // M5 gear depth (TECH_SPEC §4.2): grades → option lines, sets, gear skills.
+  gear_grade: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      chance: { kind: 'number', min: 0, max: 1 },
+      options: { kind: 'int', min: 0, max: 8 },
+      uniques: { kind: 'int', min: 0, max: 8 },
+      negChance: { kind: 'number', min: 0, max: 1 },
+      valueMul: { kind: 'number', min: 0 },
+      priceMult: { kind: 'number', min: 0 },
+    },
+  },
+  gear_option: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      kind: { kind: 'enum', values: ['positive', 'negative', 'unique'] },
+      stat: { kind: 'enum', values: GEAR_STATS, optional: true },
+      gearSkillId: { kind: 'ref', table: 'gear_skill', optional: true },
+      min: { kind: 'number' },
+      max: { kind: 'number' },
+      weight: { kind: 'number', min: 0 },
+      slots: { kind: 'array', of: { kind: 'enum', values: GEAR_SLOTS }, optional: true, minLength: 1 },
+    },
+  },
+  gear_set: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      bonuses: {
+        kind: 'array',
+        minLength: 1,
+        of: {
+          kind: 'object',
+          fields: {
+            pieces: { kind: 'int', min: 1, max: 8 },
+            stat: { kind: 'enum', values: GEAR_STATS, optional: true },
+            value: { kind: 'number', optional: true },
+            gearSkillId: { kind: 'ref', table: 'gear_skill', optional: true },
+          },
+        },
+      },
+    },
+  },
+  gear_skill: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      trigger: { kind: 'enum', values: ['attack'] },
+      chance: { kind: 'number', min: 0, max: 1 },
+      cooldownSec: { kind: 'number', min: 0 },
+      skillId: { kind: 'ref', table: 'skill' },
+      skillLevel: { kind: 'int', min: 1 },
     },
   },
   gear_quality: {
@@ -351,6 +414,9 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   // Supplies, potions, revive fee (TECH_SPEC §5.14).
   'supplyRequestBatches', 'potionTownHallLevel', 'potionCarryMax', 'potionPriceLevelPct', 'potionSpendFrac', 'potionBuyScore',
   'potionUseHpFrac', 'potionCooldownSec', 'reviveFeeBase', 'reviveFeePerLevel', 'reviveBrokeDelayMul',
+  // M5 gear options / sets / gear skills (TECH_SPEC §4.2).
+  'gearPctCap', 'gearPctFloor', 'gearNeedSaveCap', 'gearWorthLifesteal', 'gearWorthGoldPct', 'gearWorthExpPct', 'gearWorthDropPct',
+  'gearWorthNeedSavePct',
 ];
 
 export class ConfigError extends Error {
@@ -631,6 +697,7 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
   const q = raw.gear_quality as GearQualityDef[];
   const qs = q.reduce((s, x) => s + x.craftChance, 0);
   if (Math.abs(qs - 1) > 1e-6) issues.push({ path: 'gear_quality', message: `craftChance must sum to 1 (got ${qs})` });
+  issues.push(...validateGearDepth(raw));
   const classIds = (raw.class as { id: string }[]).map((c) => c.id);
   const jobs = raw.job as JobDef[];
   for (const c of classIds) {
@@ -677,6 +744,50 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
   return issues;
 }
 
+/**
+ * M5 gear depth cross-checks (TECH_SPEC §4.2, §8): grade chances sum to 1, grade 0 has no options (old gear migrates to
+ * it), uniques ≤ options and every grade's lines can be filled for every slot; each option has exactly one of stat /
+ * gearSkillId and min ≤ max; positive/unique values ≥ 0, negative ≤ 0; set bonuses have stat+value or a gear skill,
+ * piece counts within the set's slots; every slot has at least one recipe.
+ */
+function validateGearDepth(raw: RawConfig): ConfigIssue[] {
+  const issues: ConfigIssue[] = [];
+  const grades = raw.gear_grade as GearGradeDef[];
+  const options = raw.gear_option as GearOptionDef[];
+  const sets = raw.gear_set as GearSetDef[];
+  const gear = raw.gear as GearDef[];
+  if (!Array.isArray(grades) || !Array.isArray(options) || !Array.isArray(sets) || !Array.isArray(gear)) return issues;
+  const gs = grades.reduce((s, x) => s + x.chance, 0);
+  if (Math.abs(gs - 1) > 1e-6) issues.push({ path: 'gear_grade', message: `chance must sum to 1 (got ${gs})` });
+  if (grades[0] && grades[0].options !== 0) issues.push({ path: 'gear_grade[0].options', message: 'the first grade is the no-option grade (old gear): 0' });
+  const pool = (slot: string, kind: string) => options.filter((o) => o.kind === kind && (!o.slots || o.slots.includes(slot as GearDef['slot']))).length;
+  grades.forEach((g, i) => {
+    if (g.uniques > g.options) issues.push({ path: `gear_grade[${i}].uniques`, message: 'must be ≤ options' });
+    for (const slot of GEAR_SLOTS) {
+      if (g.uniques > 0 && pool(slot, 'unique') < g.uniques) issues.push({ path: `gear_grade[${i}]`, message: `not enough unique options for slot ${slot}` });
+      const rest = g.options - g.uniques;
+      if (rest > 0 && pool(slot, 'positive') < rest) issues.push({ path: `gear_grade[${i}]`, message: `not enough positive options for slot ${slot}` });
+      if (rest > 0 && g.negChance > 0 && pool(slot, 'negative') < rest) issues.push({ path: `gear_grade[${i}]`, message: `not enough negative options for slot ${slot}` });
+    }
+  });
+  options.forEach((o, i) => {
+    if ((o.stat === undefined) === (o.gearSkillId === undefined)) issues.push({ path: `gear_option[${i}]`, message: 'needs exactly one of stat / gearSkillId' });
+    if (o.min > o.max) issues.push({ path: `gear_option[${i}]`, message: 'min > max' });
+    if (o.kind === 'negative' ? o.max > 0 : o.min < 0) issues.push({ path: `gear_option[${i}]`, message: `${o.kind} option values must be ${o.kind === 'negative' ? '≤' : '≥'} 0` });
+    if (o.gearSkillId && o.kind !== 'unique') issues.push({ path: `gear_option[${i}].gearSkillId`, message: 'only unique options grant gear skills' });
+  });
+  sets.forEach((s, i) => {
+    const slots = new Set(gear.filter((g) => g.setId === s.id).map((g) => g.slot));
+    s.bonuses.forEach((b, k) => {
+      const statOk = b.stat !== undefined && b.value !== undefined;
+      if (statOk === (b.gearSkillId !== undefined)) issues.push({ path: `gear_set[${i}].bonuses[${k}]`, message: 'needs stat + value or gearSkillId' });
+      if (b.pieces > slots.size) issues.push({ path: `gear_set[${i}].bonuses[${k}].pieces`, message: `set has pieces in only ${slots.size} slots` });
+    });
+  });
+  for (const slot of GEAR_SLOTS) if (!gear.some((g) => g.slot === slot)) issues.push({ path: 'gear', message: `no recipe for slot ${slot}` });
+  return issues;
+}
+
 /** Validate and build a typed, indexed config. Throws ConfigError listing every issue. */
 export function loadConfig(raw: RawConfig): GameConfig {
   const issues = validateConfig(raw);
@@ -703,7 +814,11 @@ export function loadConfig(raw: RawConfig): GameConfig {
   const difficulties = [...(raw.difficulty as DifficultyDef[])].sort((a, b) => a.order - b.order);
   const journeys = raw.journey as JourneyDef[];
   const consumables = raw.consumable as ConsumableDef[];
-  const jobsByClass = new Map<string, JobDef[]>(classes.map((c) => [c.id, jobs.filter((j) => j.classId === c.id).sort((a, b) => a.tier - b.tier)]));
+  const gearGrades = raw.gear_grade as GearGradeDef[];
+  const gearOptions = raw.gear_option as GearOptionDef[];
+  const gearSets = raw.gear_set as GearSetDef[];
+  const gearSkills = raw.gear_skill as GearSkillDef[];
+  const jobsByClass =new Map<string, JobDef[]>(classes.map((c) => [c.id, jobs.filter((j) => j.classId === c.id).sort((a, b) => a.tier - b.tier)]));
   return {
     version: (raw.meta as { version: string }).version,
     formula: raw.formula_params as FormulaParams,
@@ -726,6 +841,10 @@ export function loadConfig(raw: RawConfig): GameConfig {
     difficulties,
     journeys,
     consumables,
+    gearGrades,
+    gearOptions,
+    gearSets,
+    gearSkills,
     loc,
     index: {
       classes: new Map(classes.map((c) => [c.id, c])),
@@ -751,6 +870,10 @@ export function loadConfig(raw: RawConfig): GameConfig {
       difficulties: new Map(difficulties.map((d) => [d.id, d])),
       journeys: new Map(journeys.map((j) => [j.id, j])),
       consumables: new Map(consumables.map((c) => [c.id, c])),
+      gearGrades: new Map(gearGrades.map((x) => [x.id, x])),
+      gearOptions: new Map(gearOptions.map((x) => [x.id, x])),
+      gearSets: new Map(gearSets.map((x) => [x.id, x])),
+      gearSkills: new Map(gearSkills.map((x) => [x.id, x])),
       potionSeller: buildings.find((b) => b.potionCap)?.id ?? null,
       squareNode: nodes.find((n) => n.kind === 'square')!.id,
       portalNode: (nodes.find((n) => n.kind === 'portal') ?? nodes.find((n) => n.kind === 'square')!).id,

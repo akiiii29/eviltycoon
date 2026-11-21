@@ -1,0 +1,5 @@
+[
+  { "id": "gsk.emberburst", "nameKey": "gsk.emberburst.name", "trigger": "attack", "chance": 0.08, "cooldownSec": 6, "skillId": "skill.arcanist.fireball", "skillLevel": 1 },
+  { "id": "gsk.stoneskin", "nameKey": "gsk.stoneskin.name", "trigger": "attack", "chance": 0.05, "cooldownSec": 30, "skillId": "skill.warden.bulwark", "skillLevel": 1 },
+  { "id": "gsk.starfall", "nameKey": "gsk.starfall.name", "trigger": "attack", "chance": 0.1, "cooldownSec": 5, "skillId": "skill.strider.snipe", "skillLevel": 1 }
+]

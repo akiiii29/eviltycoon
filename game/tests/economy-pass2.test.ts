@@ -89,16 +89,16 @@ describe('gear savings (TECH_SPEC §5.4)', () => {
 
   it('savings are per hunter: enhancing a slot with no upgrade does not spend what is kept for another slot', () => {
     // Accessory core (Lv9) is top of its tier at level 9; the armor (padded) has a clear upgrade (hide/plate).
-    const h = hunter({ level: 9, equipment: { accessory: gear('gear.r.core', 0), armor: gear('gear.a.padded', config.enhance.length) } }); // maxed: not enhanceable itself
-    expect(upgradeSavings(config, h, 'accessory')).toBe(0);
+    const h = hunter({ level: 9, equipment: { necklace: gear('gear.r.core', 0), body: gear('gear.a.padded', config.enhance.length) } }); // maxed: not enhanceable itself
+    expect(upgradeSavings(config, h, 'necklace')).toBe(0);
     const hold = enhanceSavingsHold(config, h);
-    expect(hold).toBe(upgradeSavings(config, h, 'armor'));
+    expect(hold).toBe(upgradeSavings(config, h, 'body'));
     expect(hold).toBeGreaterThan(0);
     const c = Math.round(def('gear.r.core').basePrice * config.enhance[0]!.costFrac);
     h.gold = Math.ceil(c * enhanceReserveMul(config, config.enhance[0]!.successRate) + hold) - 1;
     expect(bestEnhance(config, h)).toBeNull();
     h.gold += 2;
-    expect(bestEnhance(config, h)?.slot).toBe('accessory');
+    expect(bestEnhance(config, h)?.slot).toBe('necklace');
   });
 });
 
@@ -135,8 +135,8 @@ describe('enhance expected-value gate (TECH_SPEC §5.4)', () => {
     // Weapon at a fair 50 % drop step (EV 0) vs armor at a safe step: the armor wins although both are allowed.
     expect(pMin).toBeLessThanOrEqual(0.5);
     const fair = config.enhance.findIndex((r, i) => i > 0 && r.dropOnFail && Math.abs(r.successRate - 0.5) < 1e-9);
-    const h = hunter({ gold: 1e9, equipment: { weapon: gear('gear.w.club', fair), armor: gear('gear.a.padded', 0) } });
-    expect(bestEnhance(config, h)?.slot).toBe('armor');
+    const h = hunter({ gold: 1e9, equipment: { weapon: gear('gear.w.club', fair), body: gear('gear.a.padded', 0) } });
+    expect(bestEnhance(config, h)?.slot).toBe('body');
   });
 });
 

@@ -11,10 +11,13 @@
  *   AI power  = √(kills per life / zoneRefKills), from the same per-hit expectations as the combat system,
  *               × a live crowd factor (monsters alive per hunter in the zone).
  */
-import type { FormulaParams, GameConfig, GearSlot, MainStat, ModStat, NeedKey, SkillDef, StatKey, ZoneDef } from './config/types';
-import { GEAR_SLOTS } from './config/types';
+import type {
+  FormulaParams, GameConfig, GearDef, GearSkillDef, GearSlot, GearStat, MainStat, ModStat, NeedKey, SkillDef, StatKey, ZoneDef,
+} from './config/types';
+import { GEAR_SLOTS, GEAR_STATS } from './config/types';
+import { addItemMods, addSetMods, clampGearStat, emptyMods, type GearMods, hunterGearMods, pctMul, setCounts } from './gear';
 import { personalityFactor } from './hunterFactory';
-import { memoHunterStats } from './statsCache';
+import { cacheVerifyEnabled, memoHunterStats } from './statsCache';
 import type { GearInstance, Hunter, Monster, World } from './world';
 
 export type EffectiveStats = Record<StatKey, number> & { atkSpeed: number };
@@ -129,20 +132,26 @@ function computeHunterStats(config: GameConfig, h: Hunter, steady: boolean): Eff
   s.hp *= growth;
   s.atk *= growth;
   s.def *= growth;
+  let equipped = false;
   for (const slot of GEAR_SLOTS) {
     const g = h.equipment[slot];
     if (!g) continue;
+    equipped = true;
     const stat = gearMainStat(config, g);
     if (stat) s[stat] += gearMainValue(config, g);
   }
+  // M5 gear category (option lines + set bonuses, TECH_SPEC §4.2): its own % category, clamped to
+  // [gearPctFloor, gearPctCap] (may be negative), × the trait/buff categories; crit/eva add flat points.
+  const gm = equipped ? hunterGearMods(config, h).mods : null;
+  const gp = (stat: ModStat) => (gm && gm[stat] !== 0 ? pctMul(clampGearStat(config, stat, gm[stat])) : 1);
   const pct = (stat: ModStat) => stackPct(traitTotal(config, h, stat), buffs ? buffTotal(h, stat) : 0, f);
   const mood = buffs ? moodStatMult(h.needs.mood / f.needMax, f) : 1;
-  s.hp *= pct('hpPct');
-  s.atk *= pct('atkPct') * mood;
-  s.def *= pct('defPct') * mood;
-  s.crit += traitTotal(config, h, 'crit') + (buffs ? buffTotal(h, 'crit') : 0);
-  s.eva += traitTotal(config, h, 'eva') + (buffs ? buffTotal(h, 'eva') : 0);
-  s.atkSpeed = Math.max(f.minAttackInterval, s.atkSpeed / pct('atkSpeedPct'));
+  s.hp *= pct('hpPct') * gp('hpPct');
+  s.atk *= pct('atkPct') * gp('atkPct') * mood;
+  s.def *= pct('defPct') * gp('defPct') * mood;
+  s.crit += traitTotal(config, h, 'crit') + (buffs ? buffTotal(h, 'crit') : 0) + (gm ? gm.crit : 0);
+  s.eva += traitTotal(config, h, 'eva') + (buffs ? buffTotal(h, 'eva') : 0) + (gm ? gm.eva : 0);
+  s.atkSpeed = Math.max(f.minAttackInterval, s.atkSpeed / (pct('atkSpeedPct') * gp('atkSpeedPct')));
   return s;
 }
 
@@ -180,10 +189,147 @@ export function monsterStats(config: GameConfig, m: Monster): MonsterStats {
   return monsterTypeStats(config, m.defId, m.difficultyId);
 }
 
-/** Value of the gear currently in a slot (0 if empty). Used to judge upgrades. */
+/**
+ * Value of the gear currently in a slot (0 if empty), in units of its main stat (gearScore). Used to judge upgrades.
+ * Memoised per (steady stats object, slot): the steady stats object changes whenever an input of the score does
+ * (level, base stats, job, reincarnation, equipment incl. option lines — statsCache.ts).
+ */
 export function slotValue(config: GameConfig, h: Hunter, slot: GearSlot): number {
   const g = h.equipment[slot];
-  return g ? gearMainValue(config, g) : 0;
+  if (!g) return 0;
+  const s = hunterStats(config, h, { steady: true });
+  let per = slotValueCache.get(s);
+  if (!per) { per = new Map(); slotValueCache.set(s, per); }
+  const hit = per.get(slot);
+  if (hit !== undefined && hit.uid === g.uid) {
+    if (cacheVerifyEnabled() && !Object.is(hit.v, gearScore(config, h, g, slot))) throw new Error(`slotValue: stale value for ${h.id} ${slot}`);
+    return hit.v;
+  }
+  const v = gearScore(config, h, g, slot);
+  per.set(slot, { uid: g.uid, v });
+  return v;
+}
+
+const slotValueCache = new WeakMap<object, Map<GearSlot, { uid: string; v: number }>>();
+
+// ---------------------------------------------------------------------------------------------------------------
+// M5 gear valuation for the AI (TECH_SPEC §5.4): option lines, set bonuses and gear skills converted into units of the
+// item's main stat, so upgrade gains stay slot-relative ((new − cur) / cur) as minUpgradeGain etc. were tuned for.
+//   power P = √(DPS × effective HP)   →   score = main + Δln P(extras) / (∂ln P / ∂main)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Unclamped main-stat total before % modifiers: base × job × reinc + Σ equipped main values of that stat. */
+function rawMainTotal(config: GameConfig, h: Hunter, stat: MainStat): number {
+  const growth = jobMult(config, h) * (1 + h.reincarnation * config.formula.reincStatBonus);
+  let v = h.stats[stat] * growth;
+  for (const slot of GEAR_SLOTS) {
+    const g = h.equipment[slot];
+    if (g && gearMainStat(config, g) === stat) v += gearMainValue(config, g);
+  }
+  return v;
+}
+
+/** DEF "half value" vs a monster of the hunter's level (defReduction): Δln EHP / ΔDEF = 1 / (DEF + half) below the knee. */
+function defHalf(config: GameConfig, h: Hunter): number {
+  return config.formula.defPerLevel * Math.max(1, h.level) + config.formula.defFlat;
+}
+
+/** ∂ln P / ∂(one point of raw main stat), from the hunter's steady stats. */
+export function mainStatWorth(config: GameConfig, h: Hunter, stat: MainStat): number {
+  const s = hunterStats(config, h, { steady: true });
+  const raw = Math.max(1, rawMainTotal(config, h, stat));
+  if (stat === 'def') return (0.5 * (s.def / raw)) / Math.max(1e-9, s.def + defHalf(config, h));
+  return 0.5 / raw;
+}
+
+/** Δln P of adding `mods` (gear stats) and gear `skills` to a hunter with steady stats `s` (linearised for % stats). */
+export function gearModsWorth(config: GameConfig, h: Hunter, s: EffectiveStats, mods: Partial<GearMods>, skills: readonly GearSkillDef[] = []): number {
+  const f = config.formula;
+  let w = 0;
+  const v = (k: GearStat) => mods[k] ?? 0;
+  w += 0.5 * (v('atkPct') + v('hpPct')) / PERCENT;
+  if (s.atkSpeed > f.minAttackInterval + 1e-9) w += (0.5 * v('atkSpeedPct')) / PERCENT;
+  if (v('defPct') !== 0) w += (0.5 * (v('defPct') / PERCENT) * s.def) / Math.max(1e-9, s.def + defHalf(config, h));
+  if (v('crit') !== 0) {
+    const e = (c: number) => 1 + critChance(c, f) * (critMultiplier(c, f.critMultiplier, f) - 1);
+    w += 0.5 * Math.log(e(s.crit + v('crit')) / e(s.crit));
+  }
+  if (v('eva') !== 0) w += 0.5 * Math.log((1 - dodgeChance(s.eva, f)) / (1 - dodgeChance(Math.max(0, s.eva + v('eva')), f)));
+  w += v('lifesteal') * f.gearWorthLifesteal + v('goldPct') * f.gearWorthGoldPct + v('expPct') * f.gearWorthExpPct;
+  w += v('dropPct') * f.gearWorthDropPct + v('needSavePct') * f.gearWorthNeedSavePct;
+  for (const gs of skills) w += gearSkillWorth(config, h, s, gs);
+  return w;
+}
+
+/** Expected casts per second of a gear skill: one proc every 1/chance attacks, then its cooldown. */
+export function gearSkillRate(gs: GearSkillDef, atkInterval: number): number {
+  if (!(gs.chance > 0)) return 0;
+  return 1 / (atkInterval / gs.chance + gs.cooldownSec);
+}
+
+/** Δln P of a gear skill: damage skills add rate × mult × interval of the auto-attack DPS; buffs their stat × uptime. */
+function gearSkillWorth(config: GameConfig, h: Hunter, s: EffectiveStats, gs: GearSkillDef): number {
+  const sk = config.index.skills.get(gs.skillId);
+  if (!sk) return 0;
+  const lvl = Math.max(1, Math.min(gs.skillLevel, sk.value.length));
+  const rate = gearSkillRate(gs, s.atkSpeed);
+  if (sk.kind !== 'buff') return 0.5 * Math.log(1 + rate * sk.value[lvl - 1]! * s.atkSpeed);
+  if (!sk.buffStat) return 0;
+  const uptime = Math.min(1, (sk.keepSec?.[lvl - 1] ?? 0) * rate);
+  return gearModsWorth(config, h, s, { [sk.buffStat]: sk.value[lvl - 1]! * uptime });
+}
+
+/** Set-bonus change (mods + gear skills) of putting `item` (null = nothing) into `slot` instead of leaving it empty. */
+function setDelta(config: GameConfig, h: Hunter, slot: GearSlot, item: GearInstance): { mods: GearMods; skills: GearSkillDef[] } | null {
+  const setId = config.index.gear.get(item.gearId)?.setId;
+  if (!setId) return null;
+  const withIt = emptyMods(), without = emptyMods();
+  const skWith: GearSkillDef[] = [], skWithout: GearSkillDef[] = [];
+  addSetMods(config, setCounts(config, h.equipment, { slot, item }), withIt, skWith);
+  addSetMods(config, setCounts(config, h.equipment, { slot, item: null }), without, skWithout);
+  for (const k of GEAR_STATS) withIt[k] -= without[k];
+  return { mods: withIt, skills: skWith.filter((x) => !skWithout.includes(x)) };
+}
+
+/**
+ * AI value of a gear instance for a hunter, in units of its main stat (TECH_SPEC §5.4):
+ *   gearScore = gearMainValue + Δln P(option lines + marginal set bonus in `slot` + gear skills) / mainStatWorth.
+ * Plain items (no option lines, no set) score exactly gearMainValue, so the old upgrade rules are unchanged for them.
+ */
+export function gearScore(config: GameConfig, h: Hunter, g: GearInstance, slot?: GearSlot): number {
+  const def = config.index.gear.get(g.gearId);
+  if (!def) return 0;
+  const main = gearMainValue(config, g);
+  if (!g.options?.length && !def.setId) return main;
+  const mods = emptyMods();
+  const skills: GearSkillDef[] = [];
+  addItemMods(config, g, mods, skills);
+  const d = setDelta(config, h, slot ?? def.slot, g);
+  if (d) {
+    for (const k of GEAR_STATS) mods[k] += d.mods[k];
+    for (const x of d.skills) if (!skills.includes(x)) skills.push(x);
+  }
+  const s = hunterStats(config, h, { steady: true });
+  return main + gearModsWorth(config, h, s, mods, skills) / mainStatWorth(config, h, def.mainStat);
+}
+
+/**
+ * gearScore of a piece not rolled yet (theoretical craft, job in progress) whose main value is `mainValue`:
+ * mainValue + its marginal set bonus / mainStatWorth. Option lines are NOT anticipated: half of all crafts roll none and a
+ * mean would make a same-tier recraft look like an upgrade (savings held and crafts made for a coin flip); the lines an
+ * item actually has count once it is on sale (gearScore).
+ */
+export function expectedGearScore(config: GameConfig, h: Hunter, def: GearDef, mainValue: number): number {
+  return mainValue + expectedGearExtra(config, h, def);
+}
+
+/** The part of expectedGearScore beyond the main value (same for every quality roll of a recipe): the set bonus. */
+export function expectedGearExtra(config: GameConfig, h: Hunter, def: GearDef): number {
+  if (!def.setId) return 0;
+  const d = setDelta(config, h, def.slot, { uid: '', gearId: def.id, qualityId: '', enhance: 0 });
+  if (!d) return 0;
+  const w = gearModsWorth(config, h, hunterStats(config, h, { steady: true }), d.mods, d.skills);
+  return w === 0 ? 0 : w / mainStatWorth(config, h, def.mainStat);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -277,6 +423,27 @@ function damageSkills(config: GameConfig, h: Hunter): { sk: SkillDef; mult: numb
   return out;
 }
 
+/** Damage gear skills (strike/aoe) of the hunter's equipment, with the multiplier of their skill level. */
+function gearDamageSkills(config: GameConfig, h: Hunter): { gs: GearSkillDef; mult: number }[] {
+  if (config.gearSkills.length === 0) return [];
+  let any = false;
+  for (const slot of GEAR_SLOTS) if (h.equipment[slot]) { any = true; break; }
+  if (!any) return [];
+  const gm = hunterGearMods(config, h); // memoised and frozen: key the derived list on it
+  const hit = gearDamageCache.get(gm);
+  if (hit) return hit;
+  const out: { gs: GearSkillDef; mult: number }[] = [];
+  for (const gs of gm.skills) {
+    const sk = config.index.skills.get(gs.skillId);
+    if (!sk || sk.kind === 'buff') continue;
+    out.push({ gs, mult: sk.value[Math.max(1, Math.min(gs.skillLevel, sk.value.length)) - 1]! });
+  }
+  gearDamageCache.set(gm, out);
+  return out;
+}
+
+const gearDamageCache = new WeakMap<object, { gs: GearSkillDef; mult: number }[]>();
+
 export interface Duel {
   /** Expected damage per second the hunter deals to this monster (auto-attacks + damage skills, single target). */
   hunterDps: number;
@@ -299,6 +466,8 @@ export function duel(config: GameConfig, h: Hunter, s: EffectiveStats, m: Monste
   const hit = (atk: number) => expectedHit(atk, m.def, h.level, m.level, s.crit, f.critMultiplier, 0, f);
   let hunterDps = hit(s.atk) / s.atkSpeed;
   for (const { sk, mult } of damageSkills(config, h)) hunterDps += hit(s.atk * mult) / sk.cooldownSec;
+  // M5 gear skills (damage kinds): proc rate gearSkillRate × one hit of the level's multiplier (single target).
+  for (const gs of gearDamageSkills(config, h)) hunterDps += hit(s.atk * gs.mult) * gearSkillRate(gs.gs, s.atkSpeed);
   const monsterDps = expectedHit(m.atk, s.def, m.level, h.level, m.crit, f.monsterCritMultiplier, s.eva, f) / m.attackSpeed;
   const ttk = m.maxHp / hunterDps;
   return { hunterDps, monsterDps, ttk, dmgPerKill: monsterDps * ttk };

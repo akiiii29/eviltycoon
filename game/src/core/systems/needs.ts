@@ -1,4 +1,5 @@
 import { needMax } from '../formulas';
+import { needDrainMul } from '../gear';
 import { personalityFactor } from '../hunterFactory';
 import type { System } from '../system';
 import { NEED_KEYS } from '../config/types';
@@ -29,9 +30,10 @@ export const needsSystem: System = {
       h.needs.hp = Math.min(h.needs.hp, needMax(config, h, 'hp'));
       if (h.insideBuildingId) continue;
 
+      const drain = needDrainMul(config, h); // M5 gear needSavePct (exactly 1 without it)
       for (const d of DECAY) {
         const before = h.needs[d.need];
-        const rate = config.formula[d.param] * personalityFactor(config, h, `decay.${d.need}`);
+        const rate = config.formula[d.param] * personalityFactor(config, h, `decay.${d.need}`) * drain;
         if (rate === 0) continue;
         const after = Math.max(0, before - rate * sec);
         h.needs[d.need] = after;

@@ -212,7 +212,36 @@ export const MIGRATIONS: Record<number, Migration> = {
   },
   // v11 → v12 (Reincarnation Portal, TECH_SPEC §5.13): nobody inside the portal (keep the array if already there).
   11: (w) => ({ ...w, portal: Array.isArray(w.portal) ? w.portal : [] }),
+  // v12 → v13 (8 gear slots, grades/options, TECH_SPEC §4.2): equipped `armor` → `body`, `accessory` → `necklace` (the old
+  // gear.a.* / gear.r.* rows are now those slots), also in a pending enhance goal; on hunters, journey teams and the portal.
+  // Items get no grade/options (= the first, no-option grade). Shop/storage/jobs hold gear ids only, which stay valid.
+  12: (w) => {
+    const hunters = (Array.isArray(w.hunters) ? w.hunters : []) as Record<string, any>[];
+    const journeys = (Array.isArray(w.journeys) ? w.journeys : []) as Record<string, any>[];
+    const portal = (Array.isArray(w.portal) ? w.portal : []) as Record<string, any>[];
+    return {
+      ...w,
+      hunters: hunters.map(migrateSlotsV13),
+      journeys: journeys.map((j) => ({ ...j, hunters: (Array.isArray(j.hunters) ? j.hunters : []).map(migrateSlotsV13) })),
+      portal: portal.map((p) => (p && p.hunter ? { ...p, hunter: migrateSlotsV13(p.hunter) } : p)),
+    };
+  },
 };
+
+/** v12 → v13 slot names of the 3-slot gear model. */
+const SLOT_V13: Record<string, string> = { armor: 'body', accessory: 'necklace' };
+
+function migrateSlotsV13(h: Record<string, any>): Record<string, any> {
+  if (!h || typeof h !== 'object') return h;
+  const eq: Record<string, unknown> = {};
+  for (const [slot, g] of Object.entries((h.equipment ?? {}) as Record<string, unknown>)) {
+    const to = SLOT_V13[slot] ?? slot;
+    if (g && eq[to] === undefined) eq[to] = g;
+  }
+  const goal = h.ai?.goal;
+  const ai = goal && goal.type === 'enhance' && SLOT_V13[goal.slot] ? { ...h.ai, goal: { ...goal, slot: SLOT_V13[goal.slot] } } : h.ai;
+  return { ...h, equipment: eq, ...(ai !== undefined ? { ai } : {}) };
+}
 
 /**
  * Apply the v10 → v11 supply fields when absent (idempotent; existing fields win). Used at load for v12 saves made by a

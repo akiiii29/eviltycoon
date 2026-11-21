@@ -86,8 +86,8 @@ describe('automatic requests from auto-craft needs', () => {
     ctx.world.town.autoCraft = true;
     h.equipment = {
       weapon: { uid: 'a', gearId: 'gear.w.club', qualityId: 'q.mythic', enhance: 5 },
-      armor: { uid: 'b', gearId: 'gear.a.padded', qualityId: 'q.mythic', enhance: 5 },
-      accessory: { uid: 'c', gearId: 'gear.r.charm', qualityId: 'q.mythic', enhance: 5 },
+      body: { uid: 'b', gearId: 'gear.a.padded', qualityId: 'q.mythic', enhance: 5 },
+      necklace: { uid: 'c', gearId: 'gear.r.charm', qualityId: 'q.mythic', enhance: 5 },
     };
     expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({});
   });

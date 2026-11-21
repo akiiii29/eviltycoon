@@ -1,0 +1,26 @@
+[
+  {
+    "id": "set.emberheart", "nameKey": "set.emberheart.name",
+    "bonuses": [
+      { "pieces": 2, "stat": "atkPct", "value": 3 },
+      { "pieces": 4, "stat": "hpPct", "value": 4 },
+      { "pieces": 6, "stat": "crit", "value": 2 }
+    ]
+  },
+  {
+    "id": "set.tidewall", "nameKey": "set.tidewall.name",
+    "bonuses": [
+      { "pieces": 2, "stat": "defPct", "value": 4 },
+      { "pieces": 4, "stat": "atkPct", "value": 4 },
+      { "pieces": 6, "stat": "lifesteal", "value": 1 }
+    ]
+  },
+  {
+    "id": "set.starless", "nameKey": "set.starless.name",
+    "bonuses": [
+      { "pieces": 2, "stat": "hpPct", "value": 5 },
+      { "pieces": 4, "stat": "atkPct", "value": 5 },
+      { "pieces": 6, "gearSkillId": "gsk.starfall" }
+    ]
+  }
+]
