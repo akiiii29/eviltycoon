@@ -226,6 +226,9 @@ export const MIGRATIONS: Record<number, Migration> = {
       portal: portal.map((p) => (p && p.hunter ? { ...p, hunter: migrateSlotsV13(p.hunter) } : p)),
     };
   },
+  // v13 → v14 (waiting queue, invitations, auto-invite, donate/banish; TECH_SPEC §4.1): empty queue and timers, no tickets,
+  // stats 0. Only fills missing fields, so it is safe whatever v13 ends up being.
+  13: (w) => fillMissingHunterQueue(w),
 };
 
 /** v12 → v13 slot names of the 3-slot gear model. */
@@ -241,6 +244,26 @@ function migrateSlotsV13(h: Record<string, any>): Record<string, any> {
   const goal = h.ai?.goal;
   const ai = goal && goal.type === 'enhance' && SLOT_V13[goal.slot] ? { ...h.ai, goal: { ...goal, slot: SLOT_V13[goal.slot] } } : h.ai;
   return { ...h, equipment: eq, ...(ai !== undefined ? { ai } : {}) };
+}
+
+/** v13 → v14 fields when absent (idempotent; existing fields win). */
+export function fillMissingHunterQueue(w: Record<string, unknown>): Record<string, unknown> {
+  const town = (w.town ?? {}) as Record<string, any>;
+  const stats = (w.stats ?? {}) as Record<string, unknown>;
+  return {
+    ...w,
+    town: {
+      ...town,
+      queue: Array.isArray(town.queue) ? town.queue : [],
+      queueTimerMs: Number.isFinite(town.queueTimerMs) ? town.queueTimerMs : 0,
+      autoInviteTimerMs: Number.isFinite(town.autoInviteTimerMs) ? town.autoInviteTimerMs : 0,
+      tickets: town.tickets && typeof town.tickets === 'object' && !Array.isArray(town.tickets) ? town.tickets : {},
+    },
+    stats: {
+      queueJoined: 0, queueEntered: 0, invites: 0, inviteGold: 0, autoInvites: 0, donatedGold: 0, banished: 0, personalityRerolls: 0,
+      ...stats,
+    },
+  };
 }
 
 /**

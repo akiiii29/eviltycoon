@@ -1,8 +1,8 @@
 import { validateTables, type ConfigIssue, type FieldSpec, type TableSpec } from './schema';
 import {
-  BUILDING_KINDS, GEAR_SLOTS, GEAR_STATS, MOD_STATS, NEED_KEYS, STAT_KEYS,
+  BUILDING_KINDS, GEAR_SLOTS, GEAR_STATS, HUNTER_TIERS, MOD_STATS, NEED_KEYS, PERSONALITY_TARGETS, STAT_KEYS,
   type GearGradeDef, type GearOptionDef, type GearSetDef, type GearSkillDef,
-  type BuildingDef, type BuildingPlotDef, type ConsumableDef, type DifficultyDef, type JourneyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
+  type InvitationDef, type PersonalityDef, type BuildingDef, type BuildingPlotDef, type ConsumableDef, type DifficultyDef, type JourneyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
   type MapEdge, type MapNode, type MaterialDef, type MonsterDef, type ZoneDef,
 } from './types';
 
@@ -32,6 +32,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       id: { kind: 'string', nonEmpty: true },
       nameKey: { kind: 'ref', table: 'loc' },
       weight: { kind: 'number', min: 0 },
+      kind: { kind: 'enum', values: ['positive', 'negative', 'neutral'], optional: true },
       modifiers: {
         kind: 'array',
         of: {
@@ -43,6 +44,17 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
           },
         },
       },
+    },
+  },
+  invitation: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      tierChances: { kind: 'record', keys: HUNTER_TIERS, of: { kind: 'number', min: 0 } },
+      gold: { kind: 'int', min: 0, optional: true },
+      townHallLevel: { kind: 'int', min: 1, optional: true },
+      autoInvite: { kind: 'bool', optional: true },
     },
   },
   stat_grade: {
@@ -414,6 +426,8 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   // Supplies, potions, revive fee (TECH_SPEC §5.14).
   'supplyRequestBatches', 'potionTownHallLevel', 'potionCarryMax', 'potionPriceLevelPct', 'potionSpendFrac', 'potionBuyScore',
   'potionUseHpFrac', 'potionCooldownSec', 'reviveFeeBase', 'reviveFeePerLevel', 'reviveBrokeDelayMul',
+  // M5 hunter systems: waiting queue, auto-invite, personality reroll (TECH_SPEC §4.1, §5.5).
+  'queueMax', 'queueArrivalIntervalSec', 'autoInviteMaxHunters', 'autoInviteIntervalSec', 'personalityRerollGold',
   // M5 gear options / sets / gear skills (TECH_SPEC §4.2).
   'gearPctCap', 'gearPctFloor', 'gearNeedSaveCap', 'gearWorthLifesteal', 'gearWorthGoldPct', 'gearWorthExpPct', 'gearWorthDropPct',
   'gearWorthNeedSavePct',
@@ -564,6 +578,12 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('reviveFeeBase', 0, 1e6);
     range('reviveFeePerLevel', 0, 1e6);
     range('reviveBrokeDelayMul', 1, 100);
+    // M5 waiting queue / auto-invite / personality reroll (TECH_SPEC §4.1).
+    range('queueMax', 0, 1000);
+    range('queueArrivalIntervalSec', 1, 1e7);
+    range('autoInviteMaxHunters', 0, 1000);
+    range('autoInviteIntervalSec', 1, 1e7);
+    range('personalityRerollGold', 0, 1e9);
   }
 
   const grades = raw.stat_grade;
@@ -725,6 +745,19 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
       issues.push({ path: `difficulty.${d.id}.essenceDropChance`, message: 'needed (> 0) with essenceId' });
     }
   });
+  // M5 invitations / personalities (TECH_SPEC §4.1, §5.5).
+  const invs = raw.invitation as InvitationDef[];
+  invs.forEach((inv, i) => {
+    if (!(HUNTER_TIERS.reduce((a, t) => a + (inv.tierChances?.[t] ?? 0), 0) > 0)) {
+      issues.push({ path: `invitation[${i}].tierChances`, message: 'needs a positive total' });
+    }
+  });
+  if (invs.filter((inv) => inv.autoInvite).length > 1) issues.push({ path: 'invitation', message: 'at most one row with autoInvite' });
+  (raw.personality as PersonalityDef[]).forEach((p, i) => {
+    p.modifiers.forEach((m, j) => {
+      if (!PERSONALITY_TARGETS.includes(m.target)) issues.push({ path: `personality[${i}].modifiers[${j}].target`, message: `unknown target "${m.target}"` });
+    });
+  });
   (raw.enhance as EnhanceDef[]).forEach((e, i) => {
     if (e.level !== i + 1) issues.push({ path: `enhance[${i}].level`, message: `expected ${i + 1} (rows must be +1, +2, … in order)` });
   });
@@ -818,13 +851,15 @@ export function loadConfig(raw: RawConfig): GameConfig {
   const gearOptions = raw.gear_option as GearOptionDef[];
   const gearSets = raw.gear_set as GearSetDef[];
   const gearSkills = raw.gear_skill as GearSkillDef[];
-  const jobsByClass =new Map<string, JobDef[]>(classes.map((c) => [c.id, jobs.filter((j) => j.classId === c.id).sort((a, b) => a.tier - b.tier)]));
+  const invitations = raw.invitation as InvitationDef[];
+  const jobsByClass = new Map<string, JobDef[]>(classes.map((c) => [c.id, jobs.filter((j) => j.classId === c.id).sort((a, b) => a.tier - b.tier)]));
   return {
     version: (raw.meta as { version: string }).version,
     formula: raw.formula_params as FormulaParams,
     classes,
     personalities,
     statGrades: raw.stat_grade as GameConfig['statGrades'],
+    invitations,
     nodes,
     edges: raw.map_edge as MapEdge[],
     buildings,
@@ -874,6 +909,8 @@ export function loadConfig(raw: RawConfig): GameConfig {
       gearOptions: new Map(gearOptions.map((x) => [x.id, x])),
       gearSets: new Map(gearSets.map((x) => [x.id, x])),
       gearSkills: new Map(gearSkills.map((x) => [x.id, x])),
+      invitations: new Map(invitations.map((x) => [x.id, x])),
+      autoInvitation: invitations.find((x) => x.autoInvite)?.id ?? null,
       potionSeller: buildings.find((b) => b.potionCap)?.id ?? null,
       squareNode: nodes.find((n) => n.kind === 'square')!.id,
       portalNode: (nodes.find((n) => n.kind === 'portal') ?? nodes.find((n) => n.kind === 'square')!).id,

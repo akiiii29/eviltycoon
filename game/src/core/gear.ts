@@ -152,6 +152,12 @@ export function needDrainMul(config: GameConfig, h: Hunter): number {
   return v === 0 ? 1 : 1 - v / 100;
 }
 
+/** Multiplier of a hunter's gear % stat (goldPct / expPct / dropPct …): 1 + clamped / 100, exactly 1 without it. */
+export function gearPctMul(config: GameConfig, h: Hunter, stat: GearStat): number {
+  const v = gearBonus(config, h, stat);
+  return v === 0 ? 1 : Math.max(0, 1 + v / 100);
+}
+
 /** Multiplier from a gear % bonus: 1 + v/100 (v already clamped). */
 export function pctMul(v: number): number {
   return 1 + v / 100;

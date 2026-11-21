@@ -8,9 +8,10 @@ export type { GearSlot, NeedKey } from './config/types';
  * v8 = Town buildings (TECH_SPEC §5.12); v9 = journeys (TECH_SPEC §5.11);
  * v10 = gear tiers per difficulty, Town gear storage (reclaim), dismantle, auto difficulty (TECH_SPEC §5.8);
  * v11 = service supplies, potions, revive fee (TECH_SPEC §5.14); v12 = reincarnation portal (`portal`, TECH_SPEC §5.13);
- * v13 = 8 gear slots, gear grades and option lines (TECH_SPEC §4.2).
+ * v13 = 8 gear slots, gear grades and option lines (TECH_SPEC §4.2); v14 = waiting queue, invitations, auto-invite,
+ * donate/banish stats (TECH_SPEC §4.1).
  */
-export const WORLD_SCHEMA_VERSION = 13;
+export const WORLD_SCHEMA_VERSION = 14;
 
 export type Grade = 'normal' | 'high' | 'highest';
 export type HunterTier = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
@@ -269,6 +270,19 @@ export interface PortalStay {
   enteredAtMs: number;
 }
 
+/**
+ * v14: a hunter waiting to enter Town (EHT "waiting slot", systems/arrivals, TECH_SPEC §4.1). Lightweight on purpose: the
+ * hunter is rolled (sim RNG) only when it enters, so a full town draws no RNG for its queue. `tier` = tier already rolled
+ * by an invitation (its grades are rolled for that tier on entry); absent = a plain visitor (normal grade roll).
+ */
+export interface QueueEntry {
+  uid: string;
+  source: 'visitor' | 'invite' | 'auto';
+  invitationId?: string;
+  tier?: HunterTier;
+  queuedAtMs: number;
+}
+
 export interface World {
   schemaVersion: number;
   configVersion: string;
@@ -320,6 +334,15 @@ export interface World {
     autoDifficulty: boolean;
     /** v11: stock lines by key `supply:<buildingId>` / `potion:<buildingId>` (TECH_SPEC §5.14). */
     supply: Record<string, SupplyLine>;
+    /**
+     * v14 (TECH_SPEC §4.1): hunters waiting for a free slot, front first (≤ queueMax); `queueTimerMs` counts toward the next
+     * visitor joining while Town is full; `autoInviteTimerMs` toward the free auto-invite while Town has ≤ autoInviteMaxHunters;
+     * `tickets` = invitation tickets owned, invitationId → count (`town.invite` uses one before paying gold).
+     */
+    queue: QueueEntry[];
+    queueTimerMs: number;
+    autoInviteTimerMs: number;
+    tickets: Record<string, number>;
   };
   /** Arrays (not maps) so iteration order is stable and deterministic. */
   hunters: Hunter[];
@@ -386,6 +409,18 @@ export interface World {
     reviveBroke: number;
     /** v13: gear-skill procs (TECH_SPEC §4.2). Optional: absent = 0. */
     gearSkillProcs?: number;
+    /**
+     * v14 (TECH_SPEC §4.1): visitors/invitees that joined the queue / entered from it; invitations used (gold paid for
+     * them); free auto-invites; Town gold donated to hunters; hunters banished; personality rerolls.
+     */
+    queueJoined: number;
+    queueEntered: number;
+    invites: number;
+    inviteGold: number;
+    autoInvites: number;
+    donatedGold: number;
+    banished: number;
+    personalityRerolls: number;
   };
 }
 

@@ -3,7 +3,7 @@ import type { GameConfig, GearDef } from '../core/config/types';
 import { GEAR_SLOTS } from '../core/config/types';
 import type { SimEvent } from '../core/events';
 import { hunterStats, needMax } from '../core/formulas';
-import { bestJourneyTeam, journeyPreview } from '../core/systems/journey';
+import { bestJourneyTeam, journeyPreview, townHunterCount } from '../core/systems/journey';
 import type { Simulation } from '../core/simulation';
 import { taxMoodLoss, taxRate } from '../core/systems/tax';
 import { buildBlocker, craftMaxGearLevel, levelCost, shopCapacity, townHallLevel, upgradeBlocker } from '../core/systems/town';
@@ -24,6 +24,8 @@ export const SKILL_LOG_WINDOW_TICKS = 50;
 /** Debug overlay "post bounty" buttons: a zone bounty of this size. */
 const DEBUG_BOUNTY_KILLS = 10;
 const DEBUG_BOUNTY_REWARD = 100;
+/** Debug overlay "donate" button: Town gold given to a hunter per click (TECH_SPEC §4.1). */
+const DEBUG_DONATE_GOLD = 100;
 
 /**
  * Aggregates skillCast events into one line per window of SKILL_LOG_WINDOW_TICKS (by event tick, so x4 speed or a
@@ -233,6 +235,12 @@ export class DebugOverlay {
         break;
       }
       case 'recall': sim.enqueue({ type: 'journey.recall', journeyUid: el.dataset.id! }); break;
+      // M5 hunter systems (TECH_SPEC §4.1).
+      case 'invite': sim.enqueue({ type: 'town.invite', invitationId: el.dataset.i! }); break;
+      case 'ticket': sim.enqueue({ type: 'debug.grantTicket', invitationId: el.dataset.i!, count: 1 }); break;
+      case 'donate': sim.enqueue({ type: 'hunter.donate', hunterId: el.dataset.id!, gold: DEBUG_DONATE_GOLD }); break;
+      case 'banish': sim.enqueue({ type: 'hunter.banish', hunterId: el.dataset.id! }); break;
+      case 'reroll': sim.enqueue({ type: 'hunter.rerollPersonality', hunterId: el.dataset.id! }); break;
     }
     this.render();
   }
@@ -301,6 +309,7 @@ export class DebugOverlay {
       ${this.renderBounties()}
       ${this.renderTax()}
       ${this.renderJourneys()}
+      ${this.renderInvites()}
       ${this.renderDifficulty()}`;
   }
 
@@ -408,6 +417,37 @@ export class DebugOverlay {
       <div class="debug-row"><button data-a="autobounty">bounty tự động: ${town.autoBounty ? 'BẬT' : 'TẮT'}</button></div>`;
   }
 
+  /**
+   * M5 waiting queue and invitations (TECH_SPEC §4.1): queue (front first, invited tier shown), timers, tickets owned and
+   * one "invite" button per invitation (ticket or gold cost; Town Hall requirement), "+vé" debug ticket.
+   */
+  private renderInvites(): string {
+    const { world, config } = this.sim;
+    const town = world.town;
+    const f = config.formula;
+    const queue = town.queue ?? [];
+    const head = queue.slice(0, 8).map((e) => `${e.uid}${e.tier ? ` <span class="tier-${e.tier}">${e.tier}</span>` : ''}${e.source !== 'visitor' ? ` (${e.source === 'auto' ? 'mời tự động' : 'thư mời'})` : ''}`).join(', ');
+    const th = townHallLevel(config, world);
+    const btns = config.invitations.map((inv) => {
+      const n = town.tickets?.[inv.id] ?? 0;
+      const label = esc(t(config, inv.nameKey));
+      const cost = n > 0 ? `vé ×${n}` : inv.gold === undefined ? 'cần vé' : `${inv.gold}g`;
+      const locked = n === 0 && (inv.gold === undefined || (inv.townHallLevel ?? 0) > th);
+      const req = n === 0 && inv.gold !== undefined && (inv.townHallLevel ?? 0) > th ? ` title="cần Town Hall Lv${inv.townHallLevel}"` : '';
+      return `<button data-a="invite" data-i="${esc(inv.id)}"${locked ? ' disabled' : ''}${req}>mời: ${label} (${cost})</button><button data-a="ticket" data-i="${esc(inv.id)}" title="debug: +1 vé">+vé</button>`;
+    }).join('');
+    const full = townHunterCount(world) >= f.hunterSlots;
+    const next = full
+      ? `vào hàng chờ sau ${Math.max(0, f.queueArrivalIntervalSec - (town.queueTimerMs ?? 0) / 1000).toFixed(0)}s`
+      : `hunter tới sau ${Math.max(0, f.arrivalIntervalSec - town.arrivalTimerMs / 1000).toFixed(0)}s`;
+    const auto = townHunterCount(world) <= f.autoInviteMaxHunters
+      ? ` · mời tự động sau ${Math.max(0, f.autoInviteIntervalSec - (town.autoInviteTimerMs ?? 0) / 1000).toFixed(0)}s` : '';
+    return `
+      <div class="debug-sub">Hàng chờ ${queue.length}/${f.queueMax} · ${next}${auto}</div>
+      <div class="journey">${head || '—'}${queue.length > 8 ? ' …' : ''}</div>
+      <div class="debug-row">${btns}</div>`;
+  }
+
   /** M3 difficulty block: current, one button per difficulty (locked ones show their requirement), auto-reincarnate. */
   private renderDifficulty(): string {
     const { world, config } = this.sim;
@@ -485,7 +525,11 @@ export class DebugOverlay {
         const pct = cap > 0 ? Math.max(0, Math.min(100, Math.round((h.needs[k] / cap) * 100))) : 0;
         return `<div class="bar" title="${k}"><span>${NEED_LABEL[k]}</span><i style="width:${pct}%" class="${pct < 25 ? 'low' : ''}"></i></div>`;
       }).join('');
-      const pers = h.personalities.map((p) => t(config, config.index.personalities.get(p)?.nameKey ?? p)).join(', ');
+      const persMark = { positive: '+', negative: '−', neutral: '' } as const;
+      const pers = h.personalities.map((p) => {
+        const d = config.index.personalities.get(p);
+        return `${persMark[d?.kind ?? 'neutral']}${t(config, d?.nameKey ?? p)}`;
+      }).join(', ');
       const cls = t(config, config.index.classes.get(h.classId)?.nameKey ?? h.classId);
       const job = config.index.jobsByClass.get(h.classId)?.[h.jobTier];
       const jobLabel = job ? jobName(config, job.id) : `job ${h.jobTier}`;
@@ -502,7 +546,7 @@ export class DebugOverlay {
         .map(([id, name]) => `<button data-a="move" data-id="${esc(h.id)}" data-zone="${esc(id!)}">→${esc(name!)}</button>`).join('');
       return `<div class="hunter">
         <div class="hunter-top"><b>${esc(h.id)}</b> ${esc(cls)} <span class="reinc">R${h.reincarnation}</span> · ${esc(jobLabel)} · <span class="tier-${h.tier}">${h.tier}</span> · Lv${h.level}
-          ${canReinc ? `<button data-a="reincarnate" data-id="${esc(h.id)}"${inField ? ' disabled title="phải ở Town (→Town trước)"' : ''}>Tái sinh</button>` : ''}<button data-a="team" data-id="${esc(h.id)}">${this.team.has(h.id) ? '−đội' : '+đội'}</button><button data-a="restore" data-id="${esc(h.id)}">hồi</button><button data-a="remove" data-id="${esc(h.id)}">×</button></div>
+          ${canReinc ? `<button data-a="reincarnate" data-id="${esc(h.id)}"${inField ? ' disabled title="phải ở Town (→Town trước)"' : ''}>Tái sinh</button>` : ''}<button data-a="team" data-id="${esc(h.id)}">${this.team.has(h.id) ? '−đội' : '+đội'}</button><button data-a="restore" data-id="${esc(h.id)}">hồi</button><button data-a="donate" data-id="${esc(h.id)}" title="Town → hunter">+${DEBUG_DONATE_GOLD}g</button><button data-a="reroll" data-id="${esc(h.id)}" title="đổi tính cách (${config.formula.personalityRerollGold}g Town)">tính cách</button><button data-a="banish" data-id="${esc(h.id)}" title="đuổi: đồ về kho Town">đuổi</button><button data-a="remove" data-id="${esc(h.id)}">×</button></div>
         <div class="hunter-sub">ATK ${Math.round(st.atk)} DEF ${Math.round(st.def)} HP ${Math.round(st.hp)} · ${h.gold}g · ${h.kills} kill · túi ${bagCount(h)}/${config.formula.bagCapacity} · ${esc(pers)}</div>
         <div class="hunter-equip">${esc(equip)}</div>
         ${this.renderProgress(h)}
@@ -558,6 +602,17 @@ function progressLine(config: GameConfig, e: SimEvent): string | null {
     case 'buildingCancelled': return `hủy ${buildingName(config, e.buildingId)} · hoàn ${e.refund}g`;
     case 'taxRateChanged': return `thuế → ${Math.round(e.rate * 100)}%`;
     case 'difficultyChanged': return `độ khó → ${difficultyName(config, e.difficultyId)}`;
+    // M5 hunter systems (TECH_SPEC §4.1).
+    case 'hunterArrived': return e.fromQueue || (e.source && e.source !== 'visitor') ? `${e.hunterId} vào Town${e.fromQueue ? ' từ hàng chờ' : ''}${e.source === 'invite' ? ' (thư mời)' : e.source === 'auto' ? ' (mời tự động)' : ''}` : null;
+    case 'hunterQueued': return `${e.queueUid} vào hàng chờ (vị trí ${e.position})${e.tier ? ` · ${e.tier}` : ''}`;
+    case 'hunterInvited': {
+      const name = t(config, config.index.invitations.get(e.invitationId)?.nameKey ?? e.invitationId);
+      const paid = e.paid === 'ticket' ? 'dùng vé' : e.paid === 'gold' ? `-${e.gold}g` : 'miễn phí';
+      return `${name}: ${e.tier} (${paid}) → ${e.hunterId ?? `hàng chờ ${e.queueUid}`}`;
+    }
+    case 'hunterDonated': return `Town tặng ${e.hunterId} ${e.gold}g`;
+    case 'hunterBanished': return `đuổi ${e.hunterId} (${e.itemUids.length} món đồ về kho, mang theo ${e.gold}g)`;
+    case 'personalityRerolled': return `${e.hunterId} đổi tính cách → ${e.to.map((p) => t(config, config.index.personalities.get(p)?.nameKey ?? p)).join(', ')} -${e.gold}g`;
     default: return null;
   }
 }

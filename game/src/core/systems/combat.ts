@@ -1,5 +1,5 @@
 import { critChance, critMultiplier, dodgeChance, hunterStats, mitigated, monsterStats } from '../formulas';
-import { gearBonus, hunterGearSkills, needDrainMul } from '../gear';
+import { gearBonus, gearPctMul, hunterGearSkills, needDrainMul } from '../gear';
 import { personalityFactor } from '../hunterFactory';
 import { gainExp } from '../progress';
 import { SpatialHash } from '../spatial';
@@ -61,14 +61,14 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
   const def = config.index.monsters.get(m.defId)!;
   const ms = monsterStats(config, m);
   h.kills += 1;
-  // M5 gear options (TECH_SPEC §4.2): gold/EXP/drop-chance bonuses; 0 bonus leaves the numbers untouched.
-  const goldPct = gearBonus(config, h, 'goldPct');
-  grantKillGold(ctx, h, goldPct === 0 ? ms.gold : Math.max(0, Math.round(ms.gold * (1 + goldPct / 100)))); // minus Town tax (tax.ts)
+  // Personality gain.gold / gain.exp (TECH_SPEC §5.5) × M5 gear goldPct / expPct (§4.2) on kill rewards
+  // (factor 1 = unchanged, bit for bit).
+  const goldK = personalityFactor(config, h, 'gain.gold') * gearPctMul(config, h, 'goldPct');
+  grantKillGold(ctx, h, goldK === 1 ? ms.gold : Math.max(0, Math.round(ms.gold * goldK))); // minus Town tax (tax.ts)
   world.stats.kills += 1;
   ctx.events.emit(world.tick, { type: 'monsterKilled', hunterId: h.id, monsterId: m.id, defId: m.defId });
   // Bounty payout; a bounty target killed under Torment drops more (one RNG draw per drop either way).
-  const dropPct = gearBonus(config, h, 'dropPct');
-  const dropMul = bountyOnKill(ctx, h, m) * (dropPct === 0 ? 1 : 1 + dropPct / 100);
+  const dropMul = bountyOnKill(ctx, h, m) * gearPctMul(config, h, 'dropPct');
   // M2: material drops go into the hunter's bag while there is room.
   for (const d of def.drops) {
     if (!ctx.rng.chance(dropMul === 1 ? d.chance : Math.min(1, d.chance * dropMul))) continue;
@@ -76,8 +76,8 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
     h.bag[d.materialId] = (h.bag[d.materialId] ?? 0) + 1;
   }
   dropEssence(ctx, h, m); // gear-tier essence of the monster's difficulty (TECH_SPEC §5.8); no RNG draw on Easy
-  const expPct = gearBonus(config, h, 'expPct');
-  gainExp(ctx, h, expPct === 0 ? ms.exp : ms.exp * Math.max(0, 1 + expPct / 100));
+  const expK = personalityFactor(config, h, 'gain.exp') * gearPctMul(config, h, 'expPct');
+  gainExp(ctx, h, expK === 1 ? ms.exp : Math.max(0, ms.exp * expK));
 }
 
 /**

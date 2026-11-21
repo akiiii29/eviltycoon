@@ -426,8 +426,8 @@ describe('migration to v9', () => {
     w.schemaVersion = 7;
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 7, configVersion: config.version, savedAt: 0, world: w }), config);
     expect(r.migratedFrom).toBe(7);
-    expect(WORLD_SCHEMA_VERSION).toBe(13);
-    expect(r.world.schemaVersion).toBe(13);
+    expect(WORLD_SCHEMA_VERSION).toBe(14);
+    expect(r.world.schemaVersion).toBe(14);
     expect(r.world.journeys).toEqual([]);
     expect(r.world.stats).toMatchObject({ journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0 });
     const s = new Simulation(config, r.world as World);

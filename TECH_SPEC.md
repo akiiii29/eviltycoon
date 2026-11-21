@@ -98,13 +98,13 @@ Bounty: `systems/bounty` (§5.9). Thuế: `systems/tax` (§5.10) — thuế trê
 
 ### 4.1 Hunter (runtime)
 
-Theo `interface Hunter` trong `src/core/world.ts` (world v6).
+Theo `interface Hunter` trong `src/core/world.ts` (world v6; hàng chờ / thư mời ở world v14, xem cuối mục).
 
 | Trường | Kiểu | Ghi chú |
 |---|---|---|
 | `id` | string | |
 | `classId`, `jobTier` | ref, int | Bậc nghề theo `job.json` (thiết kế: 9 bậc; config hiện có 3 bậc 0..2 mỗi class). |
-| `tier` | `normal`/`rare`/`superior`/`heroic`/`legendary` | Theo điểm G = N_high + 2 × N_highest (GDD §4.2, `tierFromPoints`). |
+| `tier` | `normal`/`rare`/`superior`/`heroic`/`legendary` | Khách thường: theo điểm G = N_high + 2 × N_highest (GDD §4.2, `tierFromPoints`). Thư mời: tier roll trước, grade roll theo tier (dưới). |
 | `statGrades` | map stat → `normal`/`high`/`highest` | Roll lúc sinh hunter. |
 | `stats` | hp, atk, def, eva, crit, atkSpeed | Chỉ số gốc = roll + cộng theo level (`levelHpGain/AtkGain/DefGain`), **chưa** gồm gear/job/trait/buff; giá trị hiệu dụng lấy qua `formulas.hunterStats()`. |
 | `rollStats` | như `stats` | Roll gốc ở level 1; reincarnation đặt lại `stats = rollStats`. |
@@ -116,10 +116,36 @@ Theo `interface Hunter` trong `src/core/world.ts` (world v6).
 | `potions`, `potionCdMs`, `lastZoneId` | map consumableId → số, ms, zone | v11, optional (§5.14): thuốc đang mang (≤ `potionCarryMax`), hồi uống, vùng của goal hunt cuối (chọn bậc thuốc/vật tư). |
 | `skills`, `skillCdMs`, `buffs` | map skillId → level, map → ms còn lại, list buff | |
 | `traits`, `traitPoints` | map traitId → level, int | |
-| `personalities` | list ref | Số lượng = `formula.personalitiesPerHunter`; hệ số chỉnh hành vi (§5.5). |
+| `personalities` | list ref | Số lượng = `formula.personalitiesPerHunter`; hệ số chỉnh hành vi (§5.5); đổi bằng `hunter.rerollPersonality`. |
 | `ai` | `{goal, phase: travel/act, path, decideInMs, targetMonsterId, moveTo, forced}` | `forced` = goal do lệnh người chơi. |
 | `position`, `nodeId`, `insideBuildingId` | | Zone hiện tại suy ra từ `nodeId` (node field có `zoneId`). |
 | `attackCdMs`, `deadMs`, `kills`, `arrivedAtMs` | | `deadMs > 0` = đang chết, đếm tới hồi sinh. |
+
+#### Hàng chờ, thư mời, Donate / Banish (EHT; world v14) **[ĐÃ LÀM — số liệu ĐỀ XUẤT]**
+
+Code: `src/core/systems/arrivals.ts` (`advanceArrivals`, dùng chung cho tick và offline), `hunterFactory.ts` (`rollHunterOfTier`, `rollInvitationTier`, `rollPersonalities`), lệnh trong `commands.ts`, bảng `config/invitation.json`. Test `tests/hunters-m5.test.ts`.
+
+- **Hàng chờ (EHT "Waiting Slot")** — `town.queue: QueueEntry[]` (`{uid, source: visitor/invite/auto, invitationId?, tier?, queuedAtMs}`), tối đa `queueMax` (30; EHT ~100). Thứ tự mỗi lần `advanceArrivals(ms)`:
+  1. Town còn slot (`townHunterCount < hunterSlots`; hunter đi journey/trong cổng giữ slot) → người đầu hàng chờ vào ngay (event `hunterArrived {fromQueue: true}`).
+  2. Còn slot và hàng chờ rỗng → khách mới mỗi `arrivalIntervalSec` như trước v14 (`arrivalTimerMs`, về 0 khi đầy). Town đầy → một khách **vào hàng chờ** mỗi `queueArrivalIntervalSec` (300 s, `queueTimerMs`) tới khi đủ `queueMax`; timer nghỉ ở 0 khi hàng đầy.
+  3. **Mời tự động** (EHT: ≤ 2 hunter, 60 phút): khi `townHunterCount ≤ autoInviteMaxHunters` (2) và còn slot hoặc chỗ trong hàng, mỗi `autoInviteIntervalSec` (3600 s, `autoInviteTimerMs`) có một hunter miễn phí theo tỉ lệ tier của dòng invitation `autoInvite` (event `hunterInvited {paid: 'free'}`). Hiện khách thường đã lấp slot mỗi 20 s nên đây là lưới an toàn.
+  - Mục trong hàng chờ là bản ghi nhẹ: hunter chỉ được roll (RNG của sim) **lúc vào Town**, nên Town đầy không rút RNG và `uid` dùng bộ đếm riêng (`q<stats.queueJoined>`), không đụng `world.nextId` — nhịp `tools/pacing.ts` (Town luôn đầy) giống hệt trước v14.
+  - Offline (§9) chạy đúng hàm này cho cả khoảng vắng (slot không tự trống khi offline, nên thường chỉ là hàng chờ đầy dần).
+- **Thư mời** (`town.invite {invitationId}`): dùng 1 vé (`town.tickets[id]`) nếu có, không thì trả `gold` vàng Town (ra khỏi nền kinh tế), cần Town Hall ≥ `townHallLevel`; dòng không có `gold` chỉ dùng vé. Roll tier theo `tierChances` (trọng số), rồi **roll grade theo tier**: liệt kê mọi tổ hợp grade (3^5 = 243), giữ các tổ hợp có `tierFromPoints(G)` đúng tier, chọn một theo xác suất tự nhiên (tích `rollChance`) — 1 lần rút, đúng phân bố tự nhiên có điều kiện. **Legendary** cần G ≥ 14 nhưng 5 chỉ số cho tối đa 10: lấy tổ hợp điểm cao nhất (mọi chỉ số `highest`), giữ tier legendary và roll mỗi chỉ số ở nửa trên khoảng `highest`. Còn slot → vào ngay (trước hàng chờ); Town đầy → vào hàng chờ trước mọi khách thường, sau các thư mời trước đó; Town và hàng chờ cùng đầy → từ chối. Vé chưa có nguồn gameplay (chỉ `debug.grantTicket`).
+  - Bảng `invitation.json` (đề xuất). Tham chiếu EHT (thường ~60 %, hiếm ~37 %, superior ~3 %, heroic ~0,5 %, legendary ~0,05 %) đã được nâng lên vì khách thường của ta roll grade độc lập theo `stat_grade` (0,61/0,33/0,06) đã cho ≈ 31,3 % normal, 67,3 % rare, 1,4 % superior, 0,00008 % heroic, legendary 0 — thư mời phải tốt hơn khách miễn phí:
+
+    | id | normal | rare | superior | heroic | legendary | giá | Town Hall |
+    |---|---|---|---|---|---|---|---|
+    | `inv.common` (autoInvite) | 25 | 65 | 9 | 0,9 | 0,1 | 500 | — |
+    | `inv.silver` | 5 | 60 | 30 | 4,5 | 0,5 | 4 000 | 4 |
+    | `inv.gold` | 0 | 35 | 50 | 13 | 2 | 25 000 | 7 |
+    | `inv.royal` | 0 | 0 | 60 | 35 | 5 | chỉ vé | — |
+
+- **Donate** (`hunter.donate {hunterId, gold}`, EHT Manage → Donate): số nguyên dương ≤ vàng Town, chuyển sang `hunter.gold`; hunter đi journey/trong cổng bị từ chối.
+- **Banish** (`hunter.banish {hunterId}`): đồ đang mặc → kho đồ Town (`reclaimGear`, event `gearReclaimed`, có thể bị bày bán lại/rã ngay theo §5.8), vàng/túi/thuốc đi theo hunter; hunter rời `world.hunters` (event `hunterBanished` rồi `hunterLeft`), slot trống → đầu hàng chờ vào trong cùng tick.
+- **Đổi tính cách** (`hunter.rerollPersonality {hunterId}`): `personalityRerollGold` (2 000) vàng Town, roll lại cả bộ như lúc sinh.
+- Lệnh sai bị từ chối bằng `commandRejected` (`unknown invitation`, `no ticket`, `town hall level too low`, `not enough gold`, `town and queue are full`, `invalid gold`, `unknown hunter`, đang journey/cổng). Debug overlay: khối "Hàng chờ" (hàng chờ, timer, nút mời theo từng thư + `+vé`), mỗi hunter có nút `+100g` / `tính cách` / `đuổi`. `tools/headless.ts` in hàng chờ, vé, thống kê mời/đuổi/tặng và log; env `HEADLESS_INVITE="inv.common@30,..."`.
+- 🟡 Chưa giải quyết: heroic và legendary có grade giống hệt nhau (khác nhau chỉ ở roll nửa trên) cho tới khi có thêm chỉ số hoặc đổi ngưỡng `tierFromPoints` (test `simulation.test.ts` đang ghim ngưỡng 2/6/10/14); `tier` hiện chỉ để hiển thị; chưa có nguồn vé; chưa có UI ngoài debug.
 
 ### 4.2 GearInstance
 
@@ -252,17 +278,28 @@ expectedGain  = p × step − (1 − p) × loss;  expectedRelGain = expectedGain
 
 ### 5.5 Tính cách là hệ số (modifier)
 
-Mỗi personality là một bộ hệ số nhân vào needs, utility hoặc stat. Ví dụ cấu trúc (giá trị **[ĐỀ XUẤT]**):
+Mỗi personality là một bộ hệ số nhân vào needs, utility, phần thưởng hoặc tỉ lệ cường hóa (`personalityFactor` = tích các `mul` + tổng các `add`; không có modifier = 1, kết quả giống hệt bit). `kind` (positive/negative/neutral) chỉ để hiển thị. Target hợp lệ: `PERSONALITY_TARGETS` (`config/types.ts`; `config:check` báo target lạ):
 
-| Personality | Hiệu ứng |
+| Target | Đọc ở |
 |---|---|
-| Hèn nhát | `Hunt` ×0.7; ngưỡng HP khẩn cấp 40% |
-| Keo kiệt | `spendRatio` 0.4; dịch vụ ×0.8 |
-| Ham ăn | Satiety giảm ×1.3 |
-| Chạy nhanh | Tốc di chuyển ×1.15 |
-| Sợ bệnh viện | `Heal` ×0.3 |
+| `goal.hunt`, `goal.service.<need>` | utility săn / dịch vụ (ai/utility.scoreGoals) |
+| `spendRatio` | ngân sách mua đồ / cường hóa / auto-craft |
+| `decay.<need>` | giảm nhu cầu (needs, combat, thuế mood) |
+| `urgent.<need>` | ngưỡng khẩn cấp; `urgent.hp` = ngưỡng rút lui (`retreatHpFloor` cố ý không nhân) |
+| `moveSpeed` | tốc di chuyển |
+| `gain.gold` (M5) | vàng mỗi kill trước thuế (`combat.grantKill`, làm tròn) |
+| `gain.exp` (M5) | EXP mỗi kill (không áp cho journey) |
+| `enhance.success` (M5) | tỉ lệ thành công cường hóa (`economy.doEnhance` và ước lượng AI `expectedEnhanceCost`), kẹp ≤ 1 |
 
-Tên và danh sách personality do team tự đặt; schema ở §8.
+Danh sách (`config/personality.json`, 21 dòng, mỗi hunter `personalitiesPerHunter` = 2; số liệu **[ĐỀ XUẤT]**):
+
+| Loại | Personality (trọng số) → hiệu ứng |
+|---|---|
+| Tích cực | Chạy nhanh (10) moveSpeed ×1,15 · Vui vẻ (20) decay.mood ×0,7 · Tay hên (10) gain.gold ×1,15 · Ham học (10) gain.exp ×1,08 · Tay vững (10) enhance.success ×1,1 · Ăn ít (10) decay.satiety ×0,75 · Bền bỉ (10) decay.stamina ×0,75 · Hăng hái (10) goal.hunt ×1,1 |
+| Tiêu cực | Nhút nhát (20) goal.hunt ×0,7 · Ham ăn (20) decay.satiety ×1,3 · Hay buồn ngủ (20) decay.stamina ×1,3 · Liều lĩnh (12) urgent.hp ×0,5 + goal.hunt ×1,15 ("không bao giờ rút") · Hay hoảng (10) urgent.hp ×1,5 ("rút sớm") · Xui xẻo (10) gain.gold ×0,88 · Lơ đãng (10) gain.exp ×0,94 · Vụng về (10) enhance.success ×0,9 · U sầu (10) decay.mood ×1,3 |
+| Trung tính | Bình thường (30) · Tiết kiệm (20) spendRatio ×0,5 · Hào phóng (10) spendRatio ×1,3 · Ham nhà (10) goal.hunt ×0,9 + goal.service.mood ×1,3 |
+
+Cặp tích cực/tiêu cực cùng target có trọng số bằng nhau và gần trung hòa về trung bình (gain.gold ≈ ×1,015, gain.exp ≈ ×1,01). Nhịp `tools/pacing.ts 900` seed 1–5 (trước → sau): Lv20 60–73 → 62–76 phút, Lv50 4,02–4,70 → 3,78–4,72 giờ (seed 3 xuống 3,78), tái sinh đầu 10,62–11,93 → 10,68–11,58 giờ (mục tiêu 8–14), hunter đã tái sinh lúc 15 giờ 40/40 → 39/40 (seed 5: 7/8), 0 chết — trong nhiễu seed. Phần hàng chờ/thư mời một mình (trước khi đổi personality) cho kết quả giống hệt từng byte. Đổi tính cách: `hunter.rerollPersonality` (§4.1).
 
 ### 5.6 Gợi ý từ Chief (lời nhắc)
 
@@ -496,16 +533,16 @@ client load lúc khởi động → bất biến khi chạy
 
 Kiểu: `id` string, `ref<X>` = id của bảng X, `int[]`/`float[]` = mảng theo level.
 
-Bảng dưới là **thiết kế đích**. Đã có trong `game/config/` (trường thật xem `TABLE_SPECS`): `class` (statRanges, attackSpeed; **không** có growthPerLevel — mức tăng mỗi level là `levelHpGain/AtkGain/DefGain` chung trong `formula_params`), `job` (thêm `statMult`), `stat_grade`, `personality`, `skill` (kind strike/aoe/buff, `value[]`, `studyLevel[]`, `studyGold[]`…), `trait`, `gear` (slot, level, mainStat, mainValue, craftBuilding, craftSec, materials, basePrice), `gear_quality` (statMult, priceMult, craftChance), `enhance` (`level, successRate, costFrac, dropOnFail`), `material` (price; gồm 7 tinh chất tier `mat.ess.*`), `monster`, `zone`, `difficulty` (unlockHunters, unlockReincarnation, monsterHp/Atk/DefMul, rewardMul; tier đồ §5.8: gearStatMul, gearPriceMul, gearPrefixKey, essenceId, essenceDropChance — đều tùy chọn, thiếu = 1 / không có), `building` (dịch vụ có need/restorePerSec/price), `map_node`, `map_edge`, `journey` (§5.11: durationSec, zoneId, recommendedPower, cost, gold, exp, materials, rare, failHpFrac, failRewardFrac), `formula_params`, `loc`, `meta`. Các bảng khác chưa làm.
+Bảng dưới là **thiết kế đích**. Đã có trong `game/config/` (trường thật xem `TABLE_SPECS`): `class` (statRanges, attackSpeed; **không** có growthPerLevel — mức tăng mỗi level là `levelHpGain/AtkGain/DefGain` chung trong `formula_params`), `job` (thêm `statMult`), `stat_grade`, `personality` (thêm `kind?`; target kiểm theo `PERSONALITY_TARGETS`, §5.5), `skill` (kind strike/aoe/buff, `value[]`, `studyLevel[]`, `studyGold[]`…), `trait`, `gear` (slot, level, mainStat, mainValue, craftBuilding, craftSec, materials, basePrice), `gear_quality` (statMult, priceMult, craftChance), `enhance` (`level, successRate, costFrac, dropOnFail`), `material` (price; gồm 7 tinh chất tier `mat.ess.*`), `monster`, `zone`, `difficulty` (unlockHunters, unlockReincarnation, monsterHp/Atk/DefMul, rewardMul; tier đồ §5.8: gearStatMul, gearPriceMul, gearPrefixKey, essenceId, essenceDropChance — đều tùy chọn, thiếu = 1 / không có), `building` (dịch vụ có need/restorePerSec/price), `map_node`, `map_edge`, `journey` (§5.11: durationSec, zoneId, recommendedPower, cost, gold, exp, materials, rare, failHpFrac, failRewardFrac), `invitation` (§4.1: tierChances, gold?, townHallLevel?, autoInvite?), `formula_params`, `loc`, `meta`. Các bảng khác chưa làm.
 
 | Bảng | Trường chính |
 |---|---|
 | `class` | id, nameKey, jobTree: ref<job>[9], statRanges: {stat: [[min,max] × 3 grade]}, attackSpeed, growthPerLevel {hp, atk, def} |
 | `job` | id, classId, tier, nameKey, unlockLevel, unlockReincarnation |
 | `stat_grade` | grade (Normal/High/Highest), point (0/1/2), rollChance |
-| `hunter_tier` | tier, minPoints, maxPoints (GDD §4.2) |
-| `invitation` | id, tierChances {Legendary…Normal}, cost |
-| `personality` | id, nameKey, weight, modifiers: [{target, op, value}] |
+| `hunter_tier` | tier, minPoints, maxPoints (GDD §4.2). Chưa thành bảng: ngưỡng nằm trong `tierFromPoints` (2/6/10/14) |
+| `invitation` | id, nameKey, tierChances {normal…legendary}, gold? (thiếu = chỉ vé), townHallLevel?, autoInvite? (§4.1). Đã làm |
+| `personality` | id, nameKey, kind?, weight, modifiers: [{target, op, value}] (§5.5). Đã làm |
 | `skill` | id, classId, jobTierMin, maxLevel, cooldown, castType, target, keepTime[], value1[], value2[], studyLevel[], studyCost[], descKey |
 | `trait` | id, classId, jobTier, maxLevel, value1Base, value1PerLevel, value2Base, value2PerLevel, pointCost, descKey |
 | `gear` | id, slot, classId (hoặc any), level, tier, mainStat, mainValue, secondValue, enhanceCurve[], craftBuilding, materials: [{matId, count}] × quality, priceByQuality[5], setId?, gearSkillId? |
@@ -568,14 +605,16 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 | v9 → v10 | Tier đồ theo độ khó, thu hồi, rã đồ (§5.8) | Mọi món đang có — đang mặc (cả hunter đang đi journey), đang bán, đang chế — nhận tier gốc (`difficultyId` = độ khó đầu tiên, ×1) nếu chưa có; `town.gearStorage = []`, `town.autoDifficulty = true` (chỉ tự **tăng**); stat `gearDismantled`/`gearReclaimed`/`gearRelisted` = 0. `MIGRATIONS[9]`. |
 | v10 → v11 | Vật tư dịch vụ, thuốc, phí hồi sinh (§5.14) | `town.supply`: mọi dòng dịch vụ đầy theo level building (bậc theo level hunter trung vị), dòng thuốc rỗng; hunter (cả đang journey) `potions = {}`, `potionCdMs = 0`; stat `supply*`/`potion*`/`revive*` = 0; chỉ điền trường thiếu. `MIGRATIONS[10]`. |
 | v11 → v12 | Cổng Tái Sinh | `portal = []` (giữ mảng nếu đã có), §5.13. |
+| v12 → v13 | (nhánh M5 khác) | Dành chỗ; ở nhánh này `MIGRATIONS[12]` không đổi gì — lead đánh số lại khi merge. |
+| v13 → v14 | Hàng chờ, thư mời, Donate/Banish (§4.1) | `town.queue = []`, `queueTimerMs = autoInviteTimerMs = 0`, `tickets = {}`; stat `queueJoined/queueEntered/invites/inviteGold/autoInvites/donatedGold/banished/personalityRerolls` = 0; chỉ điền trường thiếu (`fillMissingHunterQueue`). `MIGRATIONS[13]`. |
 
 - **Offline progress [CHỐT, theo EHT]:** khi tắt game **không săn**: không EXP, vàng, kill, vật liệu, không hồi nhu cầu, không lên level/tái sinh theo ước lượng; timer săn/boss không chạy. Như EHT, chỉ những thứ chạy theo **đồng hồ thời gian thực** tiếp tục. (Trước đây có ước lượng theo tốc độ đo được + mô hình tăng trưởng, trần 8 giờ; đã gỡ hẳn cùng các khóa `offline*` trong `formula_params` và `tools/offline-accuracy.ts`.) **[ĐÃ LÀM]**
   - **Code** `src/core/offline.ts` (thuần, tất định, không DOM): `advanceOfflineWallClock(ctx, offlineWallClockMs(savedAt, now))` gọi qua `Simulation.runBetweenTicks` (RNG sống của sim, ghi lại vào `world.rng`; **không** tăng `tick`/`timeMs`). Khoảng = `now − savedAt` thô, **không trần** (không còn gì để ngoại suy); `savedAt` ≤ 0/không hữu hạn (save cũ) hoặc đồng hồ lùi → 0. Theo thứ tự:
     1. **Journey** (`advanceJourneys(ctx, ms, true)`, §5.11): chuyến xong được roll ngay, đội về quảng trường (event `journeyCompleted { offline: true }`). Đội về không săn phần còn lại của khoảng vắng.
     2. **Cổng Tái Sinh** (`progression.advancePortal`, §5.13): hunter hết thời gian trong cổng ra ở node portal, đã tái sinh, level 1. Hunter đủ điều kiện nhưng chưa vào cổng lúc save thì không đi khi game tắt (không có di chuyển offline).
     3. **Công trình đang xây/nâng** (`town.advanceBuildingTimers`, cùng logic hoàn thành như system `town`: level, stat, event `buildingCompleted`) — đã trả tiền lúc bắt đầu; tự đầu tư **không** bắt đầu bước mới khi offline.
-    4. **Hunter mới đến** theo luật `arrivals` (một người mỗi `arrivalIntervalSec` khi Town còn slot; journey/cổng giữ slot; timer về 0 khi đầy).
-  - Kết quả `OfflineReport { awayMs, journeys, reincarnations, buildings, arrivals }`; `offlineHasNews` = có ít nhất một mục.
+    4. **Hunter mới đến, hàng chờ, mời tự động** — `arrivals.advanceArrivals(ctx, ms)`, đúng hàm tick dùng (§4.1): hàng chờ vào slot trống trước; một khách mỗi `arrivalIntervalSec` khi còn slot (journey/cổng giữ slot; timer về 0 khi đầy); Town đầy → một khách vào hàng chờ mỗi `queueArrivalIntervalSec` tới `queueMax` (không rút RNG); ≤ `autoInviteMaxHunters` hunter → mời tự động mỗi `autoInviteIntervalSec`.
+  - Kết quả `OfflineReport { awayMs, journeys, reincarnations, buildings, arrivals, queued }` (`queued` = số khách vào hàng chờ, v14); `offlineHasNews` = có ít nhất một mục trong journeys/reincarnations/buildings/arrivals (vào hàng chờ thôi không phải tin; popup có hiện nếu có tin khác).
   - **Client** (`src/client/main.ts`, `offlinePopup.ts`): lúc boot load → `advanceOfflineWallClock` → nếu có tin thì **save ngay** (reload trước autosave không chạy lại timer đã xong) và popup: thời gian vắng (ghi rõ hunter không săn khi tắt game), hunter mới đến, hành trình xong (thành công/thất bại, thưởng), tái sinh xong trong cổng, công trình xong. Không có gì xong → không popup. Nút Load của debug chỉ load, không chạy offline. **Tab bị ẩn** (rAF dừng nên sim dừng): khi hiện lại các timer trên chạy thêm đúng thời gian ẩn (cùng hàm), popup nếu có tin.
   - **Save cũ**: envelope trước đây có `offline` (mẫu đo tốc độ). `deserialize` bỏ qua trường này (hợp lệ hay hỏng đều load được) và `serialize(world, savedAt)` không ghi nữa; không đổi schema.
 - Journey lúc đang chơi đếm theo **thời gian game** (x2/x4 rút ngắn, pause dừng); khi tắt game theo thời gian thực như trên. Cổng Tái Sinh cũng vậy.
@@ -631,7 +670,7 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 | M6 | Client & nội dung: UI hoàn chỉnh (GDD §10), sprite/scene pixel-art và camera pan/zoom/chọn bằng click (GDD §11), UI cho yêu cầu vật liệu/bounty/building, vi/en, tutorial, headless xuất CSV; thay toàn bộ dữ liệu trích từ game thương mại (TODO §7), chốt nền tảng (GDD §2) và bố cục map | Bản chơi thử nội bộ, không còn dữ liệu sao chép |
 | M7 | Online: account, cloud save, IAP; Raid, PvP, Guild, World Boss, Tower Defense, chat, ranking | Theo đặc tả riêng |
 
-Hiện trạng: M0–M3 xong; M4 đã có Trading Post theo yêu cầu (§5.7), Bounty (§5.9), thuế (§5.10), Journey (§5.11), Town Hall/building (§5.12), offline progress kiểu EHT (§9: chỉ timer thời gian thực), Cổng Tái Sinh (§5.13), tier đồ theo độ khó + thu hồi + rã đồ (§5.8) — world v12. QA nghiệm thu: `docs/QA_M4.md` (dựng từ TECH_SPEC, chờ đối chiếu GDD §13).
+Hiện trạng: M0–M3 xong; M4 đã có Trading Post theo yêu cầu (§5.7), Bounty (§5.9), thuế (§5.10), Journey (§5.11), Town Hall/building (§5.12), offline progress kiểu EHT (§9: chỉ timer thời gian thực), Cổng Tái Sinh (§5.13), tier đồ theo độ khó + thu hồi + rã đồ (§5.8); M5 một phần: vật tư/thuốc/phí hồi sinh (§5.14), hàng chờ + thư mời + Donate/Banish + tính cách mở rộng (§4.1, §5.5) — world v14 (v13 dành cho nhánh khác). QA nghiệm thu: `docs/QA_M4.md` (dựng từ TECH_SPEC, chờ đối chiếu GDD §13).
 
 ### 12.1 Bảng phủ (chống bỏ sót)
 
@@ -650,7 +689,8 @@ Mọi hệ thống nhắc trong GDD hoặc có bảng ở §8 phải nằm trong
 | Town Hall, xây/nâng/đặt building, slot, cấp shop giới hạn tier (GDD §5, bảng `building`, `building_plot`) | M4 | ✅ (§5.12; building M5 dùng ô trống) |
 | Thuế (§3.1, §5.10) | M4 | ✅ |
 | QA checklist (GDD §13) | M4 | 🟡 `docs/QA_M4.md` dựng từ TECH_SPEC: 59 mục, 0 ❌, 5 ⚠️, 1 ⏭️ (tự động: `tests/m4-acceptance.test.ts`; tay: trình duyệt); phải đối chiếu lại với GDD §13 gốc |
-| Invitation, `hunter_tier`, Donate/Banish (GDD §4.1–4.2) | M5 | ⚪ (tier hunter đã có) |
+| Invitation, `hunter_tier`, Donate/Banish (GDD §4.1–4.2); hàng chờ + mời tự động (EHT Waiting Slot) | M5 | ✅ §4.1 (world v14; `invitation.json`; tier roll → grade roll theo tier; `hunter_tier` vẫn là ngưỡng trong code, legendary chỉ đạt qua thư mời; chưa có nguồn vé, chưa UI) |
+| Personality tích cực/tiêu cực/trung tính, target gain.gold/gain.exp/enhance.success, đổi tính cách (§5.5) | M5 | ✅ (21 personality, số liệu đề xuất) |
 | 9 bậc nghề, 7 slot đồ (GDD §6) | M5 | ⚪ |
 | Tier đồ theo độ khó (tinh chất, `difficulty.gearStatMul`), tự tăng độ khó, thu hồi đồ khi tái sinh + kho đồ Town, rã đồ (EHT; §5.8) | M4 | ✅ (world v10; số liệu đề xuất) |
 | Nâng tier đồ có sẵn, `gear_option`, `gear_set`, `gear_skill` | M5 | ⚪ |

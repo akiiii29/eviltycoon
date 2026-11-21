@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Gear tiers per difficulty, reclaim on reincarnation, Town gear storage, dismantle, auto difficulty (TECH_SPEC §5.8).
  */
 import { describe, expect, it } from 'vitest';
@@ -172,7 +172,7 @@ describe('reclaim', () => {
     expect(h.equipment).toEqual({});
     expect(ctx.world.town.gearStorage).toEqual([
       { uid: 'e-h0-weapon', gearId: 'gear.w.star', qualityId: 'q.epic', enhance: 6, difficultyId: EASY },
-      { uid: 'e-h0-armor', gearId: 'gear.a.star', qualityId: 'q.rare', enhance: 5, difficultyId: NORMAL },
+      { uid: 'e-h0-body', gearId: 'gear.a.star', qualityId: 'q.rare', enhance: 5, difficultyId: NORMAL },
     ]);
     expect(h.needs.hp).toBeCloseTo(hunterStats(base, h).hp, 6);
     expect(ctx.world.stats.gearReclaimed).toBe(2);
@@ -324,7 +324,7 @@ describe('migration v9 → v10', () => {
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 9, configVersion: base.version, savedAt: 0, world: w }), base);
     expect(r.migratedFrom).toBe(9);
     expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
-    expect(WORLD_SCHEMA_VERSION).toBe(13);
+    expect(WORLD_SCHEMA_VERSION).toBe(14);
     expect(r.world.hunters[0]!.equipment.weapon).toEqual({ uid: 'e1', gearId: 'gear.w.club', qualityId: 'q.rare', enhance: 1, difficultyId: EASY });
     expect(r.world.town.shop[0]!.difficultyId).toBe(EASY);
     expect(r.world.town.crafting['bld.smithy']).toEqual({ gearId: 'gear.w.club', remainingMs: 500, difficultyId: EASY });

@@ -1,9 +1,10 @@
 import { hunterStats } from './formulas';
 import type { SystemContext } from './system';
 import { findHunter, isAlive } from './world';
-import { spawnHunter } from './systems/arrivals';
+import { admitInvited, hasFreeSlot, queueHasRoom, removeHunter, spawnHunter } from './systems/arrivals';
+import { rollInvitationTier, rollPersonalities } from './hunterFactory';
 import { setGoal } from './systems/ai';
-import { dismantleStoredGear, listStoredGear, reclaimHunterGear, startCraft } from './systems/crafting';
+import { dismantleStoredGear, listStoredGear, reclaimGear, reclaimHunterGear, startCraft } from './systems/crafting';
 import { servicePrice } from './systems/services';
 import { portalStayOf, reincarnateBlocker, sendToPortal } from './systems/progression';
 import { cancelBounty, postBounty, validateBounty } from './systems/bounty';
@@ -71,7 +72,24 @@ export type Command =
    */
   | { type: 'journey.start'; journeyId: string; hunterIds: string[] }
   /** Bring a running journey's team home now (no reward, cost not refunded). */
-  | { type: 'journey.recall'; journeyUid: string };
+  | { type: 'journey.recall'; journeyUid: string }
+  /**
+   * M5 (TECH_SPEC §4.1): use an invitation of config/invitation.json — one owned ticket (town.tickets) if any, else its
+   * `gold` Town gold (Town Hall ≥ townHallLevel). Rolls a tier with its tierChances; the hunter enters now when a slot is
+   * free, else waits at the front of the queue. Rejected when Town and queue are both full.
+   */
+  | { type: 'town.invite'; invitationId: string }
+  /** EHT Manage → Donate: move `gold` (positive integer ≤ Town gold) to a hunter. */
+  | { type: 'hunter.donate'; hunterId: string; gold: number }
+  /**
+   * EHT Manage → Banish: the hunter leaves for good. Equipment → Town gear storage (same reclaim as hunter.reclaimGear);
+   * its gold, bag and potions leave with it. Frees a slot (the queue front enters this tick).
+   */
+  | { type: 'hunter.banish'; hunterId: string }
+  /** M5: reroll a hunter's personalities for personalityRerollGold Town gold. */
+  | { type: 'hunter.rerollPersonality'; hunterId: string }
+  /** Debug: add invitation tickets (no gameplay source yet). */
+  | { type: 'debug.grantTicket'; invitationId: string; count: number };
 
 type Handler<C extends Command> = (ctx: SystemContext, cmd: C) => string | null;
 
@@ -121,12 +139,7 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
   'debug.removeHunter': (ctx, cmd) => {
     const away = awayReason(ctx, cmd.hunterId);
     if (away) return away;
-    const i = ctx.world.hunters.findIndex((h) => h.id === cmd.hunterId);
-    if (i < 0) return 'unknown hunter';
-    ctx.world.hunters.splice(i, 1);
-    for (const m of ctx.world.monsters) if (m.targetHunterId === cmd.hunterId) m.targetHunterId = null;
-    ctx.events.emit(ctx.world.tick, { type: 'hunterLeft', hunterId: cmd.hunterId });
-    return null;
+    return removeHunter(ctx, cmd.hunterId) ? null : 'unknown hunter';
   },
   'debug.restoreNeeds': (ctx, cmd) => {
     const away = awayReason(ctx, cmd.hunterId);
@@ -226,6 +239,78 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     return null;
   },
   'journey.recall': (ctx, cmd) => (recallJourney(ctx, cmd.journeyUid) ? null : 'unknown journey'),
+  'town.invite': (ctx, cmd) => {
+    const { world, config } = ctx;
+    const inv = config.index.invitations.get(cmd.invitationId);
+    if (!inv) return 'unknown invitation';
+    const tickets = world.town.tickets ?? (world.town.tickets = {});
+    const useTicket = (tickets[inv.id] ?? 0) > 0;
+    const gold = useTicket ? 0 : inv.gold;
+    if (gold === undefined) return 'no ticket';
+    if (!useTicket && inv.townHallLevel && buildingLevel(world, config.index.townHall) < inv.townHallLevel) return 'town hall level too low';
+    if (world.town.gold < gold) return 'not enough gold';
+    if (!hasFreeSlot(ctx) && !queueHasRoom(ctx)) return 'town and queue are full';
+    if (useTicket) {
+      tickets[inv.id] = tickets[inv.id]! - 1;
+      if (tickets[inv.id] === 0) delete tickets[inv.id];
+    } else {
+      world.town.gold -= gold; // leaves the economy (gold sink)
+      world.stats.inviteGold = (world.stats.inviteGold ?? 0) + gold;
+    }
+    world.stats.invites = (world.stats.invites ?? 0) + 1;
+    const tier = rollInvitationTier(ctx.rng, inv);
+    const r = admitInvited(ctx, tier, 'invite', inv.id);
+    ctx.events.emit(world.tick, { type: 'hunterInvited', invitationId: inv.id, tier, paid: useTicket ? 'ticket' : 'gold', gold, hunterId: r.hunterId, queueUid: r.queueUid });
+    return null;
+  },
+  'hunter.donate': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    const g = cmd.gold;
+    if (typeof g !== 'number' || !Number.isInteger(g) || g <= 0) return 'invalid gold';
+    if (ctx.world.town.gold < g) return 'not enough gold';
+    ctx.world.town.gold -= g;
+    h.gold += g;
+    ctx.world.stats.donatedGold = (ctx.world.stats.donatedGold ?? 0) + g;
+    ctx.events.emit(ctx.world.tick, { type: 'hunterDonated', hunterId: h.id, gold: g });
+    return null;
+  },
+  'hunter.banish': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    const itemUids = Object.values(h.equipment).filter((g) => !!g).map((g) => g!.uid);
+    reclaimGear(ctx, h, 'command'); // → town.gearStorage (gearReclaimed event); trims storage over gearStorageMax
+    ctx.world.stats.banished = (ctx.world.stats.banished ?? 0) + 1;
+    ctx.events.emit(ctx.world.tick, { type: 'hunterBanished', hunterId: h.id, itemUids, gold: h.gold });
+    removeHunter(ctx, h.id);
+    return null;
+  },
+  'hunter.rerollPersonality': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    const gold = ctx.config.formula.personalityRerollGold ?? 0;
+    if (ctx.world.town.gold < gold) return 'not enough gold';
+    ctx.world.town.gold -= gold; // gold sink
+    const from = h.personalities;
+    h.personalities = rollPersonalities(ctx.config, ctx.rng);
+    ctx.world.stats.personalityRerolls = (ctx.world.stats.personalityRerolls ?? 0) + 1;
+    ctx.events.emit(ctx.world.tick, { type: 'personalityRerolled', hunterId: h.id, from, to: h.personalities, gold });
+    return null;
+  },
+  'debug.grantTicket': (ctx, cmd) => {
+    if (!ctx.config.index.invitations.has(cmd.invitationId)) return 'unknown invitation';
+    const n = cmd.count;
+    if (typeof n !== 'number' || !Number.isInteger(n) || n <= 0 || n > 1000) return 'invalid count';
+    const tickets = ctx.world.town.tickets ?? (ctx.world.town.tickets = {});
+    tickets[cmd.invitationId] = (tickets[cmd.invitationId] ?? 0) + n;
+    return null;
+  },
 };
 
 export function applyCommand(ctx: SystemContext, cmd: Command): void {
