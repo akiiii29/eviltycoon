@@ -9,7 +9,7 @@ import { isAlive, type Hunter, type PortalStay, type World } from '../world';
 import { setGoal } from './ai';
 import { allHunters } from './journey';
 import { reclaimGear } from './crafting';
-import { autoAdvanceDifficulty } from './gearTier';
+import { autoAdvanceDifficulty, autoStepDownDifficulty, giveStarterKit } from './gearTier';
 
 /**
  * M3 progression (GDD §8): automatic job changes, reincarnation and difficulty unlocks.
@@ -134,6 +134,7 @@ export function reincarnate(ctx: SystemContext, h: Hunter): string | null {
   h.buffs = [];
   // Reclaim (TECH_SPEC §5.8): equipment goes to Town gear storage (stats kept), to be resold or dismantled.
   reclaimGear(ctx, h);
+  giveStarterKit(ctx, h); // above the base difficulty: lowest-level gear of the current tier (gearTier.ts)
   // A level-1 hunter must re-decide (e.g. leave a zone that is now too hard).
   h.ai = newAiState();
   h.needs.hp = hunterStats(ctx.config, h).hp;
@@ -267,6 +268,9 @@ export const progressionSystem: System = {
       }
     }
     checkDifficultyUnlocks(ctx);
-    autoAdvanceDifficulty(ctx); // town.autoDifficulty (gearTier.ts, TECH_SPEC §5.8)
+    // town.autoDifficulty (gearTier.ts, TECH_SPEC §5.8): every townInvestIntervalSec, since the bootstrap gate and the
+    // step-down check run the combat model per hunter and zone.
+    const every = Math.max(1, Math.round((config.formula.townInvestIntervalSec * 1000) / ctx.dtMs));
+    if (world.tick % every === 0 && autoStepDownDifficulty(ctx) === null) autoAdvanceDifficulty(ctx);
   },
 };

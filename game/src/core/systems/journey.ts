@@ -7,7 +7,7 @@ import { gainExp } from '../progress';
 import type { System, SystemContext } from '../system';
 import { findHunter, isAlive, newAiState, type Hunter, type Journey, type World } from '../world';
 import { shopCapacity } from './crafting';
-import { materialDemand, surplusPrice } from './trading';
+import { ensureStorageRoom, materialDemand, surplusPrice } from './trading';
 
 /**
  * Journeys (GDD §9 "3 NPC, runs offline, team power, success rate"; TECH_SPEC §5.11).
@@ -178,7 +178,8 @@ function emptyRewards(): JourneyRewards {
  * budget needed since the Town pays nothing). Storage therefore never holds unrequested units. No RNG.
  * Rewrites `rewards.materials` to what was stored and fills `rewards.exported`.
  */
-function routeRewardMaterials(config: GameConfig, world: World, rewards: JourneyRewards): void {
+function routeRewardMaterials(ctx: SystemContext, rewards: JourneyRewards): void {
+  const { config, world } = ctx;
   const ids = Object.keys(rewards.materials).sort();
   if (ids.length === 0) return;
   const demand = materialDemand(config, world);
@@ -187,7 +188,9 @@ function routeRewardMaterials(config: GameConfig, world: World, rewards: Journey
   const exported: Record<string, number> = {};
   for (const id of ids) {
     const n = rewards.materials[id]!;
-    const keep = Math.min(n, Math.max(0, demand[id] ?? 0));
+    const asked = Math.min(n, Math.max(0, demand[id] ?? 0));
+    // Town Storage cap (TECH_SPEC §5.7): spare units are exported to make room for requested ones.
+    const keep = asked > 0 ? Math.min(asked, ensureStorageRoom(ctx, asked)) : 0;
     if (keep > 0) {
       stored[id] = keep;
       world.town.storage[id] = (world.town.storage[id] ?? 0) + keep;
@@ -239,7 +242,7 @@ function resolveJourney(ctx: SystemContext, j: Journey, offline: boolean): Journ
       rewards.exp = Math.round(def.exp * mul * def.failRewardFrac);
     }
   }
-  routeRewardMaterials(config, world, rewards);
+  routeRewardMaterials(ctx, rewards);
   world.town.gold += rewards.gold;
   world.stats.journeyGold = (world.stats.journeyGold ?? 0) + rewards.gold;
   const hpCap = success || !def ? null : def.failHpFrac;

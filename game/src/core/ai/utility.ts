@@ -11,6 +11,7 @@ import { bestMount } from '../systems/mounts';
 import { bestPotionPurchase } from '../systems/consumables';
 import { servicePrice } from '../systems/services';
 import { serviceInStock } from '../systems/supplies';
+import { enhanceStepCost } from '../systems/gearTier';
 import { buildingLevel, enhanceBonus, gearCraftable } from '../systems/town';
 import { trainOffer, type TrainOffer } from '../systems/training';
 import { bountyZoneMul } from '../systems/bounty';
@@ -320,7 +321,7 @@ export function bestShopPurchase(config: GameConfig, world: World, h: Hunter): {
 
 /**
  * Expected cost and success rate of enhancing a slot's gear to its next level (AI estimate):
- * round(basePrice × enhance[next-1].costFrac); null if empty/maxed. The forge's own price is
+ * gearTier.enhanceStepCost (basePrice × enhance[next-1].costFrac × tier gearPriceMul); null if empty/maxed. The forge's own price is
  * systems/economy.enhanceCost (per gear instance). With `world` the success rate includes the Forge level's enhanceBonus.
  */
 export function expectedEnhanceCost(config: GameConfig, h: Hunter, slot: GearSlot, world?: World): { cost: number; successRate: number } | null {
@@ -331,7 +332,7 @@ export function expectedEnhanceCost(config: GameConfig, h: Hunter, slot: GearSlo
   if (!def || !row) return null;
   const bonus = world ? enhanceBonus(config, world) : 0;
   const k = personalityFactor(config, h, 'enhance.success'); // TECH_SPEC §5.5, same rate as economy.doEnhance
-  return { cost: Math.round(def.basePrice * row.costFrac), successRate: Math.min(1, (row.successRate + bonus) * k) };
+  return { cost: enhanceStepCost(config, def, row.costFrac, g.difficultyId), successRate: Math.min(1, (row.successRate + bonus) * k) };
 }
 
 /**

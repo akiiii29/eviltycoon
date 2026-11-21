@@ -7,6 +7,7 @@ import type { System, SystemContext } from '../system';
 import type { GearInstance, Hunter, ShopItem, World } from '../world';
 import { baseTier, craftTiers, recipeMaterials, tierCraftable, tierDef, tierPriceMul } from './gearTier';
 import { buildingLevel, gearCraftable, shopCapacity as shopCapacityAt } from './town';
+import { storeOrExport } from './trading';
 
 /** Max items on sale (the shop building's capacity at its level, systems/town.ts). */
 export function shopCapacity(config: GameConfig, world: World): number {
@@ -70,7 +71,8 @@ function maxHunterLevel(world: World): number {
  * 3 × the most expensive material price of the CURRENT tier, i.e. materials used by recipes with
  * gear.level ≤ max hunter level + craftLevelAhead (all materials if no recipe qualifies).
  * Tier-relative rather than "most expensive material in config", because late-game materials
- * (hundreds of gold) would otherwise block early crafting entirely.
+ * (hundreds of gold) would otherwise block early crafting entirely. Gear tiers count too: the essence of every
+ * craftable tier (gearTier.craftTiers) is one of those materials.
  * Manual `town.craft` ignores this reserve and only needs the craft cost itself.
  */
 export function autoCraftReserve(config: GameConfig, world: World): number {
@@ -81,6 +83,10 @@ export function autoCraftReserve(config: GameConfig, world: World): number {
     for (const m of g.materials) max = Math.max(max, config.index.materials.get(m.materialId)?.price ?? 0);
   }
   if (max === 0) for (const m of config.materials) max = Math.max(max, m.price);
+  // Tier-aware (TECH_SPEC §5.8): the essence of every craftable gear tier is bought like any recipe material.
+  for (const t of craftTiers(config, world)) {
+    if (t.essenceId) max = Math.max(max, config.index.materials.get(t.essenceId)?.price ?? 0);
+  }
   return 3 * max;
 }
 
@@ -383,7 +389,7 @@ export function dismantleItem(ctx: SystemContext, g: GearInstance, source: 'shop
     ctx.events.emit(world.tick, { type: 'gearScrapped', itemUid: g.uid, gearId: g.gearId, qualityId: g.qualityId, price });
     return mats;
   }
-  for (const id of ids) world.town.storage[id] = (world.town.storage[id] ?? 0) + mats[id]!;
+  storeOrExport(ctx, mats); // up to the Town Storage cap, the rest exported for Town gold (TECH_SPEC §5.7)
   world.stats.gearDismantled = (world.stats.gearDismantled ?? 0) + 1;
   ctx.events.emit(world.tick, {
     type: 'gearDismantled', itemUid: g.uid, gearId: g.gearId, qualityId: g.qualityId, difficultyId: g.difficultyId, source, materials: mats,

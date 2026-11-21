@@ -59,7 +59,8 @@ function snapshot(w: World, min: number): string {
   if (req) for (const k in req) reqUnits += req[k]!;
   return `t=${String(min).padStart(4)}m townGold ${String(w.town.gold).padStart(6)} shop ${String(w.town.shop.length).padStart(2)} ` +
     `storage ${String(storage).padStart(4)} bags ${String(bags).padStart(4)} requests ${String(reqUnits).padStart(3)} ` +
-    `hunterGold avg ${String(avg).padStart(6)} max ${String(Math.max(0, ...gold)).padStart(6)} avgLv ${lv} diff ${w.town.difficulty.replace(/^diff\./, '')} gearStore ${(w.town.gearStorage ?? []).length}`;
+    `hunterGold avg ${String(avg).padStart(6)} max ${String(Math.max(0, ...gold)).padStart(6)} avgLv ${lv} diff ${w.town.difficulty.replace(/^diff\./, '')} gearStore ${(w.town.gearStorage ?? []).length} ` +
+    `kills ${w.stats.kills} reinc ${w.stats.reincarnations} R [${hs.map((h) => h.reincarnation).join('')}]`;
 }
 
 /** Planned journeys: destination, first minute, launches left; `waiting` = a start command is in flight. */
@@ -74,7 +75,10 @@ const fmtMin = (tick: number) => `${(tick / 600).toFixed(1)}m`;
 const counts: Record<string, number> = {};
 const reasons: Record<string, number> = {};
 const timeline: string[] = [];
-const ledger = { svc: 0, shop: 0, fees: 0, mats: 0, craft: 0 };
+const ledger = { svc: 0, shop: 0, fees: 0, mats: 0, craft: 0, export: 0 };
+/** Auto-difficulty changes (step-ups and step-downs) and starter kits (TECH_SPEC §5.8). */
+const diffLog: string[] = [];
+let kits = 0;
 /** Bounties (TECH_SPEC §5.9): escrowed when posted, refunds of cancelled/expired ones, kingdom completion gold, paid to hunters. */
 const bl = { escrow: 0, refund: 0, kingdom: 0, paid: 0, posted: 0, done: 0 };
 const escrowNow = (w: World): number => (w.town.bounties ?? []).reduce((a, b) => a + b.escrow, 0);
@@ -154,6 +158,9 @@ for (let t = 0; t < ticks; t++) {
       else hl.skill += e.cost;
     }
     else if (e.type === 'materialsSold') ledger.mats += e.gold;
+    else if (e.type === 'storageExported') ledger.export += e.gold;
+    else if (e.type === 'starterKitGiven') kits += 1;
+    else if (e.type === 'difficultyChanged') diffLog.push(`${fmtMin(e.tick)} ${e.stepDown ? 'step down' : 'step up'} → ${e.difficultyId} (R ${sim.world.hunters.map((h) => h.reincarnation).join('/')})`);
     else if (e.type === 'bountyPosted') { bl.escrow += e.reward; bl.posted += 1; }
     else if (e.type === 'bountyCancelled') bl.refund += e.refund;
     else if (e.type === 'bountyCompleted') { bl.kingdom += e.kingdomGold; bl.done += 1; }
@@ -182,13 +189,13 @@ for (let t = 0; t < ticks; t++) {
   }
   if (snapEvery > 0 && (t + 1) % (snapEvery * 600) === 0) {
     // Fee cut = residual of the town window (the share depends on town gold, see trading.townFeeShare).
-    ledger.fees = sim.world.town.gold - townGold0 - ledger.svc - ledger.shop + ledger.mats + ledger.craft + bl.escrow - bl.refund - bl.kingdom + inv.gold - inv.refund - tax - sp.potTown - sp.revTown - tr.town;
+    ledger.fees = sim.world.town.gold - townGold0 - ledger.svc - ledger.shop - ledger.export + ledger.mats + ledger.craft + bl.escrow - bl.refund - bl.kingdom + inv.gold - inv.refund - tax - sp.potTown - sp.revTown - tr.town;
     townGold0 = sim.world.town.gold;
     const kill = hunterGold(sim.world) - hunterGold0 + ledger.svc + ledger.shop + hl.enh + hl.skill - ledger.mats - bl.paid + tax + sp.potGold + sp.revFee + tr.gold;
     const so = stockoutMs(sim.world).map((x, i) => Math.round((x - stockout0[i]!) / 60000));
     stockout0 = stockoutMs(sim.world);
     timeline.push(snapshot(sim.world, (t + 1) / 600) +
-      ` | in svc ${ledger.svc} shop ${ledger.shop} fees ${ledger.fees} tax ${tax} out mats ${ledger.mats} (req ${reqMats}) craft ${ledger.craft}` +
+      ` | in svc ${ledger.svc} shop ${ledger.shop} fees ${ledger.fees} tax ${tax} export ${ledger.export} kits ${kits} out mats ${ledger.mats} (req ${reqMats}) craft ${ledger.craft}` +
       ` | hunter kill ${kill} enh ${hl.enh} skill ${hl.skill} | burned ${hl.enh + hl.skill - ledger.fees + ledger.craft + sp.potGold - sp.potTown + sp.revFee - sp.revTown + tr.gold - tr.town}` +
       ` | supply stockoutMin [${so.join(' ')}] served ${sp.served} made ${sp.made} denied ${sp.denied}` +
       ` | potion bought ${sp.potBought} used ${sp.potUsed} gold ${sp.potGold} (town ${sp.potTown}) hpRetreatWithPotion ${sp.potRetreat}` +
@@ -201,7 +208,8 @@ for (let t = 0; t < ticks; t++) {
     bl.escrow = bl.refund = bl.kingdom = bl.paid = bl.posted = bl.done = 0;
     townGoldMin = Infinity;
     hunterGold0 = hunterGold(sim.world);
-    ledger.svc = ledger.shop = ledger.fees = ledger.mats = ledger.craft = 0;
+    ledger.svc = ledger.shop = ledger.fees = ledger.mats = ledger.craft = ledger.export = 0;
+    kits = 0;
     hl.enh = hl.skill = 0;
     tax = 0;
     reqMats = 0;
@@ -218,6 +226,8 @@ console.log('events', counts);
 console.log('goal changes', reasons);
 console.log('stats', w.stats, 'town gold', w.town.gold, 'shop items', w.town.shop.length, 'monsters', w.monsters.length);
 console.log('storage', w.town.storage);
+console.log('difficulty changes');
+for (const l of diffLog) console.log('  ' + l);
 for (const [k, l] of Object.entries(w.town.supply ?? {})) {
   console.log(`  stock ${k} ${JSON.stringify(l.stock)} job ${l.job ? `${l.job.consumableId} ${Math.ceil(l.job.remainingMs / 1000)}s` : '-'} stockout ${Math.round(l.stockoutMs / 60000)}m`);
 }
@@ -246,5 +256,5 @@ for (const s of w.town.buildings ?? []) {
 for (const h of w.hunters) {
   const n = h.needs;
   const eq = Object.entries(h.equipment).map(([s, g]) => `${s}:${g!.gearId.split('.').pop()}/${g!.qualityId.slice(2)}+${g!.enhance}${g!.difficultyId && g!.difficultyId !== config.difficulties[0]!.id ? '@' + g!.difficultyId.replace(/^diff\./, '') : ''}`).join(' ');
-  console.log(`${h.id} ${h.tier} [${h.personalities.map((p) => p.replace(/^pers\./, '')).join(',')}] Lv${h.level} gold ${h.gold} kills ${h.kills} [${eq}] potions ${JSON.stringify(h.potions ?? {})} goal ${h.ai.goal ? JSON.stringify(h.ai.goal) : '-'} ${h.ai.phase} hp ${(n.hp / h.stats.hp * 100).toFixed(0)}% sat ${n.satiety.toFixed(0)} mood ${n.mood.toFixed(0)} sta ${n.stamina.toFixed(0)}`);
+  console.log(`${h.id} R${h.reincarnation} ${h.tier} [${h.personalities.map((p) => p.replace(/^pers\./, '')).join(',')}] Lv${h.level} gold ${h.gold} kills ${h.kills} [${eq}] potions ${JSON.stringify(h.potions ?? {})} goal ${h.ai.goal ? JSON.stringify(h.ai.goal) : '-'} ${h.ai.phase} hp ${(n.hp / h.stats.hp * 100).toFixed(0)}% sat ${n.satiety.toFixed(0)} mood ${n.mood.toFixed(0)} sta ${n.stamina.toFixed(0)}`);
 }

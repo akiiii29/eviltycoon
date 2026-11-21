@@ -31,6 +31,11 @@ export type SimEvent =
   | { type: 'potionUsed'; tick: number; hunterId: string; consumableId: string; hp: number }
   | { type: 'levelUp'; tick: number; hunterId: string; level: number }
   | { type: 'materialsSold'; tick: number; hunterId: string; units: number; gold: number }
+  /**
+   * Town Storage over its cap (TECH_SPEC §5.7): `materials` were sold for export at surplusPrice (`gold` to the Town) — units
+   * no request needs, or dismantle returns that did not fit.
+   */
+  | { type: 'storageExported'; tick: number; materials: Record<string, number>; units: number; gold: number }
   /** Unrequested materials thrown away at the Trading Post (it only buys requested ones). */
   | { type: 'materialsDiscarded'; tick: number; hunterId: string; units: number }
   /** A shop item left unsold at its floor price for shopFloorHoldSec was removed (no refund). */
@@ -56,7 +61,10 @@ export type SimEvent =
   | { type: 'portalEntered'; tick: number; hunterId: string; durationSec: number }
   | { type: 'learned'; tick: number; hunterId: string; kind: 'skill' | 'trait' | 'growth'; id: string; level: number; cost: number }
   | { type: 'difficultyUnlocked'; tick: number; difficultyId: string }
-  | { type: 'difficultyChanged'; tick: number; difficultyId: string }
+  /** `stepDown`: auto-difficulty dropped one level because a hunter could not hunt anywhere (gearTier.autoStepDownDifficulty). */
+  | { type: 'difficultyChanged'; tick: number; difficultyId: string; stepDown?: boolean }
+  /** A hunter got a free starter kit (lowest-level gear of each empty slot at the Town's difficulty tier; TECH_SPEC §5.8). */
+  | { type: 'starterKitGiven'; tick: number; hunterId: string; itemUids: string[]; difficultyId: string }
   /** Bounties (TECH_SPEC §5.9). `reward` was moved from Town gold into escrow. */
   | { type: 'bountyPosted'; tick: number; bountyId: string; targetKind: 'monster' | 'zone'; targetId: string; kills: number; reward: number; auto: boolean }
   /** A target kill: `gold` paid from escrow to the killer. */

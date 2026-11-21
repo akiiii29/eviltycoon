@@ -130,6 +130,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       studyGoldMul: perLevel({ kind: 'number', min: 0 }),
       surplusPriceMul: perLevel({ kind: 'number', min: 0 }),
       requestCopies: perLevel({ kind: 'int', min: 0 }),
+      storageCap: perLevel({ kind: 'int', min: 0 }),
       supplyCap: perLevel({ kind: 'int', min: 0 }),
       potionCap: perLevel({ kind: 'int', min: 0 }),
       trainExpFrac: perLevel({ kind: 'number', min: 0, max: 1 }),
@@ -505,6 +506,8 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'enhanceMinNetFrac', 'upgradeSavingsConcreteFrac', 'enhanceVsUpgradeMul', 'investTownHallLeadLevels', 'investUrgentImportSec', 'investValueService', 'investValueShop', 'investValueForge', 'investValueAcademy', 'investValueTradingPost', 'investValueStorehouse', 'investValueTownHall', 'investValueCraft', 'investReadyMul',
   // Gear tiers per difficulty, reclaim, dismantle (TECH_SPEC §5.8).
   'dismantleReturnFrac', 'gearStorageMax', 'craftEssencePerLevel', 'diffAutoAdvanceFrac',
+  // Long-run balance (TECH_SPEC §5.7, §5.8): Town Storage cap, auto-difficulty survival gate.
+  'storageCapBase', 'diffAutoMinRatio',
   // Supplies, potions, revive fee (TECH_SPEC §5.14).
   'supplyRequestBatches', 'potionTownHallLevel', 'potionCarryMax', 'potionPriceLevelPct', 'potionSpendFrac', 'potionBuyScore',
   'potionUseHpFrac', 'potionCooldownSec', 'reviveFeeBase', 'reviveFeePerLevel', 'reviveBrokeDelayMul',
@@ -575,6 +578,12 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('gearStorageMax', 0, 1000);
     range('craftEssencePerLevel', 0, 100);
     range('diffAutoAdvanceFrac', 0, 1e6);
+    range('storageCapBase', 0, 1e7);
+    range('diffAutoMinRatio', 0, 100);
+    // The auto-difficulty gate must sit above the step-down line (gearTier.autoStepDownDifficulty), or it can flap.
+    if (typeof o.diffAutoMinRatio === 'number' && o.diffAutoMinRatio > 0 && typeof o.zoneFitMin === 'number' && o.diffAutoMinRatio <= o.zoneFitMin) {
+      issues.push({ path: 'formula_params.diffAutoMinRatio', message: 'must be > zoneFitMin (or 0 = no gate)' });
+    }
     // Shop markdown schedule: the floor must be reachable (and offered) before an item is scrapped.
     // The scrap age is derived from it (crafting.shopScrapAgeSec), so only the inputs need checking.
     range('shopStaleSec', 1, 1e6);

@@ -17,6 +17,7 @@ import { rollHunter, rollHunterOfTier, rollInvitationTier } from '../hunterFacto
 import type { System, SystemContext } from '../system';
 import type { Hunter, HunterTier, QueueEntry } from '../world';
 import { townHunterCount } from './journey';
+import { giveStarterKit } from './gearTier';
 
 export type ArrivalSource = QueueEntry['source'];
 
@@ -37,6 +38,7 @@ export function spawnHunter(ctx: SystemContext, tier?: HunterTier, source: Arriv
     ? rollHunterOfTier(config, rng, id, tier, sq.id, pos, world.timeMs)
     : rollHunter(config, rng, id, sq.id, pos, world.timeMs);
   world.hunters.push(hunter);
+  giveStarterKit(ctx, hunter); // above the base difficulty only (gearTier.ts)
   if (fromQueue) world.stats.queueEntered = (world.stats.queueEntered ?? 0) + 1;
   ctx.events.emit(world.tick, { type: 'hunterArrived', hunterId: id, source, fromQueue });
   return hunter;

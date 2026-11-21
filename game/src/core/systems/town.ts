@@ -18,7 +18,7 @@ import type { System, SystemContext } from '../system';
 import type { BuildingState, InvestPlan, World } from '../world';
 import { autoCraftReserve } from './crafting';
 import { allHunters } from './journey';
-import { townGoldTarget } from './trading';
+import { exportStorageOverflow, townGoldTarget } from './trading';
 
 /** Value of a per-level list at `level` (clamped to the list; undefined below level 1 or for a missing list). */
 export function levelValue<T>(list: readonly T[] | undefined, level: number): T | undefined {
@@ -89,6 +89,18 @@ export function surplusPriceMul(config: GameConfig, world: World): number {
 export function extraRequestCopies(config: GameConfig, world: World): number {
   let n = 0;
   for (const b of config.buildings) if (b.kind === 'storehouse') n += levelValue(b.requestCopies, buildingLevel(world, b.id)) ?? 0;
+  return n;
+}
+
+/**
+ * Town Storage cap (TECH_SPEC §5.7, §5.12): storageCapBase + every storehouse's storageCap at its level; Infinity when
+ * storageCapBase ≤ 0 (no cap, the old behaviour). See trading.storageRoom / exportStorageOverflow.
+ */
+export function storageCapacity(config: GameConfig, world: World): number {
+  const base = config.formula.storageCapBase ?? 0;
+  if (!(base > 0)) return Infinity;
+  let n = base;
+  for (const b of config.buildings) if (b.kind === 'storehouse') n += levelValue(b.storageCap, buildingLevel(world, b.id)) ?? 0;
   return n;
 }
 
@@ -547,6 +559,7 @@ export const townSystem: System = {
     }
     const every = Math.max(1, Math.round((config.formula.townInvestIntervalSec * 1000) / dtMs));
     if (world.tick % every !== 0) return;
+    exportStorageOverflow(ctx); // Town Storage cap (trading.ts, TECH_SPEC §5.7)
     if (world.town.autoInvest) autoInvest(ctx);
     else world.town.investPlan = null;
   },

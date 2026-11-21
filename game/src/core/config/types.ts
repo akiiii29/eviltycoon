@@ -217,6 +217,8 @@ export interface BuildingDef {
   surplusPriceMul?: number[];
   /** storehouse only: extra copies kept by the automatic material requests (per level). */
   requestCopies?: number[];
+  /** storehouse only: Town Storage units added to storageCapBase (per level; TECH_SPEC §5.7). */
+  storageCap?: number[];
   /**
    * service only: max supply units in stock (per level; one unit = one serving, TECH_SPEC §5.14). Missing = the service
    * needs no supplies (unlimited, as before supplies existed).
@@ -732,6 +734,18 @@ export interface FormulaParams {
    * ceil(diffAutoAdvanceFrac × hunters) hunters have reincarnation ≥ its unlockReincarnation. > 1 = never.
    */
   diffAutoAdvanceFrac: number;
+  /**
+   * Town Storage cap (TECH_SPEC §5.7): total material units ≤ storageCapBase + Storehouse storageCap[level]. Requested
+   * purchases / journey rewards / dismantle returns only fill the room; units over the cap that no request needs are
+   * exported at surplusPrice (Town gold). 0 = no cap.
+   */
+  storageCapBase: number;
+  /**
+   * Auto-difficulty bootstrap gate (gearTier.autoAdvanceDifficulty): the Town steps up only if every hunter, as a level-1
+   * hunter with a starter kit of the new tier, has a zone with power ratio >= diffAutoMinRatio there. 0 = no gate.
+   * Keep it above zoneFitMin (the step-down line) so auto difficulty does not flap.
+   */
+  diffAutoMinRatio: number;
   /**
    * Supplies and potions (TECH_SPEC §5.14, systems/supplies.ts, systems/consumables.ts). Automatic requests keep at most
    * supplyRequestBatches batches of the essential recipe per stock line.

@@ -426,6 +426,11 @@ export interface World {
     investGold: number;
     investMaterials: number;
     investImportGold: number;
+    /** Material units sold for export because Town Storage was over its cap, and the Town gold they made (trading.ts). Optional: absent = 0. */
+    storageExported?: number;
+    /** Starter kits given on reincarnation / arrival above the base difficulty (gearTier.giveStarterKit). Optional: absent = 0. */
+    starterKits?: number;
+    storageExportGold?: number;
     /** Tax taken from kill gold into Town gold (systems/tax.ts). Optional, no schema bump: absent = 0. */
     taxCollected?: number;
     /** v9: journeys started / succeeded / failed / recalled, Town gold earned from journeys (rewards, rare sold). */

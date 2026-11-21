@@ -4,15 +4,16 @@ import { hunterStats } from '../formulas';
 import { copyGearDepth } from '../gear';
 import type { System, SystemContext } from '../system';
 import { isAlive, type GearInstance, type Hunter, type ShopItem, type World } from '../world';
-import { materialDemand, salePrice, sellOrder, surplusBudget, surplusPrice, townFeeShare } from './trading';
+import { ensureStorageRoom, materialDemand, salePrice, sellOrder, surplusBudget, surplusPrice, townFeeShare } from './trading';
+import { enhanceStepCost } from './gearTier';
 import { enhanceBonus } from './town';
 
-/** Gold cost of the next enhance step for this gear, or null when it is already at max (or unknown). */
+/** Gold cost of the next enhance step for this gear (tier-aware, gearTier.enhanceStepCost), or null when it is already at max (or unknown). */
 export function enhanceCost(config: GameConfig, g: GearInstance): number | null {
   const def = config.index.gear.get(g.gearId);
   const row = config.enhance[g.enhance]; // enhance[i] is the step to level i+1
   if (!def || !row) return null;
-  return Math.round(def.basePrice * row.costFrac);
+  return enhanceStepCost(config, def, row.costFrac, g.difficultyId);
 }
 
 /** True when the hunter may buy this shop item right now (level and gold). */
@@ -54,7 +55,9 @@ function doSell(ctx: SystemContext, h: Hunter): void {
   // Essential supply materials first (trading.sellOrder), so a short Town treasury still restocks the services.
   for (const matId of sellOrder(config, world, h.bag)) {
     const have = h.bag[matId]!;
-    const wanted = Math.min(have, demand[matId] ?? 0);
+    // Town Storage cap (TECH_SPEC §5.7): spare units are exported to make room; requested units beyond the room count as surplus.
+    const asked = Math.min(have, demand[matId] ?? 0);
+    const wanted = asked > 0 ? Math.min(asked, ensureStorageRoom(ctx, asked)) : 0;
     const price = salePrice(config, matId);
     const n = price > 0 ? Math.min(wanted, Math.floor(world.town.gold / price)) : wanted;
     if (n > 0) {
