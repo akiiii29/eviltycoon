@@ -2,17 +2,22 @@ import { loadConfig } from '../src/core/config/load';
 import type { GameConfig } from '../src/core/config/types';
 import { hunterStats } from '../src/core/formulas';
 import { createWorld, Simulation } from '../src/core/simulation';
+import { aiSystem } from '../src/core/systems/ai';
+import { movementSystem } from '../src/core/systems/movement';
 import { isDifficultyUnlockable, progressionSystem } from '../src/core/systems/progression';
 import { spawnSystem } from '../src/core/systems/spawn';
 import type { Hunter } from '../src/core/world';
 import { readRawConfig } from './helpers';
 
 const MAX_LEVEL = 5;
+/** Short portal stay so walking + waiting fits in a few hundred ticks (the shipped value is in formula_params). */
+const PORTAL_SEC = 5;
 
 /** Cloned config with a tiny level cap: job tier 1 at level 3, tier 2 at level 5. */
 function smallConfig(): GameConfig {
   const raw = readRawConfig() as unknown as Record<string, unknown>;
   (raw.formula_params as Record<string, number>).maxLevel = MAX_LEVEL;
+  (raw.formula_params as Record<string, number>).reincarnationSec = PORTAL_SEC;
   for (const j of raw.job as { tier: number; unlockLevel: number }[]) {
     if (j.tier === 1) j.unlockLevel = 3;
     if (j.tier === 2) j.unlockLevel = 5;
@@ -28,6 +33,15 @@ function makeSim(n: number, systems = [progressionSystem], seed = 7) {
   s.step();
   s.drainEvents();
   return s;
+}
+
+/** AI + movement + progression: enough for a hunter to walk to the Reincarnation Portal (TECH_SPEC §5.13). */
+const WALK = [aiSystem, movementSystem, progressionSystem];
+
+/** Step until `h` came out of the portal reincarnated (walk + PORTAL_SEC), at most `max` ticks. */
+function untilReincarnated(s: Simulation, h: Hunter, max = 2000): void {
+  const r0 = h.reincarnation;
+  for (let i = 0; i < max && h.reincarnation === r0; i++) s.step();
 }
 
 function eventsOf(s: Simulation, type: string) {
@@ -87,7 +101,7 @@ function maxOut(h: Hunter) {
 
 describe('reincarnation', () => {
   it('resets level/job/stats to roll, keeps gear/skills/traits, adds trait points and raises effective stats', () => {
-    const s = makeSim(1);
+    const s = makeSim(1, WALK);
     const h = s.world.hunters[0]!;
     s.world.town.autoReincarnate = false;
     const gear = config.gear[0]!;
@@ -103,8 +117,9 @@ describe('reincarnation', () => {
     const before = hunterStats(config, { ...h, level: 1, jobTier: 0, stats: { ...h.rollStats }, buffs: [] });
 
     s.enqueue({ type: 'hunter.reincarnate', hunterId: h.id });
-    s.step();
+    untilReincarnated(s, h);
     expect(eventsOf(s, 'reincarnated')).toEqual([expect.objectContaining({ hunterId: h.id, count: 1 })]);
+    expect(h.nodeId).toBe(config.index.portalNode);
     expect(h.reincarnation).toBe(1);
     expect(h.level).toBe(1);
     expect(h.exp).toBe(0);
@@ -124,14 +139,14 @@ describe('reincarnation', () => {
   });
 
   it('is capped at maxReincarnation', () => {
-    const s = makeSim(1);
+    const s = makeSim(1, WALK);
     const h = s.world.hunters[0]!;
     s.world.town.autoReincarnate = false;
     const cap = config.formula.maxReincarnation;
     for (let i = 0; i < cap; i++) {
       maxOut(h);
       s.enqueue({ type: 'hunter.reincarnate', hunterId: h.id });
-      s.step();
+      untilReincarnated(s, h); // the next order is applied before the AI's first decision after leaving the portal
     }
     expect(h.reincarnation).toBe(cap);
     maxOut(h);
@@ -140,11 +155,12 @@ describe('reincarnation', () => {
     s.step();
     expect(h.reincarnation).toBe(cap);
     expect(h.level).toBe(MAX_LEVEL);
-    expect(eventsOf(s, 'commandRejected')).toHaveLength(1);
+    expect(eventsOf(s, 'commandRejected')).toEqual([expect.objectContaining({ reason: 'reincarnation cap reached' })]);
 
     // Auto mode also respects the cap.
     s.world.town.autoReincarnate = true;
     s.step();
+    expect(h.ai.goal?.type).not.toBe('reincarnate');
     expect(h.reincarnation).toBe(cap);
     expect(s.world.stats.reincarnations).toBe(cap);
   });
@@ -170,10 +186,14 @@ describe('reincarnation', () => {
     expect(h.reincarnation).toBe(0);
     expect(eventsOf(s, 'commandRejected')).toHaveLength(3);
 
+    // Accepted: the hunter is sent to the portal (forced goal); the reincarnation happens there.
     h.insideBuildingId = null;
     s.enqueue({ type: 'hunter.reincarnate', hunterId: h.id });
     s.step();
-    expect(h.reincarnation).toBe(1);
+    expect(eventsOf(s, 'commandRejected')).toEqual([]);
+    expect(h.ai.goal).toEqual({ type: 'reincarnate' });
+    expect(h.ai.forced).toBe(true);
+    expect(h.reincarnation).toBe(0);
   });
 
   it('manual command requires the hunter to be in Town (rejected in the field)', () => {
@@ -194,39 +214,42 @@ describe('reincarnation', () => {
     h.nodeId = townNode;
     s.enqueue({ type: 'hunter.reincarnate', hunterId: h.id });
     s.step();
-    expect(h.reincarnation).toBe(1);
+    expect(h.ai.goal).toEqual({ type: 'reincarnate' });
   });
 
-  it('auto-reincarnates only when enabled, alive, outside buildings and in town', () => {
+  it('auto-reincarnation sends the hunter to the portal only when enabled, alive, outside buildings and in town', () => {
     const s = makeSim(1);
     const h = s.world.hunters[0]!;
+    const sent = () => h.ai.goal?.type === 'reincarnate';
     s.enqueue({ type: 'town.setAutoReincarnate', on: false });
     s.step();
     expect(s.world.town.autoReincarnate).toBe(false);
     maxOut(h);
     s.step();
-    expect(h.reincarnation).toBe(0);
+    expect(sent()).toBe(false);
 
     s.enqueue({ type: 'town.setAutoReincarnate', on: true });
     const townNode = h.nodeId;
     h.nodeId = fieldNode();
     s.step();
-    expect(h.reincarnation).toBe(0);
+    expect(sent()).toBe(false);
 
     h.nodeId = townNode;
     h.deadMs = 500;
     s.step();
-    expect(h.reincarnation).toBe(0);
+    expect(sent()).toBe(false);
 
     h.deadMs = 0;
     h.insideBuildingId = config.buildings[0]!.id;
     s.step();
-    expect(h.reincarnation).toBe(0);
+    expect(sent()).toBe(false);
 
     h.insideBuildingId = null;
     s.step();
-    expect(h.reincarnation).toBe(1);
-    expect(h.level).toBe(1);
+    expect(sent()).toBe(true);
+    expect(h.ai.forced).toBe(true);
+    expect(h.reincarnation).toBe(0); // not yet: it has to walk there and wait (tests/portal.test.ts)
+    expect(h.level).toBe(MAX_LEVEL);
   });
 });
 

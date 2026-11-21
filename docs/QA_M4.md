@@ -86,6 +86,8 @@ Ghi chú TX-3: bấm 2 lần trong một khung 200 ms (trước khi overlay vẽ
 
 ## 6. Offline progress (§9)
 
+> **Đã thay đổi sau đợt QA này:** offline theo EHT (TECH_SPEC §9) — không còn cộng săn theo tốc độ. OF-1, OF-2, OF-4 (phần cộng săn), OF-6, OF-7, OF-8 hết hiệu lực; BU-9 nay chạy theo thời gian thực (test `QA-OFFLINE`). OF-3, OF-5 vẫn đúng. Cần kiểm tay lại popup mới.
+
 | ID | Mục | Cách kiểm | KQ |
 |---|---|---|---|
 | OF-1 | Vắng ≥ 60 s và có ≥ 120 s mẫu thì cộng theo tốc độ; popup tổng kết | A: `offline.test.ts`, `QA-OFFLINE`. M: lùi `savedAt` 2 giờ trong IndexedDB rồi reload. Popup "Vắng 2 giờ 0 phút · Vàng +2623 · Kill +1228", NL vào kho, từng hunter Lv3 → Lv9… | ✅ |

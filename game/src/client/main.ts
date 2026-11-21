@@ -1,8 +1,6 @@
 import { loadConfig, ConfigError } from '../core/config/load';
 import type { GameConfig } from '../core/config/types';
-import {
-  advanceOfflineWallClock, applyOffline, estimateOffline, offlineWallClockMs, recordSample, type OfflineReport, type OfflineTracker,
-} from '../core/offline';
+import { advanceOfflineWallClock, offlineHasNews, offlineWallClockMs, type OfflineReport } from '../core/offline';
 import { deserialize, serialize, SaveError } from '../core/save/save';
 import { IndexedDbStorage } from '../core/save/storage';
 import { createWorld, Simulation } from '../core/simulation';
@@ -35,26 +33,22 @@ async function boot(): Promise<void> {
   const storage = new IndexedDbStorage();
   const sim = new Simulation(config, createWorld(config, Date.now() >>> 0));
   let status = 'new game';
-  /** Rate samples for offline progress (TECH_SPEC §9); saved in the envelope next to the world. */
-  let tracker: OfflineTracker | null = null;
   let popupRoot: HTMLElement | null = null;
   let pendingReport: OfflineReport | null = null;
 
-  /** Estimate and apply offline progress for the wall-clock gap since `since`; returns the report when anything was credited. */
+  /**
+   * Offline progress (TECH_SPEC §9, EHT rules): no hunting while away; only wall-clock timers (journeys, the
+   * Reincarnation Portal, constructions, hunter arrivals) advance by the gap since `since`. Returns the report when
+   * anything finished (else null: no popup).
+   */
   function creditOffline(since: number): OfflineReport | null {
-    const now = Date.now();
-    const r = estimateOffline(config, sim.world, tracker, since, now);
-    if (!r.skipped) applyOffline(config, sim.world, r, tracker);
-    // Journeys, constructions and arrivals run on wall-clock time, independent of the rate estimate (TECH_SPEC §9).
-    const wall = sim.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, offlineWallClockMs(since, now)));
-    Object.assign(r, wall);
-    const anyTimer = wall.journeys.length > 0 || wall.buildings.length > 0 || wall.arrivals.length > 0;
-    return r.skipped && !anyTimer ? null : r;
+    const r = sim.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, offlineWallClockMs(since, Date.now())));
+    return offlineHasNews(r) ? r : null;
   }
 
   function showReport(r: OfflineReport | null): void {
     if (!r) return;
-    if (popupRoot) showOfflinePopup(popupRoot, config, sim.world, r);
+    if (popupRoot) showOfflinePopup(popupRoot, config, r);
     else pendingReport = r;
   }
 
@@ -65,13 +59,12 @@ async function boot(): Promise<void> {
     try {
       const r = deserialize(text, config);
       sim.setWorld(r.world);
-      tracker = r.offline;
       const away = Math.round((Date.now() - r.savedAt) / 1000);
       status = `loaded (saved ${away}s ago${r.migratedFrom !== null ? `, migrated from v${r.migratedFrom}` : ''}${r.configChanged ? ', config changed' : ''})`;
       if (offline) {
         const rep = creditOffline(r.savedAt);
         if (rep) {
-          status += `, offline ${Math.round(rep.creditedMs / 60_000)} min credited`;
+          status += `, offline ${Math.round(rep.awayMs / 60_000)} min (timers only)`;
           // Save right away so a reload before the next autosave cannot credit the same gap twice.
           await save();
           showReport(rep);
@@ -86,7 +79,7 @@ async function boot(): Promise<void> {
 
   async function save(): Promise<void> {
     try {
-      await storage.write(SLOT, serialize(sim.world, Date.now(), tracker));
+      await storage.write(SLOT, serialize(sim.world, Date.now()));
       status = `saved at tick ${sim.world.tick}`;
     } catch (e) {
       status = `save failed: ${String(e)}`;
@@ -96,7 +89,6 @@ async function boot(): Promise<void> {
   async function reset(): Promise<void> {
     await storage.remove(SLOT);
     sim.setWorld(createWorld(config, Date.now() >>> 0));
-    tracker = null;
     status = 'reset';
   }
 
@@ -133,7 +125,6 @@ async function boot(): Promise<void> {
     const dt = Math.min(now - last, 1000);
     last = now;
     sim.advance(dt);
-    tracker = recordSample(config, sim.world, tracker);
     overlay.pushEvents(sim.drainEvents());
     renderer.sync(sim.world);
     renderer.draw();
@@ -150,7 +141,8 @@ async function boot(): Promise<void> {
   }
   requestAnimationFrame(frame);
 
-  // A hidden tab stops requestAnimationFrame (the sim pauses), so credit the hidden time as offline progress.
+  // A hidden tab stops requestAnimationFrame (the sim pauses): on return the wall-clock timers advance by the hidden time
+  // (same rules as offline, TECH_SPEC §9).
   let hiddenAt = 0;
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {

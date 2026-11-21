@@ -313,5 +313,10 @@
   "a": "t.square",
   "b": "d.plot.sw",
   "road": false
+ },
+ {
+  "a": "t.square",
+  "b": "t.portal",
+  "road": false
  }
 ]

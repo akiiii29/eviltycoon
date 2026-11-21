@@ -4,7 +4,7 @@ import { loadConfig, type RawConfig } from '../src/core/config/load';
 import type { GameConfig } from '../src/core/config/types';
 import type { SimEvent } from '../src/core/events';
 import { hunterStats, journeySuccessChance, killsPerLife, needMax, teamPower, zoneCrowd, zonePower, zoneScores } from '../src/core/formulas';
-import { applyOffline, estimateOffline, offlineJourneyMs, takeSample } from '../src/core/offline';
+import { advanceOfflineWallClock, offlineWallClockMs } from '../src/core/offline';
 import { gainExp } from '../src/core/progress';
 import { deserialize, SAVE_FORMAT, serialize } from '../src/core/save/save';
 import { createWorld, Simulation } from '../src/core/simulation';
@@ -322,8 +322,10 @@ describe('journey lifecycle', () => {
     for (let i = 0; i < 500; i++) s.step();
     expect(s.world.journeys[0]?.hunters[0]?.reincarnation ?? 0).toBe(0);
     runUntilDone(s);
-    for (let i = 0; i < 20; i++) s.step();
-    expect(s.world.hunters.find((x) => x.id === h.id)!.reincarnation).toBe(1);
+    // Back in Town it walks to the Reincarnation Portal and comes out after reincarnationSec (TECH_SPEC §5.13).
+    for (let i = 0; i < (config.formula.reincarnationSec + 60) * 10 && h.reincarnation === 0; i++) s.step();
+    expect(h.reincarnation).toBe(1);
+    expect(s.world.hunters).toContain(h);
   });
 
   it('is deterministic: same seed and commands give the same outcome and world', () => {
@@ -366,14 +368,11 @@ describe('journey save/load and offline', () => {
   });
 
   /** What the client does on load (main.ts creditOffline). */
-  function creditOffline(s: Simulation, savedAt: number, now: number, tracker: any = null) {
-    const r = estimateOffline(config, s.world, tracker, savedAt, now);
-    if (!r.skipped) applyOffline(config, s.world, r, tracker);
-    r.journeys = s.runBetweenTicks((ctx) => advanceJourneys(ctx, offlineJourneyMs(savedAt, now), true));
-    return r;
+  function creditOffline(s: Simulation, savedAt: number, now: number) {
+    return s.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, offlineWallClockMs(savedAt, now)));
   }
 
-  it('journeys advance by the wall-clock gap and resolve on load (even without rates / below offlineMinAwaySec)', () => {
+  it('journeys advance by the wall-clock gap and resolve on load (even a short gap)', () => {
     const a = midJourney();
     const text = serialize(a.world, T0);
     const left = a.world.journeys[0]!.remainingMs;
@@ -382,7 +381,6 @@ describe('journey save/load and offline', () => {
     const b = new Simulation(config, createWorld(config, 1));
     b.setWorld(deserialize(text, config).world);
     const short = creditOffline(b, T0, T0 + 30_000);
-    expect(short.skipped).toBe('tooShort');
     expect(short.journeys).toEqual([]);
     expect(b.world.journeys[0]!.remainingMs).toBe(left - 30_000);
 
@@ -391,7 +389,6 @@ describe('journey save/load and offline', () => {
     c.setWorld(deserialize(text, config).world);
     const rngBefore = JSON.stringify(c.world.rng);
     const long = creditOffline(c, T0, T0 + left + 5_000);
-    expect(long.skipped).toBe('noRates'); // no tracker: the journey still completes
     expect(long.journeys).toHaveLength(1);
     expect(c.world.journeys).toEqual([]);
     expect(townHunterCount(c.world)).toBe(c.world.hunters.length);
@@ -410,43 +407,14 @@ describe('journey save/load and offline', () => {
   });
 
   it('unknown save time / clock going backwards do not advance journeys; no journeys leaves the RNG untouched', () => {
-    expect(offlineJourneyMs(0, T0)).toBe(0);
-    expect(offlineJourneyMs(T0, T0 - 1000)).toBe(0);
-    expect(offlineJourneyMs(T0, T0 + 1234)).toBe(1234);
+    expect(offlineWallClockMs(0, T0)).toBe(0);
+    expect(offlineWallClockMs(T0, T0 - 1000)).toBe(0);
+    expect(offlineWallClockMs(T0, T0 + 1234)).toBe(1234);
     const s = townSim();
     const rng = JSON.stringify(s.world.rng);
     expect(s.runBetweenTicks((ctx) => advanceJourneys(ctx, 10 * 3_600_000, true))).toEqual([]);
     expect(JSON.stringify(s.world.rng)).toBe(rng);
     expect(s.drainEvents()).toEqual([]);
-  });
-
-  it('a journey reward is not measured as a town gold rate (no 8 h extrapolation of a windfall)', () => {
-    const s = townSim();
-    send(s, { type: 'journey.start', journeyId: 'j.test', hunterIds: ids(s, 1) });
-    s.world.journeys[0]!.successChance = 1;
-    const before = takeSample(config, s.world, 0);
-    const gold = s.world.town.gold;
-    s.runBetweenTicks((ctx) => advanceJourneys(ctx, 1e9));
-    expect(s.world.town.gold).toBeGreaterThan(gold);
-    expect(takeSample(config, s.world, 0).townGold).toBe(before.townGold);
-  });
-
-  it('members away get no rate-based offline gains or needs refill', () => {
-    const s = townSim();
-    const tracker = { seed: s.world.seed, epoch: 0, samples: [] as any[] };
-    // Fake a measured window where every hunter earned EXP/gold.
-    const sample = (t: number, k: number) => ({
-      timeMs: t, epoch: 0, townGold: 0, storage: {},
-      hunters: s.world.hunters.map((h) => ({ id: h.id, reincarnation: h.reincarnation, level: 1, lifeExp: k * 100, gold: k * 10, kills: k })),
-    });
-    tracker.samples.push(sample(0, 0), sample(600_000, 1));
-    const team = ids(s, 2);
-    send(s, { type: 'journey.start', journeyId: 'j.long', hunterIds: team });
-    const awayBefore = JSON.stringify(s.world.journeys[0]!.hunters);
-    const r = estimateOffline(config, s.world, tracker, T0, T0 + 600_000);
-    expect(r.hunters.map((g) => g.id)).not.toContain(team[0]);
-    applyOffline(config, s.world, r, tracker);
-    expect(JSON.stringify(s.world.journeys[0]!.hunters)).toBe(awayBefore);
   });
 });
 
@@ -458,8 +426,8 @@ describe('migration to v9', () => {
     w.schemaVersion = 7;
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 7, configVersion: config.version, savedAt: 0, world: w }), config);
     expect(r.migratedFrom).toBe(7);
-    expect(WORLD_SCHEMA_VERSION).toBe(9);
-    expect(r.world.schemaVersion).toBe(9);
+    expect(WORLD_SCHEMA_VERSION).toBe(12);
+    expect(r.world.schemaVersion).toBe(12);
     expect(r.world.journeys).toEqual([]);
     expect(r.world.stats).toMatchObject({ journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0 });
     const s = new Simulation(config, r.world as World);

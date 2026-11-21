@@ -46,18 +46,23 @@ export function journeyOfHunter(world: World, hunterId: string): Journey | undef
   return (world.journeys ?? []).find((j) => j.hunters.some((h) => h.id === hunterId));
 }
 
-/** Hunters that belong to the Town: in the field/Town plus those away on journeys (they keep their slot). */
+/**
+ * Hunters that belong to the Town: in the field/Town plus those away on journeys and inside the Reincarnation Portal
+ * (they keep their slot, TECH_SPEC §5.13).
+ */
 export function townHunterCount(world: World): number {
   let n = world.hunters.length;
   for (const j of world.journeys ?? []) n += j.hunters.length;
+  n += (world.portal ?? []).length;
   return n;
 }
 
-/** Every hunter of the Town, including those away (for counts such as difficulty unlocks). */
+/** Every hunter of the Town, including those away on journeys or in the portal (for counts such as difficulty unlocks). */
 export function allHunters(world: World): Hunter[] {
   const js = world.journeys ?? [];
-  if (js.length === 0) return world.hunters;
-  return [...world.hunters, ...js.flatMap((j) => j.hunters)];
+  const ps = world.portal ?? [];
+  if (js.length === 0 && ps.length === 0) return world.hunters;
+  return [...world.hunters, ...js.flatMap((j) => j.hunters), ...ps.map((p) => p.hunter)];
 }
 
 function inTown(ctx: SystemContext, h: Hunter): boolean {
