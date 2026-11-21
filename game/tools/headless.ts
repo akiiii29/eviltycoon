@@ -17,6 +17,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { loadConfig, type RawConfig } from '../src/core/config/load';
 import { createWorld, Simulation } from '../src/core/simulation';
+import { craftGoldCost } from '../src/core/systems/crafting';
 import { bestJourneyTeam } from '../src/core/systems/journey';
 import { salePrice } from '../src/core/systems/trading';
 import type { World } from '../src/core/world';
@@ -130,7 +131,11 @@ for (let t = 0; t < ticks; t++) {
     else if (e.type === 'buildingCancelled') inv.refund += e.refund;
     else if (e.type === 'buildingCompleted') inv.done += 1;
     else if (e.type === 'taxCollected') tax += e.gold;
-    else if (e.type === 'craftStarted') ledger.craft += Math.round((config.index.gear.get(e.gearId)?.basePrice ?? 0) * config.formula.craftGoldFrac);
+    else if (e.type === 'craftStarted') {
+      // Gear tier of the job just started (TECH_SPEC §5.8): craft gold × gearPriceMul.
+      const g = config.index.gear.get(e.gearId);
+      if (g) ledger.craft += craftGoldCost(config, g, sim.world.town.crafting[e.buildingId]?.difficultyId);
+    }
     if (e.type === 'goalChanged') reasons[`${e.goal.split(':')[0]} <- ${e.reason.split(' ')[0]}`] = (reasons[`${e.goal.split(':')[0]} <- ${e.reason.split(' ')[0]}`] ?? 0) + 1;
   }
   if (snapEvery > 0 && (t + 1) % (snapEvery * 600) === 0) {

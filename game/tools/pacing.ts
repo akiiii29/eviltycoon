@@ -3,7 +3,7 @@
  * Env PACING_FP="key=value,..." overrides formula_params for the run (sensitivity sweeps).
  * Optional 4th arg townGoldFloor (default 0 = off): sensitivity knob that tops Town gold up to that floor every
  * game-minute, to see how pacing behaves when the economy is not gold-starved. Not a gameplay feature.
- * Runs the default Simulation with `hunterSlots` hunters (Easy difficulty) and prints, every interval
+ * Runs the default Simulation with `hunterSlots` hunters (Easy difficulty until town.autoDifficulty steps up after reincarnations, TECH_SPEC §5.8) and prints, every interval
  * (default 30 game-minutes): max/median level, hunters that ever reached Lv20 / Lv50 / reincarnated,
  * the zone each hunter is hunting (with its power ratio for that zone, formulas.powerRatio) and the best gear level equipped,
  * plus Town building levels (TECH_SPEC §5.12; `*` = upgrade running) and the max craftable gear level (smithy/jeweler).

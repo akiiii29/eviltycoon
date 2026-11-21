@@ -15,7 +15,7 @@ import {
   autoListStoredGear, craftGoldCost, craftingSystem, dismantleYield, gearListPrice, pickCraft, reclaimGear, startCraft, storedGearBuyers,
 } from '../src/core/systems/crafting';
 import { autoAdvanceDifficulty, craftTiers, dropEssence, essenceCount, recipeMaterials } from '../src/core/systems/gearTier';
-import { reincarnate } from '../src/core/systems/progression';
+import { advancePortal, enterPortal, reincarnate } from '../src/core/systems/progression';
 import { autoMaterialDemand } from '../src/core/systems/trading';
 import { WORLD_SCHEMA_VERSION, type GearInstance, type Hunter, type Monster, type World } from '../src/core/world';
 import { testConfig } from './helpers';
@@ -178,7 +178,20 @@ describe('reclaim', () => {
     expect(ctx.world.stats.gearReclaimed).toBe(2);
   });
 
-  it('is a no-op on the offline projection stub (a world without a Town)', () => {
+  it('a hunter whose portal stay ends (also with an offline wall-clock gap) comes out without its gear, which is in storage', () => {
+    const ctx = makeCtx();
+    const h = addHunter(ctx, { level: base.formula.maxLevel });
+    equip(h, 'weapon', { gearId: 'gear.w.star', qualityId: 'q.mythic', enhance: 6 });
+    expect(enterPortal(ctx, h)).toBe(true);
+    expect(ctx.world.hunters).not.toContain(h);
+    advancePortal(ctx, 24 * 3600 * 1000);
+    expect(ctx.world.hunters).toContain(h);
+    expect(h.reincarnation).toBe(1);
+    expect(h.equipment).toEqual({});
+    expect(ctx.world.town.gearStorage.map((g) => g.uid)).toEqual(['e-h0-weapon']);
+  });
+
+  it('is a no-op on a context without a Town', () => {
     const h = rollHunter(base, new Rng(3), 'x', base.index.squareNode, { x: 0, y: 0 }, 0);
     h.level = base.formula.maxLevel;
     equip(h, 'weapon', { gearId: 'gear.w.club', qualityId: 'q.rare', enhance: 0 });
