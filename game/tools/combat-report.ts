@@ -12,7 +12,7 @@ import { basename, join } from 'node:path';
 import { dangerCache, tripHomeDamage, zoneDanger } from '../src/core/ai/utility';
 import { loadConfig, type RawConfig } from '../src/core/config/load';
 import { GEAR_SLOTS } from '../src/core/config/types';
-import { duel, hunterStats, monsterTypeStats, needMax } from '../src/core/formulas';
+import { duel, hunterStats, monsterTypeStats, moodStatMult, needMax } from '../src/core/formulas';
 import { NavGraph } from '../src/core/pathfinding';
 import { createWorld, Simulation } from '../src/core/simulation';
 
@@ -54,11 +54,20 @@ const ownTarget = new Map<string, string>();
 const firsts: { lv20?: number; lv50?: number; reinc?: number } = {};
 /** Goal changes to `enhance` per hunter (TODO §2: reckless hunters enhance less). */
 const enhanceGoals = new Map<string, number>();
+/** Mood while hunting (hunter in the zone its goal hunts), per hunter-tick: Σ mood frac, ticks under moodPenaltyFrac, Σ live mood mult. */
+const moodAcc = { ticks: 0, frac: 0, low: 0, mult: 0, tavern: 0, zoneSwitch: 0 };
+const lastHunt = new Map<string, string>();
 for (let t = 0; t < ticks; t++) {
   sim.step();
   const w = sim.world;
   for (const e of sim.drainEvents()) {
     if (e.type === 'goalChanged') {
+      if (e.goal.startsWith('hunt:')) {
+        const prev = lastHunt.get(e.hunterId);
+        if (prev && prev !== e.goal && zoneOf(w.hunters.find((x) => x.id === e.hunterId)!.nodeId)) moodAcc.zoneSwitch++;
+        lastHunt.set(e.hunterId, e.goal);
+      }
+      if (e.goal.startsWith('service:') && config.index.buildings.get(e.goal.slice(8))?.need === 'mood') moodAcc.tavern++;
       if (e.goal.startsWith('enhance:')) enhanceGoals.set(e.hunterId, (enhanceGoals.get(e.hunterId) ?? 0) + 1);
       const h = w.hunters.find((x) => x.id === e.hunterId)!;
       lastChange.set(h.id, { reason: e.reason, goal: e.goal, tick: w.tick, hp: h.needs.hp / needMax(config, h, 'hp'), on: w.monsters.filter((m) => m.targetHunterId === h.id && m.hp > 0 && m.zoneId === zoneOf(h.nodeId)).length });
@@ -134,6 +143,8 @@ for (let t = 0; t < ticks; t++) {
     const a = (acc[g.zoneId] ??= { kills: 0, taken: 0, pred: 0, duel: 0, hpBars: 0, ticks: 0, engaged: 0, busy: 0, hunters: 0, own: 0, lag: 0 });
     let n = 0;
     for (const m of w.monsters) if (m.targetHunterId === h.id && Math.hypot(m.position.x - h.position.x, m.position.y - h.position.y) <= config.formula.attackRange) n++;
+    const mf = h.needs.mood / config.formula.needMax;
+    moodAcc.ticks++; moodAcc.frac += mf; moodAcc.mult += moodStatMult(mf, config.formula); if (mf < config.formula.moodPenaltyFrac) moodAcc.low++;
     a.ticks++; a.lag += gearLag(h); a.engaged += n; if (n > 0) a.busy++; a.hunters += inZone[g.zoneId]!;
   }
   // Trips that reached town.
@@ -177,3 +188,5 @@ const reck = sim.world.hunters.filter((h) => h.personalities.includes('pers.reck
 const rest = sim.world.hunters.filter((h) => !h.personalities.includes('pers.reckless'));
 const avgEnh = (hs: typeof reck) => (hs.length ? (hs.reduce((a, h) => a + (enhanceGoals.get(h.id) ?? 0), 0) / hs.length).toFixed(0) : '-');
 console.log(`ENHANCE goals/hunter: reckless ${avgEnh(reck)} (${reck.length}) others ${avgEnh(rest)} (${rest.length})`);
+const mt = Math.max(1, moodAcc.ticks);
+console.log(`MOOD while hunting: mean ${(moodAcc.frac / mt).toFixed(3)} under-penalty ${(moodAcc.low / mt).toFixed(3)} mean stat mult ${(moodAcc.mult / mt).toFixed(4)} tavern visits/hunter-hour ${(moodAcc.tavern / (sim.world.hunters.length * minutes / 60)).toFixed(2)} field zone switches/hunter-hour ${(moodAcc.zoneSwitch / (sim.world.hunters.length * minutes / 60)).toFixed(2)}`);

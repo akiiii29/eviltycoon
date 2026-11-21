@@ -1,7 +1,7 @@
 /** Goal scoring (TECH_SPEC §5). Pure functions: given state, return scored candidates. */
 import { GEAR_SLOTS, NEED_KEYS, type GameConfig, type GearSlot, type ModStat, type NeedKey } from '../config/types';
 import {
-  duel, expectedHit, gearMainValue, hunterStats, type EffectiveStats, liveCrowd, monsterStats, monsterTypeStats, moveSpeed, needFrac, needMax,
+  duel, expectedHit, gearMainValue, type EffectiveStats, planStats, liveCrowd, monsterStats, monsterTypeStats, moveSpeed, needFrac, needMax,
   slotValue, urgentFrac, zoneCrowd, zoneOccupancy, type ZoneOccupancy, zoneScores, type ZoneScore,
 } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
@@ -65,7 +65,7 @@ export function needsOk(config: GameConfig, h: Hunter, inField = false, hpFloor 
 // Retreat: HP the hunter needs to get home alive (TECH_SPEC §5.2 "Rút lui").
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Danger of a zone for one hunter, from the duel model (steady stats), × crowd factor. Absolute HP. */
+/** Danger of a zone for one hunter, from the duel model (planStats: steady stats × current mood), × crowd factor. Absolute HP. */
 export interface ZoneDanger {
   /** Spawn-weighted HP lost per second while monsters of this zone are on the hunter. */
   dps: number;
@@ -74,8 +74,9 @@ export interface ZoneDanger {
 }
 
 /**
- * Per-call cache for one hunter: steady stats, current max HP and zone dangers. Pass one cache to several
- * retreat functions in the same decision so hunterStats and the duels run once. With a world, zone danger uses
+ * Per-call cache for one hunter: planning stats (formulas.planStats: no buffs, current mood on ATK/DEF — a low-mood
+ * hunter's lower DEF raises its retreat floor and kill cost), current max HP and zone dangers. Pass one cache to several
+ * retreat functions in the same decision so the stats and the duels run once. With a world, zone danger uses
  * the live crowd factor (formulas.crowdFactor: monsters alive per hunter, this hunter counted once); without one
  * (unit tests, no live zone) the static zoneCrowd.
  */
@@ -88,7 +89,7 @@ export interface DangerCache {
 }
 
 export function dangerCache(config: GameConfig, h: Hunter, world?: World): DangerCache {
-  return { stats: hunterStats(config, h, { steady: true }), maxHp: Math.max(needMax(config, h, 'hp'), 1), zones: new Map(), world };
+  return { stats: planStats(config, h), maxHp: Math.max(needMax(config, h, 'hp'), 1), zones: new Map(), world };
 }
 
 function cacheCrowd(config: GameConfig, h: Hunter, zoneId: string, c: DangerCache): number {
@@ -161,7 +162,7 @@ export function tripHomeDamage(
 
 /**
  * Expected damage of the next hit of every monster on the hunter right now (alive, targeting it, in the zone the
- * hunter stands in): Σ expectedHit(monster ATK vs hunter steady DEF/EVA). Leaving mid-fight costs about one more
+ * hunter stands in): Σ expectedHit(monster ATK vs hunter planning DEF/EVA). Leaving mid-fight costs about one more
  * hit from each of them (monsters are slower than hunters), and a pile-on of several is what kills.
  */
 export function engagedHitDamage(config: GameConfig, nav: NavGraph, world: World, h: Hunter, cache?: DangerCache): number {
@@ -519,7 +520,7 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
   const fill = bagFill(config, h);
   const demand = materialDemand(config, world);
 
-  const scores = zoneScores(config, world, h);
+  const scores = zoneScores(config, world, h, true);
   const zoneMul = huntZoneMuls(config, scores, demand, world);
   for (const { zone: z, fit } of scores) {
     // Another zone is judged by the HP needed to start a kill there (zoneEntryHpLine): a hunter does not set out

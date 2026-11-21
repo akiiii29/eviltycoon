@@ -3,7 +3,7 @@ import type { FormulaParams, GameConfig } from '../src/core/config/types';
 import { EventBuffer } from '../src/core/events';
 import {
   critChance, critMultiplier, crowdFactor, defReduction, dodgeChance, duel, expectedHit, hunterPower, hunterStats, killsPerLife, levelGapMult,
-  liveCrowd, mitigated, moodStatMult, monsterTypeStats, powerRatio, stackPct, zoneFit, zoneOccupancy, zoneScores, zoneShare,
+  liveCrowd, mitigated, moodStatMult, monsterTypeStats, planStats, powerRatio, stackPct, zoneFit, zoneOccupancy, zoneScores, zoneShare,
 } from '../src/core/formulas';
 import { rollHunter } from '../src/core/hunterFactory';
 import { NavGraph } from '../src/core/pathfinding';
@@ -137,12 +137,25 @@ describe('formulas: crit and dodge', () => {
     expect(f.critChanceCap).toBeLessThan(1);
   });
 
-  it('crit points over the cap turn into crit damage', () => {
-    expect(critMultiplier(10, f.critMultiplier, f)).toBe(f.critMultiplier);
-    const capPts = f.critChanceCap * 100;
-    expect(critMultiplier(capPts, f.critMultiplier, f)).toBe(f.critMultiplier);
-    expect(critMultiplier(capPts + 20, f.critMultiplier, f)).toBeCloseTo(f.critMultiplier + 0.2 * f.critOverflowMult);
-    expect(critMultiplier(capPts + 20, f.monsterCritMultiplier, f)).toBeCloseTo(f.monsterCritMultiplier + 0.2 * f.critOverflowMult);
+  it('shipped combat caps follow EHT: crit chance ≤ 50 %, crit damage ×1.5 (hunters and monsters), dodge < 40 %, interval ≥ 0.25 s', () => {
+    expect(f.critChanceCap).toBe(0.5);
+    expect(f.critMultiplier).toBe(1.5);
+    expect(f.monsterCritMultiplier).toBe(1.5);
+    expect(f.critOverflowMult).toBe(0); // crit points past the chance cap are wasted (crit damage stays ×1.5)
+    expect(critMultiplier(1e6, f.critMultiplier, f)).toBe(1.5);
+    expect(f.dodgeCap).toBe(0.4);
+    expect(dodgeChance(1e9, f)).toBeLessThan(0.4);
+    expect(f.minAttackInterval).toBe(0.25);
+  });
+
+  it('crit points over the cap turn into crit damage when critOverflowMult > 0', () => {
+    const o: FormulaParams = { ...f, critOverflowMult: 1 };
+    expect(critMultiplier(10, o.critMultiplier, o)).toBe(o.critMultiplier);
+    const capPts = o.critChanceCap * 100;
+    expect(critMultiplier(capPts, o.critMultiplier, o)).toBe(o.critMultiplier);
+    expect(critMultiplier(capPts + 20, o.critMultiplier, o)).toBeCloseTo(o.critMultiplier + 0.2);
+    expect(critMultiplier(capPts + 20, o.monsterCritMultiplier, o)).toBeCloseTo(o.monsterCritMultiplier + 0.2);
+    expect(critMultiplier(capPts + 20, f.critMultiplier, f)).toBe(f.critMultiplier); // shipped: off
   });
 
   it('dodge has diminishing returns, half the cap at dodgeHalf, never reaches the cap', () => {
@@ -213,9 +226,32 @@ describe('formulas: mood', () => {
     expect(hunterStats(cfg, h, { steady: true }).atk).toBeCloseTo(full.atk);
   });
 
-  it('shipped config states whether mood scaling is on (moodStatFloor = 1 means off)', () => {
+  it('is on in the shipped config (moodStatFloor < 1)', () => {
     expect(f.moodStatFloor).toBeGreaterThan(0);
-    expect(f.moodStatFloor).toBeLessThanOrEqual(1);
+    expect(f.moodStatFloor).toBeLessThan(1);
+  });
+
+  it('planStats = steady stats with the current mood on ATK/DEF; the AI zone model and retreat use it', () => {
+    const cfg: GameConfig = { ...config, formula: on };
+    const h = bareHunter(10);
+    const steady = hunterStats(cfg, h, { steady: true });
+    expect(planStats(cfg, h)).toEqual(steady);
+    h.needs.mood = 0;
+    const p = planStats(cfg, h);
+    expect(p.atk).toBeCloseTo(steady.atk * 0.8);
+    expect(p.def).toBeCloseTo(steady.def * 0.8);
+    expect(p.hp).toBe(steady.hp);
+    // A sad hunter rates every zone lower and expects to lose more HP per kill there.
+    const w = createWorld(cfg, 1);
+    const happy = bareHunter(10);
+    for (const z of cfg.zones) {
+      expect(powerRatio(cfg, w, h, z)).toBeLessThan(powerRatio(cfg, w, happy, z));
+      expect(zoneDanger(cfg, h, z.id, 'diff.easy', dangerCache(cfg, h)).dmgPerKill)
+        .toBeGreaterThan(zoneDanger(cfg, happy, z.id, 'diff.easy', dangerCache(cfg, happy)).dmgPerKill);
+    }
+    // zoneScores is steady unless asked (offline model, other callers).
+    expect(zoneScores(cfg, w, h).map((z) => z.ratio)).toEqual(zoneScores(cfg, w, happy).map((z) => z.ratio));
+    expect(zoneScores(cfg, w, h, true)[0]!.ratio).toBeLessThan(zoneScores(cfg, w, happy, true)[0]!.ratio);
   });
 });
 
@@ -359,6 +395,7 @@ describe('balance: duel prediction vs simulated combat', () => {
           if (e.type === 'monsterKilled') kills++;
         }
         h.needs.hp = 1e12;
+        h.needs.mood = f.needMax; // the duel uses steady stats: keep mood full so live ATK/DEF match them
         h.exp = 0;
         if (world.monsters.length === 0) spawn();
       }
