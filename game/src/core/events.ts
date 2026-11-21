@@ -65,6 +65,8 @@ export type SimEvent =
   | { type: 'journeyCompleted'; tick: number; journeyUid: string; journeyId: string; hunterIds: string[]; success: boolean; successChance: number; rewards: JourneyRewards; offline: boolean }
   /** Recalled by the player: members return now with no reward (cost is not refunded). */
   | { type: 'journeyRecalled'; tick: number; journeyUid: string; journeyId: string; hunterIds: string[] }
+  /** Training Ground session started (TECH_SPEC §5.15): EXP granted, gold paid (Town got `townGold` of it), level after. */
+  | { type: 'trained'; tick: number; hunterId: string; exp: number; price: number; townGold: number; level: number }
   | { type: 'commandRejected'; tick: number; command: string; reason: string };
 
 /** What a finished journey paid out (TECH_SPEC §5.11). */

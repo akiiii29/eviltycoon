@@ -9,6 +9,7 @@ import { payReviveFee, reviveDelayMs } from './consumables';
 import { dropEssence } from './gearTier';
 import { stepTowards } from './movement';
 import { grantKillGold } from './tax';
+import { libraryExpMul } from './town';
 
 /**
  * Per-tick aggro index (TECH_SPEC §10), derived data rebuilt in combatSystem.update after revives: every
@@ -71,7 +72,10 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
     h.bag[d.materialId] = (h.bag[d.materialId] ?? 0) + 1;
   }
   dropEssence(ctx, h, m); // gear-tier essence of the monster's difficulty (TECH_SPEC §5.8); no RNG draw on Easy
-  gainExp(ctx, h, ms.exp);
+  // Library (TECH_SPEC §5.15): kill EXP × (1 + killExpPct / 100); exactly ms.exp without one.
+  const expMul = libraryExpMul(config, world);
+  if (expMul !== 1) world.stats.libraryExp = (world.stats.libraryExp ?? 0) + ms.exp * (expMul - 1);
+  gainExp(ctx, h, expMul === 1 ? ms.exp : ms.exp * expMul);
 }
 
 /**

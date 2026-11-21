@@ -137,9 +137,11 @@ function computeHunterStats(config: GameConfig, h: Hunter, steady: boolean): Eff
   }
   const pct = (stat: ModStat) => stackPct(traitTotal(config, h, stat), buffs ? buffTotal(h, stat) : 0, f);
   const mood = buffs ? moodStatMult(h.needs.mood / f.needMax, f) : 1;
-  s.hp *= pct('hpPct');
-  s.atk *= pct('atkPct') * mood;
-  s.def *= pct('defPct') * mood;
+  // Town aura (monument, TECH_SPEC §5.15): its own multiplicative category, steady and live; absent = × 1.
+  const aura = (stat: ModStat) => 1 + (h.aura?.[stat] ?? 0) / PERCENT;
+  s.hp *= pct('hpPct') * aura('hpPct');
+  s.atk *= pct('atkPct') * mood * aura('atkPct');
+  s.def *= pct('defPct') * mood * aura('defPct');
   s.crit += traitTotal(config, h, 'crit') + (buffs ? buffTotal(h, 'crit') : 0);
   s.eva += traitTotal(config, h, 'eva') + (buffs ? buffTotal(h, 'eva') : 0);
   s.atkSpeed = Math.max(f.minAttackInterval, s.atkSpeed / pct('atkSpeedPct'));

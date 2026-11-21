@@ -179,5 +179,14 @@
  "potionCooldownSec": 8,
  "reviveFeeBase": 20,
  "reviveFeePerLevel": 15,
- "reviveBrokeDelayMul": 4
+ "reviveBrokeDelayMul": 4,
+ "investValueTraining": 0.2,
+ "investValueBank": 3,
+ "investValueMonument": 40,
+ "investValueFountain": 0.3,
+ "investValueLibrary": 40,
+ "trainSessionSec": 20,
+ "trainGoldPerExp": 0.5,
+ "trainGoldReserveMul": 3,
+ "trainScore": 1
 }

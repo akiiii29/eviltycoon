@@ -118,6 +118,14 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       requestCopies: perLevel({ kind: 'int', min: 0 }),
       supplyCap: perLevel({ kind: 'int', min: 0 }),
       potionCap: perLevel({ kind: 'int', min: 0 }),
+      trainExpFrac: perLevel({ kind: 'number', min: 0, max: 1 }),
+      trainLevelGap: perLevel({ kind: 'int', min: 0 }),
+      investFloorMul: perLevel({ kind: 'number', min: 0, max: 1 }),
+      auraAtkPct: perLevel({ kind: 'number', min: 0, max: 100 }),
+      auraDefPct: perLevel({ kind: 'number', min: 0, max: 100 }),
+      townRegenMul: perLevel({ kind: 'number', min: 0 }),
+      reviveSecMul: perLevel({ kind: 'number', min: 0, max: 1 }),
+      killExpPct: perLevel({ kind: 'number', min: 0, max: 100 }),
     },
   },
   building_plot: {
@@ -351,6 +359,9 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   // Supplies, potions, revive fee (TECH_SPEC §5.14).
   'supplyRequestBatches', 'potionTownHallLevel', 'potionCarryMax', 'potionPriceLevelPct', 'potionSpendFrac', 'potionBuyScore',
   'potionUseHpFrac', 'potionCooldownSec', 'reviveFeeBase', 'reviveFeePerLevel', 'reviveBrokeDelayMul',
+  // M5 special buildings (TECH_SPEC §5.15).
+  'investValueTraining', 'investValueBank', 'investValueMonument', 'investValueFountain', 'investValueLibrary',
+  'trainSessionSec', 'trainGoldPerExp', 'trainGoldReserveMul', 'trainScore',
 ];
 
 export class ConfigError extends Error {
@@ -486,6 +497,11 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('investValueTownHall', 0, 1000);
     range('investValueCraft', 0, 1000);
     range('investReadyMul', 0, 1000);
+    for (const k of ['investValueTraining', 'investValueBank', 'investValueMonument', 'investValueFountain', 'investValueLibrary']) range(k, 0, 1000);
+    range('trainSessionSec', 0.1, 3600);
+    range('trainGoldPerExp', 0, 1000);
+    range('trainGoldReserveMul', 0, 1000);
+    range('trainScore', 0, 100);
     // Supplies, potions, revive fee (TECH_SPEC §5.14).
     range('supplyRequestBatches', 0, 100);
     range('potionTownHallLevel', 1, 100);
@@ -564,6 +580,11 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
     if (b.kind === 'academy') need('studyGoldMul');
     if (b.kind === 'tradingPost') need('surplusPriceMul');
     if (b.kind === 'storehouse') need('requestCopies');
+    if (b.kind === 'training') { need('trainExpFrac'); need('trainLevelGap'); }
+    if (b.kind === 'bank') need('investFloorMul');
+    if (b.kind === 'monument') { need('auraAtkPct'); need('auraDefPct'); }
+    if (b.kind === 'fountain') { need('townRegenMul'); need('reviveSecMul'); }
+    if (b.kind === 'library') need('killExpPct');
     if (th && b.kind !== 'townHall' && Math.max(b.requires.townHallLevel, b.maxLevel) > th.maxLevel) {
       issues.push({ path: `building[${i}]`, message: `needs a Town Hall level above its max level ${th.maxLevel}` });
     }
@@ -593,6 +614,11 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
   for (const kind of ['tradingPost', 'shop', 'forge', 'academy', 'townHall'] as const) {
     const n = buildings.filter((b) => b.kind === kind).length;
     if (n !== 1) issues.push({ path: 'building', message: `need exactly one "${kind}" building, got ${n}` });
+  }
+  // M5 special buildings (TECH_SPEC §5.15) are optional, at most one of each kind.
+  for (const kind of ['training', 'bank', 'monument', 'fountain', 'library'] as const) {
+    const n = buildings.filter((b) => b.kind === kind).length;
+    if (n > 1) issues.push({ path: 'building', message: `at most one "${kind}" building, got ${n}` });
   }
   // Plots: doors are door nodes used by exactly one plot; a building type starts on at most one plot; the Town Hall starts built.
   const plots = raw.building_plot as BuildingPlotDef[];

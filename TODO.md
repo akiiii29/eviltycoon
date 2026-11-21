@@ -104,7 +104,9 @@ Số liệu hiện tại (headless 12 giờ `tools/headless.ts 720 <seed> 120`, 
 - ⚪ Đủ 9 bậc nghề (config hiện 3) và 7 slot đồ (GDD §6, hiện 3).
 - ⚪ Upgrade đồ lên tier (Dark Stone), option/set/skill trang bị.
 - 🟡 Potion/consumable, goal BuyPotion — đã làm thuốc HP ở Infirmary (TECH_SPEC §5.14, xem §1); còn: Alchemist riêng, thuốc satiety/stamina/buff, UI.
-- ⚪ Training Ground (goal Train), Bank, Courage Headstone, Fountain of Life, Library of Wisdom.
+- ✅ **Building đặc biệt** (TECH_SPEC §5.15, world v15; tên tự đặt): Sân Luyện Võ (`bld.training`, Town Hall 2) + goal `train` — mua EXP (∝ `expToNext`) khi level < level đầu bảng − `trainLevelGap`, vàng qua `feeTownCut`; Quỹ Tín Dụng (`bld.bank`, 3) — hạ sàn bước thường của tự đầu tư ×0,9 → ×0,5, **không lãi** (không tạo vàng); Giếng Hồi Sức (`bld.fountain`, 4) — hồi miễn phí ở Town ×2 → ×4, chết ×0,8 → ×0,4; Bia Dũng Khí (`bld.monument`, 6) — aura +2 → +6 % ATK/DEF qua `hunterStats` (`Hunter.aura`, `statsCache`); Tàng Thư Các (`bld.library`, 7) — +3 → +8 % EXP kill. 3 ô đất mới (`plot.e`/`plot.nw.outer`/`plot.se.outer`, Town Hall 3/5/7), tự đầu tư có `investValue<Kind>`.
+  - Số đo (seed 1–5, trước → sau): Lv20/Lv50 giống hệt (seed 5 Lv50 4,70 → 4,62 giờ), tái sinh đầu 10,62–11,93 → 10,65–11,75 giờ; vàng Town 16 giờ 17,2–34,5k → 10,6–18,2k; đầu tư 12–16 giờ 74–118k → 115–153k; Bank thêm +4…+34k đầu tư 8–16 giờ; chết 0.
+  - 🟡 Còn lại: chưa UI; Training Ground chỉ là sink nhỏ (3,6–18,6k / 4 giờ, chủ yếu sau tái sinh); Monument/Library mới lên 1–2 trong 16 giờ — đo kiếp 2+ cần chạy dài hơn; phần hồi sinh của Fountain chưa đo được (0 chết).
 - ⚪ Rune, relic, thú cưỡi, growth property; ghép nguyên liệu (`composeTo`); `exp_curve` theo lần tái sinh.
 - ✅ ~~Bật Mood ảnh hưởng chỉ số~~ (xem §3).
 - ⚪ Học skill/trait bằng lệnh của người chơi (hiện chỉ AI tự học).

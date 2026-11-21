@@ -37,6 +37,7 @@ export const servicesSystem: System = {
 
       if (h.insideBuildingId) {
         const b = config.index.buildings.get(h.insideBuildingId)!;
+        if (b.kind !== 'service') continue; // e.g. a Training Ground session (systems/training.ts)
         const need = b.need!;
         const max = needMax(config, h, need);
         h.needs[need] = Math.min(max, h.needs[need] + (serviceRestorePerSec(world, b) * dtMs) / 1000);

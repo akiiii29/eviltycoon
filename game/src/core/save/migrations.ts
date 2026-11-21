@@ -212,6 +212,15 @@ export const MIGRATIONS: Record<number, Migration> = {
   },
   // v11 → v12 (Reincarnation Portal, TECH_SPEC §5.13): nobody inside the portal (keep the array if already there).
   11: (w) => ({ ...w, portal: Array.isArray(w.portal) ? w.portal : [] }),
+  // v12 → v13, v13 → v14: reserved for parallel branches (pass-through; renumbered at merge).
+  12: (w) => w,
+  13: (w) => w,
+  // v14 → v15 (M5 special buildings, TECH_SPEC §5.15): new stats at 0. Hunter.aura / trainMs are optional (absent = no
+  // aura / not training); the aura is re-synced from the building level on the first tick. Only missing fields are filled.
+  14: (w) => {
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    return { ...w, stats: { trainSessions: 0, trainGold: 0, trainExp: 0, libraryExp: 0, ...stats } };
+  },
 };
 
 /**

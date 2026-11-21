@@ -27,6 +27,11 @@ const KIND_COLORS: Record<Exclude<BuildingKind, 'service'>, number> = {
   academy: 0x6a7fd0,
   townHall: 0xe8d9a8,
   storehouse: 0x8a6d4a,
+  training: 0xb5895a,
+  bank: 0xc9a227,
+  monument: 0xa8a8b8,
+  fountain: 0x5fc3e4,
+  library: 0x7a5aa8,
 };
 
 /**

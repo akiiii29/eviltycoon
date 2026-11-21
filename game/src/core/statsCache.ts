@@ -3,7 +3,8 @@
  *
  * Each hunter object keeps one entry per mode (steady / live) holding a snapshot of every input hunterStats reads:
  * config + formula identity, every `h.stats` field, classId, jobTier, reincarnation, level, each gear slot's
- * gearId/qualityId/enhance/difficultyId, trait levels, and for live stats also each buff's stat/value and `needs.mood`.
+ * gearId/qualityId/enhance/difficultyId, trait levels, the town aura (`h.aura`), and for live stats also each buff's
+ * stat/value and `needs.mood`.
  * A call compares the snapshot with the hunter's current values (by value, so in-place mutation is caught) and
  * recomputes on any difference. No tick/id key: state that changes mid-tick (level-up, a new buff, mood decay,
  * equipping) simply misses, so results are identical to computing every time.
@@ -32,6 +33,8 @@ interface Entry {
   gear: (string | number | null)[];
   traitKeys: string[];
   traitVals: number[];
+  /** Town aura (monument): stat, value pairs in key order (empty = no aura). */
+  aura: (string | number)[];
   /** Live only: stat, value pairs in buff order. */
   buffs: (string | number)[];
   mood: number;
@@ -86,6 +89,13 @@ function matches(e: Entry, config: GameConfig, h: Hunter, steady: boolean): bool
     i++;
   }
   if (i !== e.traitKeys.length) return false;
+  i = 0;
+  const aura = h.aura as Record<string, number> | undefined;
+  for (const k in aura) {
+    if (e.aura[i] !== k || !Object.is(e.aura[i + 1], aura[k])) return false;
+    i += 2;
+  }
+  if (i !== e.aura.length) return false;
   if (!steady) {
     if (!Object.is(e.mood, h.needs.mood)) return false;
     const b = h.buffs;
@@ -111,11 +121,14 @@ function capture(config: GameConfig, h: Hunter, steady: boolean, out: Readonly<S
   const traitKeys: string[] = [];
   const traitVals: number[] = [];
   for (const k in h.traits) { traitKeys.push(k); traitVals.push(h.traits[k]!); }
+  const aura: (string | number)[] = [];
+  const a = h.aura as Record<string, number> | undefined;
+  for (const k in a) aura.push(k, a[k]!);
   const buffs: (string | number)[] = [];
   if (!steady) for (const b of h.buffs) buffs.push(b.stat, b.value);
   return {
     config, formula: config.formula, out, statKeys, statVals, classId: h.classId, jobTier: h.jobTier,
-    reincarnation: h.reincarnation, level: h.level, gear, traitKeys, traitVals, buffs, mood: steady ? 0 : h.needs.mood,
+    reincarnation: h.reincarnation, level: h.level, gear, traitKeys, traitVals, aura, buffs, mood: steady ? 0 : h.needs.mood,
   };
 }
 

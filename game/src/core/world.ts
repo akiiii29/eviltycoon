@@ -7,9 +7,11 @@ export type { GearSlot, NeedKey } from './config/types';
  * Bump when the World shape changes and add a migration in save/migrations.ts.
  * v8 = Town buildings (TECH_SPEC §5.12); v9 = journeys (TECH_SPEC §5.11);
  * v10 = gear tiers per difficulty, Town gear storage (reclaim), dismantle, auto difficulty (TECH_SPEC §5.8);
- * v11 = service supplies, potions, revive fee (TECH_SPEC §5.14); v12 = reincarnation portal (`portal`, TECH_SPEC §5.13).
+ * v11 = service supplies, potions, revive fee (TECH_SPEC §5.14); v12 = reincarnation portal (`portal`, TECH_SPEC §5.13);
+ * v13, v14 = reserved for parallel branches (pass-through); v15 = M5 special buildings (training goal, town aura, stats,
+ * TECH_SPEC §5.15).
  */
-export const WORLD_SCHEMA_VERSION = 12;
+export const WORLD_SCHEMA_VERSION = 15;
 
 export type Grade = 'normal' | 'high' | 'highest';
 export type HunterTier = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
@@ -36,7 +38,9 @@ export type Goal =
   /** v11: buy HP potions of a tier at the potion seller (re-validated on arrival, TECH_SPEC §5.14). */
   | { type: 'buyPotion'; consumableId: string }
   /** v12: walk to the Reincarnation Portal and enter it (re-validated on arrival; TECH_SPEC §5.13). */
-  | { type: 'reincarnate' };
+  | { type: 'reincarnate' }
+  /** v15: pay for one session at the Training Ground (re-validated at the door; TECH_SPEC §5.15). */
+  | { type: 'train' };
 
 /** Temporary stat modifier from a buff skill. */
 export interface Buff {
@@ -137,6 +141,13 @@ export interface Hunter {
   potionCdMs?: number;
   /** v11: zone of the hunter's last hunt goal (systems/consumables.potionUseSystem), picks its supply/potion tier in town. */
   lastZoneId?: string;
+  /**
+   * v15: town aura from the monument (systems/monument.ts, TECH_SPEC §5.15), percent per ModStat, read by hunterStats.
+   * Derived from the building level and re-synced every tick for hunters in `world.hunters`; absent = no aura.
+   */
+  aura?: Partial<Record<ModStat, number>>;
+  /** v15: game ms left of the current Training Ground session (inside the building); absent / 0 = not training. */
+  trainMs?: number;
 }
 
 export interface Monster {
@@ -371,6 +382,14 @@ export interface World {
     potionGold: number;
     reviveFees: number;
     reviveBroke: number;
+    /**
+     * v15 (TECH_SPEC §5.15): Training Ground sessions, gold hunters paid for them, EXP granted; extra kill EXP from the
+     * library.
+     */
+    trainSessions: number;
+    trainGold: number;
+    trainExp: number;
+    libraryExp: number;
   };
 }
 
