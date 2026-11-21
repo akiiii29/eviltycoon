@@ -497,11 +497,11 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('investValueTownHall', 0, 1000);
     range('investValueCraft', 0, 1000);
     range('investReadyMul', 0, 1000);
-    for (const k of ['investValueTraining', 'investValueBank', 'investValueMonument', 'investValueFountain', 'investValueLibrary']) range(k, 0, 1000);
     range('trainSessionSec', 0.1, 3600);
     range('trainGoldPerExp', 0, 1000);
     range('trainGoldReserveMul', 0, 1000);
     range('trainScore', 0, 100);
+    for (const k of ['investValueTraining', 'investValueBank', 'investValueMonument', 'investValueFountain', 'investValueLibrary']) range(k, 0, 1000);
     // Supplies, potions, revive fee (TECH_SPEC §5.14).
     range('supplyRequestBatches', 0, 100);
     range('potionTownHallLevel', 1, 100);

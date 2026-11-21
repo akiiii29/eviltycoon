@@ -559,12 +559,6 @@ export interface FormulaParams {
   investValueStorehouse: number;
   investValueTownHall: number;
   investValueCraft: number;
-  /** M5 special buildings (TECH_SPEC §5.15); same scheme, see systems/town.investValue. */
-  investValueTraining: number;
-  investValueBank: number;
-  investValueMonument: number;
-  investValueFountain: number;
-  investValueLibrary: number;
   investReadyMul: number;
   /** Max buildings under construction/upgrade at once (player and auto). */
   buildMaxConcurrent: number;
@@ -655,6 +649,12 @@ export interface FormulaParams {
   trainGoldPerExp: number;
   trainGoldReserveMul: number;
   trainScore: number;
+  /** M5 special buildings (TECH_SPEC §5.15); auto-invest weights, same scheme as investValueService, see systems/town.investValue. */
+  investValueTraining: number;
+  investValueBank: number;
+  investValueMonument: number;
+  investValueFountain: number;
+  investValueLibrary: number;
   [key: string]: number;
 }
 
