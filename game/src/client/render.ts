@@ -137,7 +137,7 @@ export class Renderer {
     // Reincarnation Portal (TECH_SPEC §5.13): a violet ring at its node next to the square.
     const portal = config.nodes.find((n) => n.kind === 'portal');
     if (portal) {
-      const ring = new THREE.Mesh(new THREE.RingGeometry(1, 1.8, 20), new THREE.MeshBasicMaterial({ color: 0x9a6cff }));
+      const ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 1.2, 20), new THREE.MeshBasicMaterial({ color: 0x9a6cff }));
       ring.position.set(portal.x, portal.y, -0.55);
       this.scene.add(ring);
     }

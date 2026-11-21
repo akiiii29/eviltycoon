@@ -57,7 +57,10 @@ describe('portal on the map', () => {
     expect(Math.hypot(p.x - sq.x, p.y - sq.y)).toBeLessThan(10);
     expect(config.edges.filter((e) => e.a === p.id || e.b === p.id)).toEqual([{ a: sq.id, b: p.id, road: false }]);
     const nav = new NavGraph(config);
-    expect(nav.nearest({ x: p.x, y: p.y })).not.toBe(p.id);
+    // A hunter leaving the portal starts its path at the square (the portal itself is never a snap target).
+    expect(nav.nearest({ x: p.x, y: p.y })).toBe(sq.id);
+    // Not on a building plot.
+    for (const pl of config.plots) expect(Math.abs(p.x - pl.x) >= pl.w / 2 || Math.abs(p.y - pl.y) >= pl.h / 2, pl.id).toBe(true);
     expect(nav.path(sq.id, p.id)).toEqual([sq.id, p.id]);
   });
 });
