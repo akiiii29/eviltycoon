@@ -88,6 +88,19 @@ export function moodStatMult(moodFrac: number, f: FormulaParams): number {
   return 1 - (1 - f.moodStatFloor) * short;
 }
 
+/**
+ * Planning stats for the AI's zone and retreat model (TECH_SPEC §5.2, §5.3): steady stats (no temporary buffs, so
+ * zone choice does not flip when a buff expires) but WITH the current mood multiplier on ATK/DEF, since mood only
+ * changes slowly in the field (monster attacks) and is what the hunter will actually fight with:
+ *   atk/def = steady × moodStatMult(mood).
+ * Not memoised itself: derived from the memoised steady stats (mood is read here, not inside hunterStats' steady slot).
+ */
+export function planStats(config: GameConfig, h: Hunter): EffectiveStats {
+  const s = hunterStats(config, h, { steady: true });
+  const m = moodStatMult(h.needs.mood / config.formula.needMax, config.formula);
+  return m === 1 ? s : { ...s, atk: s.atk * m, def: s.def * m };
+}
+
 export interface StatOptions {
   /**
    * Steady-state stats: ignore temporary buffs and mood. Used by the AI power estimate so zone choice does not
@@ -344,10 +357,11 @@ export function liveCrowd(occ: ZoneOccupancy, zone: ZoneDef, f: FormulaParams): 
  *   killsPerLife = HP / (crowd × Σ_w dmgPerKill / Σ_w)
  * `crowd` defaults to the static zoneCrowd (journeys); the AI passes the live crowdFactor.
  * This is the Lanchester-style "DPS × HP vs DPS × HP" product: doubling either the hunter's damage or its
- * effective HP doubles it. Uses steady stats (no buffs, no mood) so zone choice does not flap.
+ * effective HP doubles it. Uses steady stats (no buffs) so zone choice does not flap; `withMood` adds the current mood
+ * multiplier (planStats), which the live AI uses (powerRatio, zoneScores).
  */
-export function killsPerLife(config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string, crowd?: number): number {
-  return zoneEstimate(config, h, zone, difficultyId, crowd).killsPerLife;
+export function killsPerLife(config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string, crowd?: number, withMood = false): number {
+  return zoneEstimate(config, h, zone, difficultyId, crowd, withMood).killsPerLife;
 }
 
 export interface ZoneEstimate {
@@ -357,11 +371,15 @@ export interface ZoneEstimate {
   ttk: number;
 }
 
-/** killsPerLife and mean TTK of a hunter in a zone, from duel() over the zone's spawn mix (crowd: see killsPerLife). */
+/**
+ * killsPerLife and mean TTK of a hunter in a zone, from duel() over the zone's spawn mix (crowd: see killsPerLife).
+ * `withMood` (the AI's live zone choice): planStats, i.e. steady stats × the current mood multiplier on ATK/DEF;
+ * without it (journeys, offline model) plain steady stats.
+ */
 export function zoneEstimate(
-  config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string, crowd = zoneCrowd(zone, config.formula),
+  config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string, crowd = zoneCrowd(zone, config.formula), withMood = false,
 ): ZoneEstimate {
-  const s = hunterStats(config, h, { steady: true });
+  const s = withMood ? planStats(config, h) : hunterStats(config, h, { steady: true });
   let w = 0, dmg = 0, ttk = 0;
   for (const e of zone.monsters) {
     const d = duel(config, h, s, monsterTypeStats(config, e.monsterId, difficultyId));
@@ -381,7 +399,7 @@ export function zoneEstimate(
  */
 export function powerRatio(config: GameConfig, world: World, h: Hunter, zone: ZoneDef): number {
   const crowd = liveCrowd(zoneOccupancy(config, world, h.id), zone, config.formula);
-  return ratioFromKills(killsPerLife(config, h, zone, world.town.difficulty, crowd), config.formula);
+  return ratioFromKills(killsPerLife(config, h, zone, world.town.difficulty, crowd, true), config.formula);
 }
 
 function ratioFromKills(kills: number, f: FormulaParams): number {
@@ -473,13 +491,15 @@ export interface ZoneScore {
  * level; the goal score is fit × needsOk × personality, so for e.g. a timid hunter (× 0.7) or low needs ADJACENT
  * tiers can fall within the decision noise, while zones two or more tiers down stay clearly behind.
  * The best zone's score is never raised, so other goals are unaffected.
+ * `withMood`: judge with planStats (current mood on ATK/DEF) — the live AI (scoreGoals) does; the offline model and
+ * other callers keep steady stats.
  */
-export function zoneScores(config: GameConfig, world: World, h: Hunter): ZoneScore[] {
+export function zoneScores(config: GameConfig, world: World, h: Hunter, withMood = false): ZoneScore[] {
   const f = config.formula;
   const occ = zoneOccupancy(config, world, h.id);
   let bestRaw = 0, bestAdj = 0;
   const out = config.zones.map((zone) => {
-    const est = zoneEstimate(config, h, zone, world.town.difficulty, liveCrowd(occ, zone, f));
+    const est = zoneEstimate(config, h, zone, world.town.difficulty, liveCrowd(occ, zone, f), withMood);
     const ratio = ratioFromKills(est.killsPerLife, f);
     const share = zoneShare(est.ttk, 1 + (occ.hunters.get(zone.id) ?? 0), zone);
     const raw = zoneFit(ratio, f);

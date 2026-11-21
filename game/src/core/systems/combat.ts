@@ -160,10 +160,10 @@ function monsterActs(ctx: SystemContext, m: Monster): void {
   const crit = !evaded && rng.chance(critChance(ms.crit, f));
   const dmg = evaded ? 0 : mitigated(ms.atk, ts.def, ms.level, target.level, f) * (crit ? critMultiplier(ms.crit, f.monsterCritMultiplier, f) : 1);
   ctx.events.emit(world.tick, { type: 'hit', attackerId: m.id, targetId: target.id, damage: dmg, crit, evaded });
+  // GDD §4.2 / EHT: mood drops every time a monster attacks the hunter, dodged attacks included.
+  target.needs.mood = Math.max(0, target.needs.mood - f.moodPerHitTaken * personalityFactor(config, target, 'decay.mood'));
   if (evaded) return;
   target.needs.hp -= dmg;
-  // GDD §4.2: mood drops when the hunter is attacked.
-  target.needs.mood = Math.max(0, target.needs.mood - f.moodPerHitTaken * personalityFactor(config, target, 'decay.mood'));
   if (target.needs.hp <= 0) killHunter(ctx, target);
 }
 

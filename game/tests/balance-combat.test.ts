@@ -153,3 +153,31 @@ describe('balance: monster critical hits', () => {
     expect(JSON.parse(a).hunters[0].needs.hp).toBeLessThan(1e9);
   });
 });
+
+describe('mood per monster attack (GDD §4.2, EHT: every attack lowers mood)', () => {
+  it('each monster attack costs moodPerHitTaken × personality mood, dodged attacks included', () => {
+    for (const cfg of [base, alwaysEvade(base)]) {
+      const world = createWorld(cfg, 1);
+      world.hunters = [];
+      world.monsters = [];
+      setup(cfg, world, 100);
+      const h = world.hunters[0]!;
+      h.personalities = [];
+      const ctx: SystemContext = {
+        world, config: cfg, nav: new NavGraph(cfg), rng: new Rng(world.rng),
+        events: new EventBuffer(), debug: { aiScores: new Map() }, dtMs: 100,
+      };
+      let attacks = 0, dodged = 0;
+      for (let i = 0; i < 300; i++) {
+        combatSystem.update(ctx);
+        world.tick += 1;
+        for (const e of ctx.events.drain()) {
+          if (e.type === 'hit' && e.targetId === h.id) { attacks++; if (e.evaded) dodged++; }
+        }
+      }
+      expect(attacks).toBeGreaterThan(2);
+      if (cfg !== base) expect(dodged).toBe(attacks);
+      expect(h.needs.mood).toBeCloseTo(cfg.formula.needMax - attacks * cfg.formula.moodPerHitTaken, 9);
+    }
+  });
+});

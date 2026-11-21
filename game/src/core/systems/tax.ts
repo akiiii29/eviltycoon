@@ -13,8 +13,8 @@
  *  - rate = town.taxRate (set by `town.setTaxRate`, optional in the save: no schema bump) or config `taxRate`, clamped to
  *    [taxMinRate, taxMaxRate].
  *  - Cost of a high rate: every taxed kill (tax > 0) costs the killer
- *    taxMoodPerKill × max(0, rate − taxMoodFreeRate) × personality(decay.mood) mood. Mood only acts by sending hunters
- *    to the Tavern sooner (moodStatFloor = 1, moodDecayPerSec = 0), i.e. more time and gold spent in town, less hunting.
+ *    taxMoodPerKill × max(0, rate − taxMoodFreeRate) × personality(decay.mood) mood. Low mood sends hunters to the Tavern
+ *    sooner (more time and gold spent in town, less hunting) and, under moodPenaltyFrac, lowers ATK/DEF (moodStatMult).
  *    At or below taxMoodFreeRate (≥ the default rate) there is no cost, so the default leaves pacing alone.
  */
 import type { GameConfig } from '../config/types';
