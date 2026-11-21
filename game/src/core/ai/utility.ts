@@ -1,8 +1,8 @@
 /** Goal scoring (TECH_SPEC §5). Pure functions: given state, return scored candidates. */
 import { GEAR_SLOTS, NEED_KEYS, type GameConfig, type GearSlot, type ModStat, type NeedKey } from '../config/types';
 import {
-  duel, expectedGearScore, expectedHit, gearMainValue, gearScore, type EffectiveStats, planStats, liveCrowd, monsterStats, monsterTypeStats, moveSpeed, needFrac, needMax,
-  slotValue, urgentFrac, zoneCrowd, zoneOccupancy, type ZoneOccupancy, zoneScores, type ZoneScore,
+  expectedGearScore, expectedHit, gearMainValue, gearScore, type EffectiveStats, type PlanParts, planStatsParts, liveCrowd, monsterStats, moveSpeed,
+  needFrac, needMax, slotValue, urgentFrac, zoneCrowd, zoneDuelSums, zoneOccupancy, type ZoneOccupancy, zoneScores, type ZoneScore,
 } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
 import type { NavGraph } from '../pathfinding';
@@ -87,6 +87,8 @@ export interface ZoneDanger {
  */
 export interface DangerCache {
   stats: EffectiveStats;
+  /** stats split into the key of the cross-call duel memo (formulas.zoneDuelSums). */
+  plan: PlanParts;
   maxHp: number;
   zones: Map<string, ZoneDanger>;
   world?: World;
@@ -94,7 +96,8 @@ export interface DangerCache {
 }
 
 export function dangerCache(config: GameConfig, h: Hunter, world?: World): DangerCache {
-  return { stats: planStats(config, h), maxHp: Math.max(needMax(config, h, 'hp'), 1), zones: new Map(), world };
+  const plan = planStatsParts(config, h);
+  return { stats: plan.stats, plan, maxHp: Math.max(needMax(config, h, 'hp'), 1), zones: new Map(), world };
 }
 
 function cacheCrowd(config: GameConfig, h: Hunter, zoneId: string, c: DangerCache): number {
@@ -109,13 +112,8 @@ export function zoneDanger(config: GameConfig, h: Hunter, zoneId: string, diffic
   const hit = c.zones.get(zoneId);
   if (hit) return hit;
   const zone = config.index.zones.get(zoneId)!;
-  let w = 0, dps = 0, dmg = 0;
-  for (const e of zone.monsters) {
-    const d = duel(config, h, c.stats, monsterTypeStats(config, e.monsterId, difficultyId));
-    w += e.weight;
-    dps += e.weight * d.monsterDps;
-    dmg += e.weight * d.dmgPerKill;
-  }
+  // Duel sums are memoised across calls and ticks (formulas.zoneDuelSums, TECH_SPEC §10); the crowd factor is live.
+  const { w, dps, dmg } = zoneDuelSums(config, h, zone, difficultyId, c.plan);
   const crowd = cacheCrowd(config, h, zoneId, c);
   const out = w > 0 ? { dps: (crowd * dps) / w, dmgPerKill: (crowd * dmg) / w } : { dps: 0, dmgPerKill: 0 };
   c.zones.set(zoneId, out);

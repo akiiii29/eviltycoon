@@ -1,6 +1,6 @@
 [
-  {"id": "inv.common", "nameKey": "inv.common.name", "tierChances": {"normal": 25, "rare": 65, "superior": 9, "heroic": 0.9, "legendary": 0.1}, "gold": 500, "autoInvite": true},
-  {"id": "inv.silver", "nameKey": "inv.silver.name", "tierChances": {"normal": 5, "rare": 60, "superior": 30, "heroic": 4.5, "legendary": 0.5}, "gold": 4000, "townHallLevel": 4},
-  {"id": "inv.gold", "nameKey": "inv.gold.name", "tierChances": {"normal": 0, "rare": 35, "superior": 50, "heroic": 13, "legendary": 2}, "gold": 25000, "townHallLevel": 7},
-  {"id": "inv.royal", "nameKey": "inv.royal.name", "tierChances": {"normal": 0, "rare": 0, "superior": 60, "heroic": 35, "legendary": 5}}
+  {"id": "inv.common", "nameKey": "inv.common.name", "tierChances": {"normal": 40, "rare": 45, "superior": 12, "heroic": 2.5, "legendary": 0.5}, "gold": 500, "autoInvite": true},
+  {"id": "inv.silver", "nameKey": "inv.silver.name", "tierChances": {"normal": 10, "rare": 50, "superior": 32, "heroic": 6.5, "legendary": 1.5}, "gold": 4000, "townHallLevel": 4},
+  {"id": "inv.gold", "nameKey": "inv.gold.name", "tierChances": {"normal": 0, "rare": 20, "superior": 45, "heroic": 27, "legendary": 8}, "gold": 25000, "townHallLevel": 7},
+  {"id": "inv.royal", "nameKey": "inv.royal.name", "tierChances": {"normal": 0, "rare": 0, "superior": 30, "heroic": 45, "legendary": 25}}
 ]

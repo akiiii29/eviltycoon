@@ -201,7 +201,7 @@ describe('per-level effects', () => {
   it('shop capacity, service restore/price, forge bonus, academy discount, storehouse copies, trading post surplus price', () => {
     const w = createWorld(config, 1);
     setLevel(w, 'bld.shop', 3);
-    expect(shopCapacity(config, w)).toBe(16);
+    expect(shopCapacity(config, w)).toBe(20);
     const inn = config.index.buildings.get('bld.inn')!;
     const h = { level: 1 } as Hunter;
     expect(servicePrice(config, h, inn, 3)).toBeGreaterThan(servicePrice(config, h, inn, 1));

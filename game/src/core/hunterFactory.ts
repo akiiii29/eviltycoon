@@ -5,13 +5,14 @@ import { newAiState, type Grade, type Hunter, type HunterTier, type Vec2 } from 
 
 const GRADE_INDEX: Record<Grade, 0 | 1 | 2> = { normal: 0, high: 1, highest: 2 };
 
-/** GDD §4.2: G = N_high + 2 × N_highest → tier. */
-export function tierFromPoints(points: number): HunterTier {
-  if (points >= 14) return 'legendary';
-  if (points >= 10) return 'heroic';
-  if (points >= 6) return 'superior';
-  if (points >= 2) return 'rare';
-  return 'normal';
+/**
+ * GDD §4.2: grade points G = Σ stat_grade.point (N_high + 2 × N_highest) → the highest tier whose hunter_tier minPoints
+ * (ceil(minPointsFrac × maxPoints), scaled to the number of graded stats; TECH_SPEC §4.1) G reaches.
+ */
+export function tierFromPoints(config: GameConfig, points: number): HunterTier {
+  const tiers = config.hunterTiers;
+  for (let i = tiers.length - 1; i > 0; i--) if (points >= tiers[i]!.minPoints) return tiers[i]!.tier;
+  return tiers[0]?.tier ?? 'normal';
 }
 
 export function rollHunter(config: GameConfig, rng: Rng, id: string, nodeId: string, position: Vec2, nowMs: number): Hunter {
@@ -26,7 +27,7 @@ export function rollHunter(config: GameConfig, rng: Rng, id: string, nodeId: str
     const [min, max] = cls.statRanges[k][GRADE_INDEX[g.grade]];
     stats[k] = rng.int(min, max);
   }
-  return buildHunter(config, rng, id, cls, grades, stats, tierFromPoints(points), nodeId, position, nowMs);
+  return buildHunter(config, rng, id, cls, grades, stats, tierFromPoints(config, points), nodeId, position, nowMs);
 }
 
 /** One stat-grade combination (a grade per STAT_KEYS entry) with its natural probability and points. */
@@ -60,7 +61,7 @@ function gradeCombos(config: GameConfig): GradeCombo[] {
  */
 export function naturalTierOdds(config: GameConfig): Record<HunterTier, number> {
   const out: Record<HunterTier, number> = { normal: 0, rare: 0, superior: 0, heroic: 0, legendary: 0 };
-  for (const c of gradeCombos(config)) out[tierFromPoints(c.points)] += c.weight;
+  for (const c of gradeCombos(config)) out[tierFromPoints(config, c.points)] += c.weight;
   return out;
 }
 
@@ -72,16 +73,16 @@ export function rollInvitationTier(rng: Rng, inv: InvitationDef): HunterTier {
 /**
  * Roll a hunter of a given tier (invitations, TECH_SPEC §4.1): class, then ONE weighted draw over the grade combinations
  * whose points give that tier (tierFromPoints), weighted by their natural probability — the exact natural distribution
- * conditioned on the tier — then the stat values as rollHunter does. A tier the points cannot reach (legendary needs 14,
- * five stats give at most 10) takes the highest-point combinations, keeps the rolled tier and rolls each stat in the upper
- * half of its grade range.
+ * conditioned on the tier — then the stat values as rollHunter does. Fallback for a config whose hunter_tier leaves a tier
+ * unreachable (the shipped table scales with the number of graded stats, so every tier is reachable): take the
+ * highest-point combinations, keep the rolled tier and roll each stat in the upper half of its grade range.
  */
 export function rollHunterOfTier(
   config: GameConfig, rng: Rng, id: string, tier: HunterTier, nodeId: string, position: Vec2, nowMs: number,
 ): Hunter {
   const cls = rng.pick(config.classes);
   const all = gradeCombos(config);
-  let pool = all.filter((c) => tierFromPoints(c.points) === tier && c.weight > 0);
+  let pool = all.filter((c) => tierFromPoints(config, c.points) === tier && c.weight > 0);
   const reachable = pool.length > 0;
   if (!reachable) {
     const top = Math.max(...all.filter((c) => c.weight > 0).map((c) => c.points));

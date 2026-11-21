@@ -18,7 +18,7 @@ import { autoAdvanceDifficulty, autoStepDownDifficulty, bestZoneRatio, bootstrap
 import { reincarnate } from '../src/core/systems/progression';
 import { exportStorageOverflow, storageRoom, storageUnits, surplusPrice } from '../src/core/systems/trading';
 import { storageCapacity } from '../src/core/systems/town';
-import type { Hunter } from '../src/core/world';
+import type { Hunter, World } from '../src/core/world';
 import { testConfig } from './helpers';
 
 const base = testConfig();

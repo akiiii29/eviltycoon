@@ -61,6 +61,18 @@ export interface InvitationDef {
   autoInvite?: boolean;
 }
 
+/**
+ * Hunter tier threshold (config/hunter_tier.json, GDD §4.2, TECH_SPEC §4.1): a hunter whose grade points
+ * G = Σ stat_grade.point reach ceil(minPointsFrac × maxPoints) has at least this tier, maxPoints = number of graded stats
+ * (STAT_KEYS) × the highest stat_grade point, so the table scales with the number of graded stats.
+ */
+export interface HunterTierDef {
+  tier: HunterTierId;
+  minPointsFrac: number;
+  /** Derived at load: ceil(minPointsFrac × maxPoints). */
+  minPoints: number;
+}
+
 export interface StatGradeDef {
   grade: 'normal' | 'high' | 'highest';
   point: number;
@@ -917,6 +929,8 @@ export interface GameConfig {
   classes: ClassDef[];
   personalities: PersonalityDef[];
   statGrades: StatGradeDef[];
+  /** Hunter tier thresholds in HUNTER_TIERS order (config/hunter_tier.json, minPoints derived). */
+  hunterTiers: HunterTierDef[];
   /** M5 invitations (config/invitation.json), config order. */
   invitations: InvitationDef[];
   nodes: MapNode[];
