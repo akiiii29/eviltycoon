@@ -1,8 +1,12 @@
 import type { GameConfig, GearDef, GearQualityDef } from '../config/types';
+import type { EffectiveStats } from '../formulas';
 import { GEAR_SLOTS } from '../config/types';
-import { expectedGearExtra, expectedGearScore, gearMainValue, gearScore, hunterStats, slotValue } from '../formulas';
+import {
+  expectedGearExtraFor, expectedGearScore, gearMainValue, gearScore, hunterStats, slotValue, slotValueFor,
+} from '../formulas';
 import { copyGearDepth, gradeOf, rollGearOptions } from '../gear';
 import { personalityFactor } from '../hunterFactory';
+import { cacheVerifyEnabled } from '../statsCache';
 import type { System, SystemContext } from '../system';
 import type { GearInstance, Hunter, ShopItem, World } from '../world';
 import { baseTier, craftTiers, recipeMaterials, tierCraftable, tierDef, tierPriceMul } from './gearTier';
@@ -259,6 +263,138 @@ export function demandTier(config: GameConfig, world: World, gear: GearDef): { d
   return null;
 }
 
+export type DemandTier = { difficultyId: string; wanters: number } | null;
+
+/**
+ * Memo of demandTiers (TECH_SPEC §10), two levels, both validated by value on every call:
+ *  - per world: the whole result, with the craftable flag of each recipe (gearCraftable), the craftable tier ids
+ *    (craftTiers) and per hunter in world order its object, level, budget bucket and steady stats object;
+ *  - per hunter: whether it wants each (recipe, tier) (countUpgrades' per-hunter test, filled lazily), valid while its
+ *    level, budget bucket and steady stats object are unchanged. The steady stats object (statsCache.ts) covers the slot
+ *    values and set shares the test reads; the budget (gold × spendRatio × personality) only matters through its
+ *    position among the roll budgets (budgetBucket). When one hunter's gold crosses a bucket only its own table refills.
+ */
+interface DemandMemo {
+  config: GameConfig;
+  craftable: boolean[];
+  tiers: string[];
+  hunters: (Hunter | number | object)[];
+  out: readonly DemandTier[];
+}
+
+interface HunterDemand {
+  config: GameConfig;
+  level: number;
+  bucket: number;
+  stats: object;
+  /** recipe → tier id → wants. */
+  wants: Map<GearDef, Map<string, boolean>>;
+}
+
+const demandMemo = new WeakMap<World, DemandMemo>();
+const hunterDemand = new WeakMap<Hunter, HunterDemand>();
+
+/**
+ * demandTier of every recipe in config.gear order, null for recipes the craft building cannot make yet
+ * (gearCraftable) or that nobody wants. Same results as calling gearCraftable + demandTier per recipe; memoised (see
+ * DemandMemo) because the AI asks for the Trading Post demand at every decision. TH_VERIFY_CACHES=1 recomputes with
+ * demandTier on every call and throws on a mismatch.
+ */
+export function demandTiers(config: GameConfig, world: World): readonly DemandTier[] {
+  const craftable = config.gear.map((g) => gearCraftable(config, world, g));
+  const tierDefs = craftTiers(config, world);
+  const tiers = tierDefs.map((d) => d.id);
+  const f = config.formula;
+  const thresholds = budgetThresholds(config);
+  const hunters: (Hunter | number | object)[] = [];
+  const rows: { h: Hunter; budget: number; stats: EffectiveStats; e: HunterDemand }[] = [];
+  for (const h of world.hunters) {
+    // Same expression as countUpgrades.
+    const budget = h.gold * f.spendRatio * personalityFactor(config, h, 'spendRatio');
+    const bucket = budgetBucket(thresholds, budget);
+    const stats = hunterStats(config, h, { steady: true });
+    hunters.push(h, h.level, bucket, stats);
+    let e = hunterDemand.get(h);
+    if (!e || e.config !== config || e.level !== h.level || e.bucket !== bucket || e.stats !== stats) {
+      e = { config, level: h.level, bucket, stats, wants: new Map() };
+      hunterDemand.set(h, e);
+    }
+    rows.push({ h, budget, stats, e });
+  }
+  const m = demandMemo.get(world);
+  let out: readonly DemandTier[];
+  if (m && m.config === config && sameList(m.craftable, craftable) && sameList(m.tiers, tiers) && sameList(m.hunters, hunters)) {
+    out = m.out;
+  } else {
+    out = Object.freeze(config.gear.map((g, i) => {
+      if (!craftable[i]) return null;
+      // demandTier: highest craftable tier with a wanter (recipeWanters = countUpgrades without stock).
+      for (let t = tiers.length - 1; t >= 0; t--) {
+        const rolls = craftRolls(config, g, tiers[t]);
+        if (!rolls) continue;
+        let w = 0;
+        for (const r of rows) {
+          if (r.h.level < g.level - f.craftLevelAhead) continue;
+          let byTier = r.e.wants.get(g);
+          if (!byTier) { byTier = new Map(); r.e.wants.set(g, byTier); }
+          let want = byTier.get(tiers[t]!);
+          if (want === undefined) {
+            want = hunterWants(config, r.h, r.stats, r.budget, g, rolls, null);
+            byTier.set(tiers[t]!, want);
+          }
+          if (want) w++;
+        }
+        if (w > 0) return { difficultyId: tiers[t]!, wanters: w };
+      }
+      return null;
+    }));
+    demandMemo.set(world, { config, craftable, tiers, hunters, out });
+  }
+  if (cacheVerifyEnabled()) {
+    const fresh = config.gear.map((g, i) => (craftable[i] ? demandTier(config, world, g) : null));
+    if (fresh.some((t, i) => t?.difficultyId !== out[i]?.difficultyId || t?.wanters !== out[i]?.wanters)) {
+      throw new Error('demandTiers: stale value: an input is missing from the snapshot');
+    }
+  }
+  return out;
+}
+
+/** Every positive craft-roll minBudget of every recipe at every tier, sorted ascending (config only, cached). */
+const thresholdsCache = new WeakMap<GameConfig, { formula: GameConfig['formula']; list: number[] }>();
+
+function budgetThresholds(config: GameConfig): number[] {
+  const c = thresholdsCache.get(config);
+  if (c && c.formula === config.formula) return c.list;
+  const set = new Set<number>();
+  for (const g of config.gear) {
+    for (const d of config.difficulties) for (const r of craftRolls(config, g, d.id) ?? []) if (r.minBudget > 0) set.add(r.minBudget);
+  }
+  const list = [...set].sort((a, b) => a - b);
+  thresholdsCache.set(config, { formula: config.formula, list });
+  return list;
+}
+
+/**
+ * Number of thresholds ≤ budget. Two budgets in the same bucket compare the same way against every threshold, so
+ * countUpgrades' `budget < minBudget` tests give the same results for both.
+ */
+function budgetBucket(list: readonly number[], budget: number): number {
+  if (Number.isNaN(budget)) return -1;
+  let lo = 0, hi = list.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid]! <= budget) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function sameList<T>(a: readonly T[], b: readonly T[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (!Object.is(a[i], b[i])) return false;
+  return true;
+}
+
 interface CraftRoll { chance: number; value: number; minBudget: number }
 
 /** Config-only roll table per (recipe, tier), cached per (config, formula) object (TECH_SPEC §10). Null when no quality can roll. */
@@ -295,21 +431,29 @@ function countUpgrades(config: GameConfig, world: World, gear: GearDef, covered:
   const f = config.formula;
   const rolls = craftRolls(config, gear, difficultyId);
   if (!rolls) return 0;
-  const minChance = f.craftMinSellChance ?? 0;
   let n = 0;
   for (const h of world.hunters) {
     if (h.level < gear.level - f.craftLevelAhead) continue;
     const budget = h.gold * f.spendRatio * personalityFactor(config, h, 'spendRatio');
-    const ref = Math.max(slotValue(config, h, gear.slot), covered ? coveredValue(config, h, covered) : 0);
-    const extra = expectedGearExtra(config, h, gear);
-    let chance = 0;
-    for (const r of rolls) {
-      if (r.minBudget > 0 && budget < r.minBudget) continue;
-      if ((r.value + extra - ref) / Math.max(ref, 1) >= f.minUpgradeGain) chance += r.chance;
-    }
-    if (chance > 0 && chance >= minChance - 1e-9) n++;
+    if (hunterWants(config, h, hunterStats(config, h, { steady: true }), budget, gear, rolls, covered)) n++;
   }
   return n;
+}
+
+/** countUpgrades' test for one hunter (level filter already passed); `s` = its steady stats, `budget` its shop budget. */
+function hunterWants(
+  config: GameConfig, h: Hunter, s: EffectiveStats, budget: number, gear: GearDef, rolls: readonly CraftRoll[], covered: readonly Covered[] | null,
+): boolean {
+  const f = config.formula;
+  const minChance = f.craftMinSellChance ?? 0;
+  const ref = Math.max(slotValueFor(config, h, s, gear.slot), covered ? coveredValue(config, h, covered) : 0);
+  const extra = expectedGearExtraFor(config, h, s, gear);
+  let chance = 0;
+  for (const r of rolls) {
+    if (r.minBudget > 0 && budget < r.minBudget) continue;
+    if ((r.value + extra - ref) / Math.max(ref, 1) >= f.minUpgradeGain) chance += r.chance;
+  }
+  return chance > 0 && chance >= minChance - 1e-9;
 }
 
 /**

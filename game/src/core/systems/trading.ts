@@ -15,10 +15,10 @@
  */
 import type { GameConfig, ZoneDef } from '../config/types';
 import type { World } from '../world';
-import { autoCraftReserve, demandTier } from './crafting';
+import { autoCraftReserve, demandTiers } from './crafting';
 import { recipeMaterials } from './gearTier';
 import { supplyMaterialNeed } from './supplies';
-import { extraRequestCopies, gearCraftable, investMaterialNeed, surplusPriceMul } from './town';
+import { extraRequestCopies, investMaterialNeed, surplusPriceMul } from './town';
 
 export type Demand = Record<string, number>;
 
@@ -32,10 +32,12 @@ export function baseMaterialNeed(config: GameConfig, world: World): Demand {
   const need: Demand = {};
   const copies = Math.max(0, Math.floor(config.formula.requestMaxCopies)) + (copiesBonus(config, world));
   if (world.town.autoCraft && copies > 0) {
-    for (const g of config.gear) {
-      if (!gearCraftable(config, world, g)) continue;
-      // Gear tiers (TECH_SPEC §5.8): materials (incl. essence) of the highest craftable tier someone wants.
-      const t = demandTier(config, world, g);
+    // Gear tiers (TECH_SPEC §5.8): materials (incl. essence) of the highest craftable tier someone wants, per craftable
+    // recipe (crafting.demandTiers = gearCraftable + demandTier per recipe, memoised: TECH_SPEC §10).
+    const tiers = demandTiers(config, world);
+    for (let i = 0; i < config.gear.length; i++) {
+      const g = config.gear[i]!;
+      const t = tiers[i];
       if (!t) continue;
       const n = Math.min(t.wanters, copies);
       for (const m of recipeMaterials(config, g, t.difficultyId)) need[m.materialId] = (need[m.materialId] ?? 0) + m.count * n;

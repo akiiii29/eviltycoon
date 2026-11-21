@@ -201,9 +201,14 @@ export function monsterStats(config: GameConfig, m: Monster): MonsterStats {
  * (level, base stats, job, reincarnation, equipment incl. option lines — statsCache.ts).
  */
 export function slotValue(config: GameConfig, h: Hunter, slot: GearSlot): number {
+  if (!h.equipment[slot]) return 0;
+  return slotValueFor(config, h, hunterStats(config, h, { steady: true }), slot);
+}
+
+/** slotValue with the hunter's steady stats `s` (= hunterStats(config, h, { steady: true })) already in hand. */
+export function slotValueFor(config: GameConfig, h: Hunter, s: EffectiveStats, slot: GearSlot): number {
   const g = h.equipment[slot];
   if (!g) return 0;
-  const s = hunterStats(config, h, { steady: true });
   let per = slotValueCache.get(s);
   if (!per) { per = new Map(); slotValueCache.set(s, per); }
   const hit = per.get(slot);
@@ -317,14 +322,59 @@ function capExtra(config: GameConfig, extra: number, main: number): number {
 export function gearScore(config: GameConfig, h: Hunter, g: GearInstance, slot?: GearSlot): number {
   const def = config.index.gear.get(g.gearId);
   if (!def) return 0;
+  if (!g.options?.length && !def.setId) return gearMainValue(config, g);
+  // Memoised per (steady stats object, item object), validated against the slot and the item's fields (TECH_SPEC §10).
+  const s = hunterStats(config, h, { steady: true });
+  const sl = slot ?? def.slot;
+  let per = gearScoreCache.get(s);
+  if (!per) { per = new WeakMap(); gearScoreCache.set(s, per); }
+  const hit = per.get(g);
+  if (hit && hit.slot === sl && sameGearFields(hit, g)) {
+    if (cacheVerifyEnabled() && !Object.is(hit.v, computeGearScore(config, h, s, g, def, sl))) {
+      throw new Error(`gearScore: stale value for ${h.id} ${g.uid}`);
+    }
+    return hit.v;
+  }
+  const v = computeGearScore(config, h, s, g, def, sl);
+  const opts: (string | number)[] = [];
+  for (const o of g.options ?? []) opts.push(o.id, o.value);
+  per.set(g, { slot: sl, gearId: g.gearId, qualityId: g.qualityId, enhance: g.enhance, difficultyId: g.difficultyId, opts, v });
+  return v;
+}
+
+function computeGearScore(config: GameConfig, h: Hunter, s: EffectiveStats, g: GearInstance, def: GearDef, slot: GearSlot): number {
   const main = gearMainValue(config, g);
-  if (!g.options?.length && !def.setId) return main;
   const mods = emptyMods();
   const skills: GearSkillDef[] = [];
   addItemMods(config, g, mods, skills);
-  const s = hunterStats(config, h, { steady: true });
-  const w = gearModsWorth(config, h, s, mods, skills) + setShareWorth(config, h, s, slot ?? def.slot, g);
+  const w = gearModsWorth(config, h, s, mods, skills) + setShareWorth(config, h, s, slot, g);
   return main + capExtra(config, w / mainStatWorth(config, h, def.mainStat), main);
+}
+
+/**
+ * gearScore memo: steady stats object (rebuilt whenever level, base stats, job, equipment incl. set pieces… change,
+ * statsCache.ts; it also pins the config object) → item object → value + snapshot of every item field the score reads.
+ */
+interface GearScoreEntry {
+  slot: GearSlot;
+  gearId: string;
+  qualityId: string;
+  enhance: number;
+  difficultyId: string | undefined;
+  /** Option lines as id, value pairs. */
+  opts: (string | number)[];
+  v: number;
+}
+
+const gearScoreCache = new WeakMap<object, WeakMap<GearInstance, GearScoreEntry>>();
+
+function sameGearFields(e: GearScoreEntry, g: GearInstance): boolean {
+  if (e.gearId !== g.gearId || e.qualityId !== g.qualityId || e.enhance !== g.enhance || e.difficultyId !== g.difficultyId) return false;
+  const o = g.options;
+  const n = o ? o.length : 0;
+  if (n * 2 !== e.opts.length) return false;
+  for (let i = 0; i < n; i++) if (e.opts[2 * i] !== o![i]!.id || !Object.is(e.opts[2 * i + 1], o![i]!.value)) return false;
+  return true;
 }
 
 /**
@@ -340,10 +390,33 @@ export function expectedGearScore(config: GameConfig, h: Hunter, def: GearDef, m
 /** The uncapped part of expectedGearScore beyond the main value (same for every quality roll of a recipe): the set share. */
 export function expectedGearExtra(config: GameConfig, h: Hunter, def: GearDef): number {
   if (!def.setId) return 0;
-  const s = hunterStats(config, h, { steady: true });
+  return expectedGearExtraFor(config, h, hunterStats(config, h, { steady: true }), def);
+}
+
+/**
+ * expectedGearExtra with the steady stats `s` in hand. Memoised per (steady stats object, recipe): the set share reads
+ * only the stats, level and equipped gearIds (all in the steady snapshot, statsCache.ts) and config.
+ */
+export function expectedGearExtraFor(config: GameConfig, h: Hunter, s: EffectiveStats, def: GearDef): number {
+  if (!def.setId) return 0;
+  let per = gearExtraCache.get(s);
+  if (!per) { per = new Map(); gearExtraCache.set(s, per); }
+  const hit = per.get(def);
+  if (hit !== undefined) {
+    if (cacheVerifyEnabled() && !Object.is(hit, computeGearExtra(config, h, s, def))) throw new Error(`expectedGearExtra: stale value for ${h.id} ${def.id}`);
+    return hit;
+  }
+  const v = computeGearExtra(config, h, s, def);
+  per.set(def, v);
+  return v;
+}
+
+function computeGearExtra(config: GameConfig, h: Hunter, s: EffectiveStats, def: GearDef): number {
   const w = setShareWorth(config, h, s, def.slot, { uid: '', gearId: def.id, qualityId: '', enhance: 0 });
   return w === 0 ? 0 : w / mainStatWorth(config, h, def.mainStat);
 }
+
+const gearExtraCache = new WeakMap<object, Map<GearDef, number>>();
 
 // ---------------------------------------------------------------------------------------------------------------
 // Per-hit combat formulas (used by systems/combat.ts and by the AI estimate below — one source of truth).
@@ -561,16 +634,102 @@ export interface ZoneEstimate {
 export function zoneEstimate(
   config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string, crowd = zoneCrowd(zone, config.formula), withMood = false,
 ): ZoneEstimate {
-  const s = withMood ? planStats(config, h) : hunterStats(config, h, { steady: true });
-  let w = 0, dmg = 0, ttk = 0;
+  const p = withMood ? planStatsParts(config, h) : steadyParts(config, h);
+  const sums = zoneDuelSums(config, h, zone, difficultyId, p);
+  const w = sums.w, ttk = sums.ttk;
+  const dmg = sums.dmg * crowd;
+  return { killsPerLife: dmg > 0 ? (p.stats.hp * w) / dmg : Infinity, ttk: w > 0 ? ttk / w : Infinity };
+}
+
+/**
+ * Planning stats split into their memo key: the steady stats object (statsCache.ts), the mood multiplier and the
+ * resulting stats (= planStats: steady with ATK/DEF × mood, or the steady object itself when the multiplier is 1).
+ */
+export interface PlanParts {
+  steady: EffectiveStats;
+  mood: number;
+  stats: EffectiveStats;
+}
+
+export function planStatsParts(config: GameConfig, h: Hunter): PlanParts {
+  const steady = hunterStats(config, h, { steady: true });
+  const m = moodStatMult(h.needs.mood / config.formula.needMax, config.formula);
+  return { steady, mood: m, stats: m === 1 ? steady : { ...steady, atk: steady.atk * m, def: steady.def * m } };
+}
+
+function steadyParts(config: GameConfig, h: Hunter): PlanParts {
+  const steady = hunterStats(config, h, { steady: true });
+  return { steady, mood: 1, stats: steady };
+}
+
+/** Spawn-weighted duel sums of a zone, before the crowd factor: Σw, Σw·monsterDps, Σw·dmgPerKill, Σw·ttk. */
+export interface ZoneDuelSums {
+  w: number;
+  dps: number;
+  dmg: number;
+  ttk: number;
+}
+
+interface ZoneDuelEntry {
+  mood: number;
+  level: number;
+  /** Learned skill levels as id, level pairs (key order). */
+  skills: (string | number)[];
+  sums: Readonly<ZoneDuelSums>;
+}
+
+/** Steady stats object → zone → difficultyId → entry (one mood multiplier remembered per zone and difficulty). */
+const zoneDuelCache = new WeakMap<object, Map<ZoneDef, Map<string, ZoneDuelEntry>>>();
+
+function sameSkills(e: ZoneDuelEntry, h: Hunter): boolean {
+  let i = 0;
+  for (const k in h.skills) {
+    if (e.skills[i] !== k || !Object.is(e.skills[i + 1], h.skills[k])) return false;
+    i += 2;
+  }
+  return i === e.skills.length;
+}
+
+function computeZoneDuelSums(config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string, s: EffectiveStats): ZoneDuelSums {
+  let w = 0, dps = 0, dmg = 0, ttk = 0;
   for (const e of zone.monsters) {
     const d = duel(config, h, s, monsterTypeStats(config, e.monsterId, difficultyId));
     w += e.weight;
+    dps += e.weight * d.monsterDps;
     dmg += e.weight * d.dmgPerKill;
     ttk += e.weight * d.ttk;
   }
-  dmg *= crowd;
-  return { killsPerLife: dmg > 0 ? (s.hp * w) / dmg : Infinity, ttk: w > 0 ? ttk / w : Infinity };
+  return { w, dps, dmg, ttk };
+}
+
+/**
+ * Memoised duel sums of a zone for a hunter (TECH_SPEC §10). Inputs of duel(): the planning stats — keyed by the steady
+ * stats object (rebuilt whenever level, base stats, job, gear, traits… change, statsCache.ts; pins the config too) and
+ * the mood multiplier —, h.level, learned skill levels (damage skills; class and job tier are in the steady key), gear
+ * skills (equipment, steady key) and monster stats (config + difficulty, part of the key). Mood, level and skills are
+ * compared by value. `p` must come from planStatsParts / steadyParts for this hunter.
+ */
+export function zoneDuelSums(config: GameConfig, h: Hunter, zone: ZoneDef, difficultyId: string, p: PlanParts): Readonly<ZoneDuelSums> {
+  let perStats = zoneDuelCache.get(p.steady);
+  if (!perStats) { perStats = new Map(); zoneDuelCache.set(p.steady, perStats); }
+  let per = perStats.get(zone);
+  if (!per) { per = new Map(); perStats.set(zone, per); }
+  const hit = per.get(difficultyId);
+  if (hit && Object.is(hit.mood, p.mood) && hit.level === h.level && sameSkills(hit, h)) {
+    if (cacheVerifyEnabled()) {
+      const v = computeZoneDuelSums(config, h, zone, difficultyId, p.stats);
+      const o = hit.sums;
+      if (!Object.is(v.w, o.w) || !Object.is(v.dps, o.dps) || !Object.is(v.dmg, o.dmg) || !Object.is(v.ttk, o.ttk)) {
+        throw new Error(`zoneDuelSums: stale value for ${h.id} ${zone.id}`);
+      }
+    }
+    return hit.sums;
+  }
+  const sums = Object.freeze(computeZoneDuelSums(config, h, zone, difficultyId, p.stats));
+  const skills: (string | number)[] = [];
+  for (const k in h.skills) skills.push(k, h.skills[k]!);
+  per.set(difficultyId, { mood: p.mood, level: h.level, skills, sums });
+  return sums;
 }
 
 /**
