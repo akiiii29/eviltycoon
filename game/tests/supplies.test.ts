@@ -348,6 +348,14 @@ describe('migration v9 → v11 (→ v12)', () => {
     for (let i = 0; i < 100; i++) s2.step();
   });
 
+  it('a current-version save without supply lines (placeholder v10 → v11 build) gets them at load', () => {
+    const w = JSON.parse(JSON.stringify(createWorld(config, 1))) as Record<string, any>;
+    delete w.town.supply;
+    const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: WORLD_SCHEMA_VERSION, configVersion: config.version, savedAt: 0, world: w }), config);
+    expect(r.migratedFrom).toBeNull();
+    expect(lineStock(r.world, lineKey('supply', INF))).toBe(config.index.buildings.get(INF)!.supplyCap![0]);
+  });
+
   it('is idempotent: existing supply lines and packs win', () => {
     const w = JSON.parse(JSON.stringify(createWorld(config, 1))) as Record<string, any>;
     w.town.supply[lineKey('supply', INF)].stock = { x: 3 };

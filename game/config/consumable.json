@@ -27,11 +27,11 @@
   {"id": "sup.inn.5", "kind": "supply", "buildingId": "bld.inn", "minLevel": 38, "materials": [{"materialId": "mat.frost", "count": 1}], "units": 15, "craftSec": 20},
   {"id": "sup.inn.6", "kind": "supply", "buildingId": "bld.inn", "minLevel": 55, "materials": [{"materialId": "mat.brine", "count": 1}], "units": 15, "craftSec": 20},
   {"id": "sup.inn.7", "kind": "supply", "buildingId": "bld.inn", "minLevel": 75, "materials": [{"materialId": "mat.void", "count": 1}], "units": 16, "craftSec": 20},
-  {"id": "pot.hp.1", "nameKey": "pot.hp.1.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 1, "materials": [{"materialId": "mat.tusk", "count": 1}], "units": 3, "craftSec": 30, "heal": 0.35, "price": 12},
-  {"id": "pot.hp.2", "nameKey": "pot.hp.2.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 9, "materials": [{"materialId": "mat.core", "count": 1}], "units": 3, "craftSec": 30, "heal": 0.35, "price": 20},
-  {"id": "pot.hp.3", "nameKey": "pot.hp.3.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 16, "materials": [{"materialId": "mat.venom", "count": 1}], "units": 3, "craftSec": 30, "heal": 0.35, "price": 30},
-  {"id": "pot.hp.4", "nameKey": "pot.hp.4.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 25, "materials": [{"materialId": "mat.ember", "count": 1}], "units": 3, "craftSec": 30, "heal": 0.35, "price": 45},
-  {"id": "pot.hp.5", "nameKey": "pot.hp.5.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 38, "materials": [{"materialId": "mat.pelt", "count": 1}], "units": 3, "craftSec": 30, "heal": 0.35, "price": 80},
-  {"id": "pot.hp.6", "nameKey": "pot.hp.6.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 55, "materials": [{"materialId": "mat.sigil", "count": 1}], "units": 2, "craftSec": 30, "heal": 0.35, "price": 140},
-  {"id": "pot.hp.7", "nameKey": "pot.hp.7.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 75, "materials": [{"materialId": "mat.shade", "count": 1}], "units": 2, "craftSec": 30, "heal": 0.35, "price": 220}
+  {"id": "pot.hp.1", "nameKey": "pot.hp.1.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 1, "materials": [{"materialId": "mat.tusk", "count": 1}], "units": 3, "craftSec": 30, "heal": 0.35, "price": 36},
+  {"id": "pot.hp.2", "nameKey": "pot.hp.2.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 9, "materials": [{"materialId": "mat.core", "count": 1}], "units": 3, "craftSec": 30, "heal": 0.35, "price": 60},
+  {"id": "pot.hp.3", "nameKey": "pot.hp.3.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 16, "materials": [{"materialId": "mat.venom", "count": 1}], "units": 3, "craftSec": 30, "heal": 0.35, "price": 90},
+  {"id": "pot.hp.4", "nameKey": "pot.hp.4.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 25, "materials": [{"materialId": "mat.ember", "count": 1}], "units": 3, "craftSec": 30, "heal": 0.35, "price": 135},
+  {"id": "pot.hp.5", "nameKey": "pot.hp.5.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 38, "materials": [{"materialId": "mat.pelt", "count": 1}], "units": 3, "craftSec": 30, "heal": 0.35, "price": 240},
+  {"id": "pot.hp.6", "nameKey": "pot.hp.6.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 55, "materials": [{"materialId": "mat.sigil", "count": 1}], "units": 2, "craftSec": 30, "heal": 0.35, "price": 420},
+  {"id": "pot.hp.7", "nameKey": "pot.hp.7.name", "kind": "potion", "buildingId": "bld.infirmary", "minLevel": 75, "materials": [{"materialId": "mat.shade", "count": 1}], "units": 2, "craftSec": 30, "heal": 0.35, "price": 660}
 ]

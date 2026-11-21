@@ -214,6 +214,15 @@ export const MIGRATIONS: Record<number, Migration> = {
   11: (w) => ({ ...w, portal: Array.isArray(w.portal) ? w.portal : [] }),
 };
 
+/**
+ * Apply the v10 → v11 supply fields when absent (idempotent; existing fields win). Used at load for v12 saves made by a
+ * build whose v10 → v11 step was still a pass-through placeholder (TECH_SPEC §5.14), so their services do not start empty.
+ */
+export function fillMissingSupply(w: Record<string, unknown>, config: GameConfig): Record<string, unknown> {
+  const town = (w.town ?? {}) as Record<string, unknown>;
+  return town.supply && typeof town.supply === 'object' ? w : MIGRATIONS[10]!(w, config);
+}
+
 /** Apply the v7 → v8 building fields when absent (idempotent; existing fields win). Used at load for v9 saves made before buildings. */
 export function fillMissingBuildings(w: Record<string, unknown>, config: GameConfig): Record<string, unknown> {
   const town = (w.town ?? {}) as Record<string, unknown>;

@@ -1,6 +1,6 @@
 import type { GameConfig } from '../config/types';
 import { WORLD_SCHEMA_VERSION, type World } from '../world';
-import { fillMissingBuildings, MIGRATIONS } from './migrations';
+import { fillMissingBuildings, fillMissingSupply, MIGRATIONS } from './migrations';
 
 export const SAVE_FORMAT = 'town-hunter-save';
 
@@ -70,6 +70,8 @@ export function deserialize(text: string, config: GameConfig): LoadResult {
 
   // A v9 save from a build without Town buildings (Journey landed first and reserved v8): fill them like v7 → v8 did.
   world = fillMissingBuildings(world, config);
+  // A v12 save from a build where v10 → v11 was a placeholder has no supply lines: fill them like v10 → v11 does.
+  world = fillMissingSupply(world, config);
 
   const w = world as unknown as World;
   return {
