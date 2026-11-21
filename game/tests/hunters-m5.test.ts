@@ -379,10 +379,10 @@ describe('save v13 → v14', () => {
     for (const v of [12, 13]) {
       w.schemaVersion = v;
       const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: v, configVersion: base.version, savedAt: 0, world: w }), base);
-      expect(WORLD_SCHEMA_VERSION).toBe(14);
+      expect(WORLD_SCHEMA_VERSION).toBe(15);
       expect(r.migratedFrom).toBe(v);
       const m = r.world as World;
-      expect(m.schemaVersion).toBe(14);
+      expect(m.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
       expect(m.town).toMatchObject({ queue: [], queueTimerMs: 0, autoInviteTimerMs: 0, tickets: {} });
       expect(m.stats).toMatchObject({ queueJoined: 0, queueEntered: 0, invites: 0, inviteGold: 0, autoInvites: 0, donatedGold: 0, banished: 0, personalityRerolls: 0 });
       const s2 = new Simulation(base, m);

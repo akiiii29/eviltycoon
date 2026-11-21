@@ -366,8 +366,8 @@ describe('migration v12 → v13', () => {
     w.schemaVersion = 12;
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 12, configVersion: base.version, savedAt: 0, world: w }), base);
     expect(r.migratedFrom).toBe(12);
-    expect(WORLD_SCHEMA_VERSION).toBe(14);
-    expect(r.world.schemaVersion).toBe(14);
+    expect(WORLD_SCHEMA_VERSION).toBe(15);
+    expect(r.world.schemaVersion).toBe(15);
     const want = { weapon: old.weapon, body: old.armor, necklace: old.accessory };
     expect(r.world.hunters[0]!.equipment).toEqual(want);
     expect(r.world.hunters[0]!.ai.goal).toEqual({ type: 'enhance', slot: 'body' });

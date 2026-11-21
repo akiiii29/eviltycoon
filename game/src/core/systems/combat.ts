@@ -11,6 +11,7 @@ import { dropEssence } from './gearTier';
 import { stepTowards } from './movement';
 import { procGearSkills } from './skills';
 import { grantKillGold } from './tax';
+import { libraryExpMul } from './town';
 
 /**
  * Per-tick aggro index (TECH_SPEC §10), derived data rebuilt in combatSystem.update after revives: every
@@ -76,8 +77,13 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
     h.bag[d.materialId] = (h.bag[d.materialId] ?? 0) + 1;
   }
   dropEssence(ctx, h, m); // gear-tier essence of the monster's difficulty (TECH_SPEC §5.8); no RNG draw on Easy
+  // Personality gain.exp × M5 gear expPct (§4.2), then the Library (TECH_SPEC §5.15): × (1 + killExpPct / 100); exactly
+  // ms.exp without any.
   const expK = personalityFactor(config, h, 'gain.exp') * gearPctMul(config, h, 'expPct');
-  gainExp(ctx, h, expK === 1 ? ms.exp : Math.max(0, ms.exp * expK));
+  const base = expK === 1 ? ms.exp : Math.max(0, ms.exp * expK);
+  const expMul = libraryExpMul(config, world);
+  if (expMul !== 1) world.stats.libraryExp = (world.stats.libraryExp ?? 0) + base * (expMul - 1);
+  gainExp(ctx, h, expMul === 1 ? base : base * expMul);
 }
 
 /**

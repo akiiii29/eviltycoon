@@ -12,6 +12,8 @@
  * units served / produced, turned-away arrivals; `potion` = bought / drunk, gold hunters paid (Town cut), HP retreats started
  * while carrying a potion; `revive` = fees paid (Town cut), revives that could not pay. Potion and revive gold are explicit
  * ledger terms (not in `fees`).
+ * M5 special buildings (TECH_SPEC §5.15): `train` = Training Ground sessions, EXP, gold hunters paid (Town cut; explicit
+ * ledger terms, not in `fees`), lowest hunter level; `libExp` = extra kill EXP from the library.
  * Env HEADLESS_FP="key=value,..." overrides formula_params for the run (no file is changed), like tools/pacing.ts.
  * Env HEADLESS_JOURNEY="journeyId@minute[xN],..." sends the journeyTeamMax strongest Town hunters (bestJourneyTeam) on
  * that journey from that game minute on, N times in a row (retried each minute until accepted); journey events and
@@ -88,6 +90,9 @@ const sp = { potGold: 0, potTown: 0, potBought: 0, potUsed: 0, revFee: 0, revTow
 const svcIds = config.buildings.filter((b) => b.supplyCap).map((b) => b.id);
 const stockoutMs = (w: World) => svcIds.map((id) => w.town.supply?.[`supply:${id}`]?.stockoutMs ?? 0);
 let stockout0 = stockoutMs(sim.world);
+/** Training Ground (TECH_SPEC §5.15), per window; library EXP is read from stats. */
+const tr = { n: 0, exp: 0, gold: 0, town: 0 };
+let libExp0 = 0;
 /** Town tax taken from kill gold (taxCollected events). */
 let tax = 0;
 const hunterGold = (w: World): number => w.hunters.reduce((a, h) => a + h.gold, 0);
@@ -168,6 +173,7 @@ for (let t = 0; t < ticks; t++) {
     else if (e.type === 'serviceUsed') sp.served += 1;
     else if (e.type === 'supplyProduced' && config.index.buildings.get(e.buildingId)?.supplyCap && e.consumableId.startsWith('sup.')) sp.made += e.units;
     else if (e.type === 'serviceStockout') sp.denied += 1;
+    if (e.type === 'trained') { tr.n += 1; tr.exp += e.exp; tr.gold += e.price; tr.town += e.townGold; }
     if (e.type === 'goalChanged' && e.goal === 'returnTown' && /^(retreat hp|urgent hp)/.test(e.reason)) {
       const hh = sim.world.hunters.find((x) => x.id === e.hunterId);
       if (hh && Object.values(hh.potions ?? {}).some((n) => n > 0)) sp.potRetreat += 1;
@@ -176,17 +182,18 @@ for (let t = 0; t < ticks; t++) {
   }
   if (snapEvery > 0 && (t + 1) % (snapEvery * 600) === 0) {
     // Fee cut = residual of the town window (the share depends on town gold, see trading.townFeeShare).
-    ledger.fees = sim.world.town.gold - townGold0 - ledger.svc - ledger.shop + ledger.mats + ledger.craft + bl.escrow - bl.refund - bl.kingdom + inv.gold - inv.refund - tax - sp.potTown - sp.revTown;
+    ledger.fees = sim.world.town.gold - townGold0 - ledger.svc - ledger.shop + ledger.mats + ledger.craft + bl.escrow - bl.refund - bl.kingdom + inv.gold - inv.refund - tax - sp.potTown - sp.revTown - tr.town;
     townGold0 = sim.world.town.gold;
-    const kill = hunterGold(sim.world) - hunterGold0 + ledger.svc + ledger.shop + hl.enh + hl.skill - ledger.mats - bl.paid + tax + sp.potGold + sp.revFee;
+    const kill = hunterGold(sim.world) - hunterGold0 + ledger.svc + ledger.shop + hl.enh + hl.skill - ledger.mats - bl.paid + tax + sp.potGold + sp.revFee + tr.gold;
     const so = stockoutMs(sim.world).map((x, i) => Math.round((x - stockout0[i]!) / 60000));
     stockout0 = stockoutMs(sim.world);
     timeline.push(snapshot(sim.world, (t + 1) / 600) +
       ` | in svc ${ledger.svc} shop ${ledger.shop} fees ${ledger.fees} tax ${tax} out mats ${ledger.mats} (req ${reqMats}) craft ${ledger.craft}` +
-      ` | hunter kill ${kill} enh ${hl.enh} skill ${hl.skill} | burned ${hl.enh + hl.skill - ledger.fees + ledger.craft + sp.potGold - sp.potTown + sp.revFee - sp.revTown}` +
+      ` | hunter kill ${kill} enh ${hl.enh} skill ${hl.skill} | burned ${hl.enh + hl.skill - ledger.fees + ledger.craft + sp.potGold - sp.potTown + sp.revFee - sp.revTown + tr.gold - tr.town}` +
       ` | supply stockoutMin [${so.join(' ')}] served ${sp.served} made ${sp.made} denied ${sp.denied}` +
       ` | potion bought ${sp.potBought} used ${sp.potUsed} gold ${sp.potGold} (town ${sp.potTown}) hpRetreatWithPotion ${sp.potRetreat}` +
       ` | revive fees ${sp.revFee} (town ${sp.revTown})` +
+      ` | train ${tr.n} exp ${tr.exp} gold ${tr.gold} (town ${tr.town}) minLv ${Math.min(...sim.world.hunters.map((h) => h.level))} libExp ${Math.round((sim.world.stats.libraryExp ?? 0) - libExp0)}` +
       ` total ${sim.world.town.gold + hunterGold(sim.world) + escrowNow(sim.world)} townMin ${townGoldMin}` +
       ` | bounty posted ${bl.posted} done ${bl.done} escrow ${bl.escrow} refund ${bl.refund} paid ${bl.paid} kingdom ${bl.kingdom} held ${escrowNow(sim.world)}` +
       ` | build invest ${inv.gold - inv.refund} (import ${inv.imp}) mats ${inv.mats} done ${inv.done} [${levels(sim.world)}]`);
@@ -199,6 +206,8 @@ for (let t = 0; t < ticks; t++) {
     tax = 0;
     reqMats = 0;
     for (const k of Object.keys(sp) as (keyof typeof sp)[]) sp[k] = 0;
+    tr.n = tr.exp = tr.gold = tr.town = 0;
+    libExp0 = sim.world.stats.libraryExp ?? 0;
   }
 }
 const w = sim.world;

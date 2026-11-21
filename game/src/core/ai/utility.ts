@@ -11,6 +11,7 @@ import { bestPotionPurchase } from '../systems/consumables';
 import { servicePrice } from '../systems/services';
 import { serviceInStock } from '../systems/supplies';
 import { buildingLevel, enhanceBonus, gearCraftable } from '../systems/town';
+import { trainOffer, type TrainOffer } from '../systems/training';
 import { bountyZoneMul } from '../systems/bounty';
 import { bagHasSellable, bagUnrequested, materialDemand, requestZoneMul, type Demand } from '../systems/trading';
 import { bagCount, type Goal, type Hunter, type ShopItem, type World } from '../world';
@@ -509,6 +510,19 @@ export function bestLearn(config: GameConfig, h: Hunter, world?: World): { kind:
 }
 
 /**
+ * Training Ground session worth buying (TECH_SPEC §5.15), or null: training.trainOffer (working building, hunter below the
+ * cap, top level − trainLevelGap) and gold ≥ price × trainGoldReserveMul + the gear savings (enhanceSavingsHold), so a
+ * hunter keeps its purse and the gold put aside for its next gear piece; a level-1 hunter keeps its starting gold too.
+ */
+export function bestTraining(config: GameConfig, world: World, h: Hunter): TrainOffer | null {
+  const offer = trainOffer(config, world, h);
+  if (!offer) return null;
+  const f = config.formula;
+  const spare = h.level >= 2 ? h.gold : h.gold - f.startingGold;
+  return spare >= offer.price * f.trainGoldReserveMul + enhanceSavingsHold(config, h, world) ? offer : null;
+}
+
+/**
  * True when the bag holds at least one REQUESTED unit the town can afford to buy (avoids a sell goal that sells nothing).
  * `demand` defaults to the current Trading Post requests (materialDemand).
  */
@@ -611,6 +625,11 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
     if (potion) {
       out.push({ goal: { type: 'buyPotion', consumableId: potion.consumable.id }, score: f.potionBuyScore * econMul, label: `buyPotion ${potion.consumable.id}` });
     }
+
+    // Training Ground (TECH_SPEC §5.15): buy EXP while behind the town's top hunter; only pushed when available, so towns
+    // without a working Training Ground draw exactly the same decision noise as before.
+    const train = bestTraining(config, world, h);
+    if (train) out.push({ goal: { type: 'train' }, score: f.trainScore * econMul, label: `train +${train.exp}exp ${train.price}g` });
 
     // Idling in town also recovers needs slowly for free, so a tired hunter who cannot pay rests instead of hunting.
     out.push({ goal: { type: 'wander', nodeId: '' }, score: Math.max(f.wanderScore, f.restScoreWeight * (1 - ok)), label: 'wander/rest' });

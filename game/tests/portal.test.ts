@@ -10,7 +10,7 @@ import { deserialize, SAVE_FORMAT, serialize } from '../src/core/save/save';
 import { createWorld, Simulation } from '../src/core/simulation';
 import { allHunters, townHunterCount } from '../src/core/systems/journey';
 import { isDifficultyUnlockable, portalStayOf } from '../src/core/systems/progression';
-import { newAiState, type Hunter } from '../src/core/world';
+import { newAiState, WORLD_SCHEMA_VERSION, type Hunter } from '../src/core/world';
 import { testConfig } from './helpers';
 
 const config = testConfig();
@@ -203,7 +203,7 @@ describe('portal save/load and offline', () => {
     w.schemaVersion = 11;
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 11, configVersion: config.version, savedAt: 0, world: w }), config);
     expect(r.migratedFrom).toBe(11);
-    expect(r.world.schemaVersion).toBe(14);
+    expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
     expect(r.world.portal).toEqual([]);
   });
 });

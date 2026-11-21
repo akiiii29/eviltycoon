@@ -500,6 +500,7 @@ export class DebugOverlay {
       case 'learn': return `học ${g.kind === 'skill' ? skillName(config, g.id) : traitName(config, g.id)}`;
       case 'buyPotion': return `mua ${name(config, config.index.consumables.get(g.consumableId)?.nameKey, g.consumableId)}`;
       case 'reincarnate': return 'đi tới Cổng Tái Sinh';
+      case 'train': return h.trainMs ? `luyện tập (${Math.ceil(h.trainMs / 1000)}s)` : 'đi luyện tập';
       default: return 'dạo';
     }
   }

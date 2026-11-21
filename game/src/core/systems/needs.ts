@@ -4,6 +4,7 @@ import { personalityFactor } from '../hunterFactory';
 import type { System } from '../system';
 import { NEED_KEYS } from '../config/types';
 import { isAlive, type NeedKey } from '../world';
+import { fountainRegenMul } from './town';
 
 const DECAY: { need: Exclude<NeedKey, 'hp'>; param: 'staminaDecayPerSec' | 'satietyDecayPerSec' | 'moodDecayPerSec' }[] = [
   { need: 'stamina', param: 'staminaDecayPerSec' },
@@ -44,7 +45,8 @@ export const needsSystem: System = {
 
       const idleInTown = (!h.ai.goal || h.ai.goal.type === 'wander') && !nav.node(h.nodeId).zoneId;
       if (idleInTown) {
-        const regen = config.formula.townIdleRegenPerSec * sec;
+        // Fountain (TECH_SPEC §5.15) multiplies the free idle regen; × 1 without one.
+        const regen = config.formula.townIdleRegenPerSec * fountainRegenMul(config, world) * sec;
         for (const n of NEED_KEYS) {
           const cap = needMax(config, h, n);
           h.needs[n] = Math.min(cap, h.needs[n] + regen * (cap / max));
