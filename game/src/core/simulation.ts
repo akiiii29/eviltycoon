@@ -90,13 +90,17 @@ export function createWorld(config: GameConfig, seed: number): World {
       gearStorage: [],
       autoDifficulty: true,
       supply: initialSupply(config),
+      queue: [],
+      queueTimerMs: 0,
+      autoInviteTimerMs: 0,
+      tickets: {},
     },
     hunters: [],
     monsters: [],
     journeys: [],
     portal: [],
     zones: {},
-    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, gearDismantled: 0, gearReclaimed: 0, gearRelisted: 0, supplyProduced: 0, supplyUsed: 0, serviceStockouts: 0, supplyStockoutMs: 0, potionsProduced: 0, potionsBought: 0, potionsUsed: 0, potionGold: 0, reviveFees: 0, reviveBroke: 0, trainSessions: 0, trainGold: 0, trainExp: 0, libraryExp: 0 },
+    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, gearDismantled: 0, gearReclaimed: 0, gearRelisted: 0, supplyProduced: 0, supplyUsed: 0, serviceStockouts: 0, supplyStockoutMs: 0, potionsProduced: 0, potionsBought: 0, potionsUsed: 0, potionGold: 0, reviveFees: 0, reviveBroke: 0, queueJoined: 0, queueEntered: 0, invites: 0, inviteGold: 0, autoInvites: 0, donatedGold: 0, banished: 0, personalityRerolls: 0, trainSessions: 0, trainGold: 0, trainExp: 0, libraryExp: 0 },
   };
 }
 

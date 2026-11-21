@@ -29,6 +29,7 @@ export function showOfflinePopup(root: HTMLElement, config: GameConfig, r: Offli
   line(box, `Vắng ${duration(r.awayMs)} · hunter không săn khi game đóng`, 'debug-status');
   const matName = (id: string) => t(config, config.index.materials.get(id)?.nameKey ?? id);
   if (r.arrivals.length > 0) line(box, `Hunter mới đến: ${r.arrivals.join(', ')}`);
+  if (r.queued > 0) line(box, `Hunter vào hàng chờ (Town đầy): ${r.queued}`);
   // Journeys that ended while away (TECH_SPEC §5.11).
   if (r.journeys.length > 0) {
     line(box, 'Hành trình', 'debug-sub');

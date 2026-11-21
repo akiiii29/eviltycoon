@@ -100,7 +100,8 @@ Số liệu hiện tại (headless 12 giờ `tools/headless.ts 720 <seed> 120`, 
   - 🟡 Còn lại: khi Town trên mục tiêu ngân khố, thuế bị quy tắc ngân khố bù (phí bị đốt nhiều hơn) nên hiện chỉ là chỗ tiêu vàng hunter; chỉ thành thu nhập Town khi có chỗ tiêu building — lúc đó cần tune lại `taxRate` cùng `feeTownTargetMul`. Chưa có UI ngoài nút −/+5% trong debug overlay. Giá mood tác động qua Tavern và (dưới 50% mood) ATK/DEF; `taxMoodPerKill` mới đo trên 2 seed.
 
 ### M5 — chiều sâu hunter & trang bị
-- ⚪ Invitation (vé gọi hunter theo tier, GDD §4.1), Donate / Banish.
+- ✅ Invitation (vé gọi hunter theo tier, GDD §4.1), Donate / Banish; hàng chờ kiểu EHT (`queueMax` 30, một khách mỗi 300 s khi Town đầy, vào ngay khi trống slot), mời tự động khi ≤ 2 hunter (mỗi 60 phút), chạy cả offline; tính cách mở rộng 8 → 21 (tích cực/tiêu cực/trung tính; target mới `gain.gold`, `gain.exp`, `enhance.success`), lệnh đổi tính cách (TECH_SPEC §4.1, §5.5, world v14). Nhịp seed 1–5 (trước → sau): Lv20 60–73 → 62–76 phút, Lv50 4,02–4,70 → 3,78–4,72 giờ (seed 3 xuống 3,78), tái sinh đầu 10,62–11,93 → 10,68–11,58 giờ (mục tiêu 8–14), hunter đã tái sinh lúc 15 giờ 40/40 → 39/40 (seed 5: 7/8), 0 chết — trong nhiễu seed.
+  - 🟡 Còn lại: chưa có nguồn vé mời (journey/bounty/sự kiện); heroic và legendary cùng grade (5 chỉ số × 2 điểm < 14) — cần thêm chỉ số hoặc đổi ngưỡng tier (bảng `hunter_tier`); `tier` chỉ để hiển thị; giá thư mời chưa cân với ngân khố Town; v13 dành cho nhánh khác (lead đánh số lại migration); chưa có UI ngoài debug.
 - ⚪ Đủ 9 bậc nghề (config hiện 3) và 7 slot đồ (GDD §6, hiện 3).
 - ⚪ Upgrade đồ lên tier (Dark Stone), option/set/skill trang bị.
 - 🟡 Potion/consumable, goal BuyPotion — đã làm thuốc HP ở Infirmary (TECH_SPEC §5.14, xem §1); còn: Alchemist riêng, thuốc satiety/stamina/buff, UI.

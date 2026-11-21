@@ -60,7 +60,9 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
   const def = config.index.monsters.get(m.defId)!;
   const ms = monsterStats(config, m);
   h.kills += 1;
-  grantKillGold(ctx, h, ms.gold); // minus Town tax (tax.ts)
+  // Personality gain.gold / gain.exp (TECH_SPEC §5.5): × factor on kill rewards (factor 1 = unchanged, bit for bit).
+  const goldK = personalityFactor(config, h, 'gain.gold');
+  grantKillGold(ctx, h, goldK === 1 ? ms.gold : Math.max(0, Math.round(ms.gold * goldK))); // minus Town tax (tax.ts)
   world.stats.kills += 1;
   ctx.events.emit(world.tick, { type: 'monsterKilled', hunterId: h.id, monsterId: m.id, defId: m.defId });
   // Bounty payout; a bounty target killed under Torment drops more (one RNG draw per drop either way).
@@ -72,10 +74,12 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
     h.bag[d.materialId] = (h.bag[d.materialId] ?? 0) + 1;
   }
   dropEssence(ctx, h, m); // gear-tier essence of the monster's difficulty (TECH_SPEC §5.8); no RNG draw on Easy
-  // Library (TECH_SPEC §5.15): kill EXP × (1 + killExpPct / 100); exactly ms.exp without one.
+  // Personality gain.exp, then the Library (TECH_SPEC §5.15): × (1 + killExpPct / 100); exactly ms.exp without either.
+  const expK = personalityFactor(config, h, 'gain.exp');
+  const base = expK === 1 ? ms.exp : Math.max(0, ms.exp * expK);
   const expMul = libraryExpMul(config, world);
-  if (expMul !== 1) world.stats.libraryExp = (world.stats.libraryExp ?? 0) + ms.exp * (expMul - 1);
-  gainExp(ctx, h, expMul === 1 ? ms.exp : ms.exp * expMul);
+  if (expMul !== 1) world.stats.libraryExp = (world.stats.libraryExp ?? 0) + base * (expMul - 1);
+  gainExp(ctx, h, expMul === 1 ? base : base * expMul);
 }
 
 /**
