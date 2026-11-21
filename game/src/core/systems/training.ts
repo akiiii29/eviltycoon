@@ -3,7 +3,7 @@
  * the town's top hunter (late arrivals, the first ones out of the Reincarnation Portal).
  *
  * - One session: at the door the hunter pays round(trainGoldPerExp × EXP) and gets
- *   EXP = round(trainExpFrac[building level] × expToNext(hunter level)) through progress.gainExp (the library bonus does
+ *   EXP = round(trainExpFrac[building level] × exp_curve EXP of the hunter's level and reincarnation, progressionStats.expRequired) through progress.gainExp (the library bonus does
  *   not apply), then stays inside trainSessionSec (needs frozen, like a service) and comes out to decide again.
  * - Cap: only while hunter level < top level − trainLevelGap[building level], top = highest level over every Town hunter
  *   (journey and portal included). The top hunter can never train, so the pacing of the lead is untouched by construction.
@@ -11,7 +11,7 @@
  * Deterministic: no RNG.
  */
 import type { BuildingDef, GameConfig } from '../config/types';
-import { expToNext } from '../formulas';
+import { expRequired } from '../progressionStats';
 import { gainExp } from '../progress';
 import type { System, SystemContext } from '../system';
 import { isAlive, type Hunter, type World } from '../world';
@@ -51,7 +51,7 @@ export function trainOffer(config: GameConfig, world: World, h: Hunter): TrainOf
   if (!b || lv < 1) return null;
   const f = config.formula;
   if (h.level >= f.maxLevel || h.level >= trainLevelCap(config, world)) return null;
-  const exp = Math.max(1, Math.round((levelValue(b.trainExpFrac, lv) ?? 0) * expToNext(h.level, f)));
+  const exp = Math.max(1, Math.round((levelValue(b.trainExpFrac, lv) ?? 0) * expRequired(config, h.level, h.reincarnation)));
   return { exp, price: Math.max(0, Math.round(f.trainGoldPerExp * exp)) };
 }
 

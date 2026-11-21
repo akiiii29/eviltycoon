@@ -271,7 +271,7 @@ describe('save v15', () => {
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 12, configVersion: config.version, savedAt: 0, world: w }), config);
     expect(r.migratedFrom).toBe(12);
     expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
-    expect(WORLD_SCHEMA_VERSION).toBe(15);
+    expect(WORLD_SCHEMA_VERSION).toBe(16);
     expect(r.world.stats).toMatchObject({ trainSessions: 0, trainGold: 0, trainExp: 0, libraryExp: 0 });
     const sim = new Simulation(config, r.world);
     runFor(sim, 60 * 1000);

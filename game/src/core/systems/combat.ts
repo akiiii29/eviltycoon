@@ -2,6 +2,7 @@ import { critChance, critMultiplier, dodgeChance, hunterStats, mitigated, monste
 import { gearBonus, gearPctMul, hunterGearSkills, needDrainMul } from '../gear';
 import { personalityFactor } from '../hunterFactory';
 import { gainExp } from '../progress';
+import { dropRune } from './runes';
 import { SpatialHash } from '../spatial';
 import type { System, SystemContext } from '../system';
 import { bagCount, dist, findHunter, findMonster, isAlive, newAiState, type Hunter, type Monster } from '../world';
@@ -77,6 +78,7 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
     h.bag[d.materialId] = (h.bag[d.materialId] ?? 0) + 1;
   }
   dropEssence(ctx, h, m); // gear-tier essence of the monster's difficulty (TECH_SPEC §5.8); no RNG draw on Easy
+  dropRune(ctx, h, m); // runes into the Town stash (TECH_SPEC §5.16); no RNG draw below the lowest minMonsterLevel
   // Personality gain.exp × M5 gear expPct (§4.2), then the Library (TECH_SPEC §5.15): × (1 + killExpPct / 100); exactly
   // ms.exp without any.
   const expK = personalityFactor(config, h, 'gain.exp') * gearPctMul(config, h, 'expPct');

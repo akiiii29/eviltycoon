@@ -9,9 +9,10 @@ export type { GearSlot, NeedKey } from './config/types';
  * v10 = gear tiers per difficulty, Town gear storage (reclaim), dismantle, auto difficulty (TECH_SPEC §5.8);
  * v11 = service supplies, potions, revive fee (TECH_SPEC §5.14); v12 = reincarnation portal (`portal`, TECH_SPEC §5.13);
  * v13 = 8 gear slots, gear grades and option lines (TECH_SPEC §4.2); v14 = waiting queue, invitations, auto-invite,
- * donate/banish stats (TECH_SPEC §4.1); v15 = M5 special buildings (training goal, town aura, stats, TECH_SPEC §5.15).
+ * donate/banish stats (TECH_SPEC §4.1); v15 = M5 special buildings (training goal, town aura, stats, TECH_SPEC §5.15);
+ * v16 = M5 progression depth (job tree, learn plans, runes, relics, mounts, growth properties; TECH_SPEC §5.16).
  */
-export const WORLD_SCHEMA_VERSION = 15;
+export const WORLD_SCHEMA_VERSION = 16;
 
 export type Grade = 'normal' | 'high' | 'highest';
 export type HunterTier = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
@@ -33,14 +34,28 @@ export type Goal =
   | { type: 'shop'; itemUid: string }
   /** M2: try to enhance the gear in a slot at the forge. */
   | { type: 'enhance'; slot: GearSlot }
-  /** M3: learn/upgrade a skill (gold) or a trait (trait points) at the Academy (re-validated on arrival). */
-  | { type: 'learn'; kind: 'skill' | 'trait'; id: string }
+  /**
+   * M3: learn/upgrade a skill (gold) or a trait (trait points) at the Academy (re-validated on arrival).
+   * v16: also a growth property level (gold, TECH_SPEC §5.16).
+   */
+  | { type: 'learn'; kind: LearnKind; id: string }
   /** v11: buy HP potions of a tier at the potion seller (re-validated on arrival, TECH_SPEC §5.14). */
   | { type: 'buyPotion'; consumableId: string }
   /** v12: walk to the Reincarnation Portal and enter it (re-validated on arrival; TECH_SPEC §5.13). */
   | { type: 'reincarnate' }
   /** v15: pay for one session at the Training Ground (re-validated at the door; TECH_SPEC §5.15). */
-  | { type: 'train' };
+  | { type: 'train' }
+  /** v16: buy a mount at the Shop (re-validated on arrival; TECH_SPEC §5.16). */
+  | { type: 'buyMount'; mountId: string };
+
+/** What a hunter studies at the Academy: a skill level (gold), a trait level (trait points), a growth property level (gold). */
+export type LearnKind = 'skill' | 'trait' | 'growth';
+
+/** v16: a rune (TECH_SPEC §5.16): rune type and grade 1..valueByGrade.length. */
+export interface RuneItem {
+  runeId: string;
+  grade: number;
+}
 
 /** Temporary stat modifier from a buff skill. */
 export interface Buff {
@@ -160,6 +175,19 @@ export interface Hunter {
   aura?: Partial<Record<ModStat, number>>;
   /** v15: game ms left of the current Training Ground session (inside the building); absent / 0 = not training. */
   trainMs?: number;
+  /**
+   * v16 (TECH_SPEC §4.1, §5.16). All optional so hand-built hunters keep working; absent = default.
+   * jobId: current job (absent = the first job of `jobTier`, progressionStats.jobOf). jobBranch: branch the player chose
+   * with `hunter.chooseJob` (kept across reincarnation; absent = the AI picks). learnPlan: what the player ordered it to
+   * study next (`hunter.learn`; the AI does not spend that currency on anything else meanwhile). growth: growth property
+   * levels. runes: socket contents (length ≤ runeSlots, null = empty). mount: owned mount id.
+   */
+  jobId?: string;
+  jobBranch?: string;
+  learnPlan?: { kind: LearnKind; id: string };
+  growth?: Record<string, number>;
+  runes?: (RuneItem | null)[];
+  mount?: string;
 }
 
 export interface Monster {
@@ -352,6 +380,15 @@ export interface World {
     queueTimerMs: number;
     autoInviteTimerMs: number;
     tickets: Record<string, number>;
+    /**
+     * v16 (TECH_SPEC §5.16): rune stash (dropped runes not socketed yet, best first), relic levels (relicId → level),
+     * auto-socketing of stash runes into hunters, automatic relic purchases. Optional in the type; absent = empty / off
+     * (autoRune absent = on).
+     */
+    runes?: RuneItem[];
+    relics?: Record<string, number>;
+    autoRune?: boolean;
+    autoRelic?: boolean;
   };
   /** Arrays (not maps) so iteration order is stable and deterministic. */
   hunters: Hunter[];
@@ -438,6 +475,13 @@ export interface World {
     trainGold: number;
     trainExp: number;
     libraryExp: number;
+    /** v16 (TECH_SPEC §5.16); optional, absent = 0. */
+    runesDropped?: number;
+    runesDiscarded?: number;
+    materialsComposed?: number;
+    relicUpgrades?: number;
+    mountsBought?: number;
+    growthBought?: number;
   };
 }
 

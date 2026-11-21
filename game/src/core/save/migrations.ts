@@ -235,6 +235,27 @@ export const MIGRATIONS: Record<number, Migration> = {
     const stats = (w.stats ?? {}) as Record<string, unknown>;
     return { ...w, stats: { trainSessions: 0, trainGold: 0, trainExp: 0, libraryExp: 0, ...stats } };
   },
+  // v15 → v16 (M5 progression depth, TECH_SPEC §4.1, §5.16): every hunter (in town, on a journey, in the portal) gets the
+  // explicit jobId of its tier (the only job of tiers 0..2 before the job tree); Town rune stash empty, no relic, auto-rune
+  // on, auto-relic off; new counters 0. Idempotent: existing fields win.
+  15: (w, config) => {
+    const town = (w.town ?? {}) as Record<string, unknown>;
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    const withJob = (h: Record<string, any>) => {
+      if (typeof h.jobId === 'string') return h;
+      const job = config.index.jobsByClass.get(String(h.classId))?.find((j) => j.tier === (Number(h.jobTier) || 0));
+      return job ? { ...h, jobId: job.id } : h;
+    };
+    const list = (v: unknown) => (Array.isArray(v) ? v : []) as Record<string, any>[];
+    return {
+      ...w,
+      hunters: list(w.hunters).map(withJob),
+      journeys: list(w.journeys).map((j) => ({ ...j, hunters: list(j.hunters).map(withJob) })),
+      portal: list(w.portal).map((p) => (p.hunter ? { ...p, hunter: withJob(p.hunter) } : p)),
+      town: { runes: [], relics: {}, autoRune: true, autoRelic: false, ...town },
+      stats: { runesDropped: 0, runesDiscarded: 0, materialsComposed: 0, relicUpgrades: 0, mountsBought: 0, growthBought: 0, ...stats },
+    };
+  },
 };
 
 /**

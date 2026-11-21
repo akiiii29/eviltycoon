@@ -17,6 +17,7 @@ import type {
 import { GEAR_SLOTS } from './config/types';
 import { addItemMods, addSetMods, clampGearStat, emptyMods, type GearMods, hunterGearMods, pctMul, setCounts } from './gear';
 import { personalityFactor } from './hunterFactory';
+import { growthFlat, jobOf, jobStatMult, mountMul, runeTotal } from './progressionStats';
 import { cacheVerifyEnabled, memoHunterStats } from './statsCache';
 import type { GearInstance, Hunter, Monster, World } from './world';
 
@@ -43,9 +44,9 @@ export function gearMainStat(config: GameConfig, g: GearInstance): MainStat | un
   return config.index.gear.get(g.gearId)?.mainStat;
 }
 
-/** Job tier stat multiplier for the hunter's current job (1 if unknown). */
+/** Job stat multiplier (statMult, before the per-stat statBias) of the hunter's current job (1 if unknown). */
 export function jobMult(config: GameConfig, h: Hunter): number {
-  return config.index.jobsByClass.get(h.classId)?.[h.jobTier]?.statMult ?? 1;
+  return jobOf(config, h)?.statMult ?? 1;
 }
 
 /** Sum of a modifier stat over learned traits (permanent category). */
@@ -114,8 +115,9 @@ export interface StatOptions {
 
 /**
  * Effective stats:
- *   hp/atk/def = (base × jobMult × (1 + reinc × reincStatBonus) + gear) × stackPct(trait%, buff%) [× mood for atk/def]
- *   crit/eva   = base + trait points + buff points (converted to chances by critChance / dodgeChance, which cap)
+ *   hp/atk/def = ((base + growth) × jobMult × statBias × (1 + reinc × reincStatBonus) + gear) × stackPct(trait% + rune%, buff%) [× mood for atk/def]
+ *   crit/eva   = base + job + trait points + rune points + buff points (converted to chances by critChance / dodgeChance, which cap)
+ * (M5 job tree, growth properties and runes: progressionStats.ts, TECH_SPEC §5.16.)
  *   atkSpeed   = max(minAttackInterval, base interval ÷ stackPct(traitSpeed%, buffSpeed%))
  */
 export function hunterStats(config: GameConfig, h: Hunter, opts: StatOptions = {}): EffectiveStats {
@@ -127,11 +129,12 @@ export function hunterStats(config: GameConfig, h: Hunter, opts: StatOptions = {
 function computeHunterStats(config: GameConfig, h: Hunter, steady: boolean): EffectiveStats {
   const f = config.formula;
   const buffs = !steady;
-  const growth = jobMult(config, h) * (1 + h.reincarnation * f.reincStatBonus);
+  const reinc = 1 + h.reincarnation * f.reincStatBonus;
+  const job = jobOf(config, h);
   const s: EffectiveStats = { ...h.stats };
-  s.hp *= growth;
-  s.atk *= growth;
-  s.def *= growth;
+  s.hp = (s.hp + growthFlat(config, h, 'hp')) * (jobStatMult(job, 'hp') * reinc);
+  s.atk = (s.atk + growthFlat(config, h, 'atk')) * (jobStatMult(job, 'atk') * reinc);
+  s.def = (s.def + growthFlat(config, h, 'def')) * (jobStatMult(job, 'def') * reinc);
   let equipped = false;
   for (const slot of GEAR_SLOTS) {
     const g = h.equipment[slot];
@@ -141,18 +144,19 @@ function computeHunterStats(config: GameConfig, h: Hunter, steady: boolean): Eff
     if (stat) s[stat] += gearMainValue(config, g);
   }
   // M5 gear category (option lines + set bonuses, TECH_SPEC §4.2): its own % category, clamped to
-  // [gearPctFloor, gearPctCap] (may be negative), × the trait/buff categories; crit/eva add flat points.
+  // [gearPctFloor, gearPctCap] (may be negative), × the trait/rune/buff categories; crit/eva add flat points.
   const gm = equipped ? hunterGearMods(config, h).mods : null;
   const gp = (stat: ModStat) => (gm && gm[stat] !== 0 ? pctMul(clampGearStat(config, stat, gm[stat])) : 1);
-  const pct = (stat: ModStat) => stackPct(traitTotal(config, h, stat), buffs ? buffTotal(h, stat) : 0, f);
+  const perm = (stat: ModStat) => traitTotal(config, h, stat) + runeTotal(config, h, stat);
+  const pct = (stat: ModStat) => stackPct(perm(stat), buffs ? buffTotal(h, stat) : 0, f);
   const mood = buffs ? moodStatMult(h.needs.mood / f.needMax, f) : 1;
   // Town aura (monument, TECH_SPEC §5.15): its own multiplicative category, steady and live; absent = × 1.
   const aura = (stat: ModStat) => 1 + (h.aura?.[stat] ?? 0) / PERCENT;
   s.hp *= pct('hpPct') * gp('hpPct') * aura('hpPct');
   s.atk *= pct('atkPct') * gp('atkPct') * mood * aura('atkPct');
   s.def *= pct('defPct') * gp('defPct') * mood * aura('defPct');
-  s.crit += traitTotal(config, h, 'crit') + (buffs ? buffTotal(h, 'crit') : 0) + (gm ? gm.crit : 0);
-  s.eva += traitTotal(config, h, 'eva') + (buffs ? buffTotal(h, 'eva') : 0) + (gm ? gm.eva : 0);
+  s.crit += (job?.crit ?? 0) + perm('crit') + (buffs ? buffTotal(h, 'crit') : 0) + (gm ? gm.crit : 0);
+  s.eva += (job?.eva ?? 0) + perm('eva') + (buffs ? buffTotal(h, 'eva') : 0) + (gm ? gm.eva : 0);
   s.atkSpeed = Math.max(f.minAttackInterval, s.atkSpeed / (pct('atkSpeedPct') * gp('atkSpeedPct')));
   return s;
 }
@@ -222,8 +226,9 @@ const slotValueCache = new WeakMap<object, Map<GearSlot, { uid: string; v: numbe
 
 /** Unclamped main-stat total before % modifiers: base × job × reinc + Σ equipped main values of that stat. */
 function rawMainTotal(config: GameConfig, h: Hunter, stat: MainStat): number {
-  const growth = jobMult(config, h) * (1 + h.reincarnation * config.formula.reincStatBonus);
-  let v = h.stats[stat] * growth;
+  // Same base as computeHunterStats: (roll + growth property) × job × reincarnation.
+  const growth = jobStatMult(jobOf(config, h), stat) * (1 + h.reincarnation * config.formula.reincStatBonus);
+  let v = (h.stats[stat] + growthFlat(config, h, stat)) * growth;
   for (const slot of GEAR_SLOTS) {
     const g = h.equipment[slot];
     if (g && gearMainStat(config, g) === stat) v += gearMainValue(config, g);
@@ -719,5 +724,5 @@ export function urgentFrac(f: FormulaParams, need: NeedKey): number {
 }
 
 export function moveSpeed(config: GameConfig, h: Hunter): number {
-  return config.formula.moveSpeed * personalityFactor(config, h, 'moveSpeed');
+  return config.formula.moveSpeed * personalityFactor(config, h, 'moveSpeed') * mountMul(config, h);
 }

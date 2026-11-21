@@ -333,10 +333,10 @@ describe('migration v9 → v11 (→ v12)', () => {
     w.schemaVersion = 9;
     setLevel(w as World, INF, 3);
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 9, configVersion: config.version, savedAt: 0, world: w }), config);
-    expect(WORLD_SCHEMA_VERSION).toBe(15);
+    expect(WORLD_SCHEMA_VERSION).toBe(16);
     expect(r.migratedFrom).toBe(9);
     const m = r.world;
-    expect(m.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
+    expect(m.schemaVersion).toBe(16);
     expect(lineStock(m, lineKey('supply', INF))).toBe(config.index.buildings.get(INF)!.supplyCap![2]);
     expect(lineStock(m, lineKey('supply', REST))).toBe(config.index.buildings.get(REST)!.supplyCap![0]);
     expect(lineStock(m, lineKey('potion', INF))).toBe(0);

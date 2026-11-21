@@ -109,6 +109,17 @@ export interface JobDef {
   unlockLevel: number;
   /** Multiplier on base stats (hp/atk/def) while in this job. */
   statMult: number;
+  /**
+   * M5 job tree (TECH_SPEC §4.1, §8): branch key of a job on a tier with several choices (absent on single-job tiers),
+   * the job it advances from (absent = the only job of tier − 1), reincarnations needed besides unlockLevel (absent = 0),
+   * per-stat multipliers on top of statMult (absent = 1) and flat crit/eva points.
+   */
+  branch?: string;
+  parentId?: string;
+  unlockReincarnation?: number;
+  statBias?: Partial<Record<MainStat, number>>;
+  crit?: number;
+  eva?: number;
 }
 
 export type SkillKind = 'strike' | 'aoe' | 'buff';
@@ -344,6 +355,8 @@ export interface MaterialDef {
   nameKey: string;
   /** Gold the trading post pays per unit. */
   price: number;
+  /** M5 (TECH_SPEC §8 `material.composeTo`): `count` units of this material compose into 1 unit of `materialId`. */
+  composeTo?: { materialId: string; count: number };
 }
 
 export interface GearDef {
@@ -785,6 +798,22 @@ export interface FormulaParams {
   investValueMonument: number;
   investValueFountain: number;
   investValueLibrary: number;
+  /**
+   * M5 progression depth (TECH_SPEC §4.1, §5.16). Runes: sockets per hunter, max runes in the Town rune stash (the lowest
+   * grade beyond it is discarded).
+   */
+  runeSlots: number;
+  runeStashMax: number;
+  /** AI growth property purchase: gold beyond the gear savings ≥ cost × growthReserveMul; score learnGrowthScore × econMul. */
+  growthReserveMul: number;
+  learnGrowthScore: number;
+  /** AI mount purchase: gold beyond the gear savings ≥ price × mountReserveMul; score mountBuyScore × econMul. */
+  mountReserveMul: number;
+  mountBuyScore: number;
+  /** Auto-composition of storage surplus into short requested materials runs every composeIntervalSec (0 = off). */
+  composeIntervalSec: number;
+  /** town.autoRelic: buy the cheapest relic level when Town gold ≥ relicAutoGoldMul × townGoldTarget + its gold cost. */
+  relicAutoGoldMul: number;
   [key: string]: number;
 }
 
@@ -809,6 +838,57 @@ export interface JourneyDef {
   /** Failure: members return with HP at failHpFrac × max and get failRewardFrac of the EXP (no gold/materials/rare). */
   failHpFrac: number;
   failRewardFrac: number;
+}
+
+/** M5: EXP to go from `level` to level + 1, per reincarnation count (exp[r], length maxReincarnation + 1). */
+export interface ExpCurveRow {
+  level: number;
+  exp: number[];
+}
+
+/**
+ * M5 rune (TECH_SPEC §8): dropped by monsters of level ≥ minMonsterLevel with dropChance[g − 1] per kill for grade g,
+ * socketed into a hunter (formula runeSlots), adding valueByGrade[g − 1] of `stat` (trait category, like traits).
+ */
+export interface RuneDef {
+  id: string;
+  nameKey: string;
+  stat: ModStat;
+  minMonsterLevel: number;
+  valueByGrade: number[];
+  dropChance: number[];
+}
+
+export type RelicEffect = 'expPct' | 'runeDropPct' | 'growthCostPct';
+export const RELIC_EFFECTS: readonly RelicEffect[] = ['expPct', 'runeDropPct', 'growthCostPct'];
+
+/** M5 relic: a Town-wide permanent upgrade with levels (value[level − 1]; upgradeCost[i] = price of level i + 1). */
+export interface RelicDef {
+  id: string;
+  nameKey: string;
+  effect: RelicEffect;
+  maxLevel: number;
+  value: number[];
+  upgradeCost: { gold: number; materials: { materialId: string; count: number }[] }[];
+}
+
+/** M5 mount: bought by a hunter at the Shop, multiplies its move speed; kept for life (also across reincarnation). */
+export interface MountDef {
+  id: string;
+  nameKey: string;
+  moveSpeedMul: number;
+  price: number;
+  minLevel: number;
+}
+
+/** M5 growth property: per-hunter flat base-stat upgrade bought with gold at the Academy (cost[level − 1] for that level). */
+export interface GrowthPropertyDef {
+  id: string;
+  nameKey: string;
+  stat: MainStat;
+  valuePerLevel: number;
+  maxLevel: number;
+  cost: number[];
 }
 
 export interface LocEntry {
@@ -851,6 +931,12 @@ export interface GameConfig {
   gearSets: GearSetDef[];
   gearSkills: GearSkillDef[];
   loc: LocEntry[];
+  /** M5 (TECH_SPEC §8): expCurve[level − 1].exp[reincarnation]; runes, relics, mounts (by moveSpeedMul), growth properties. */
+  expCurve: ExpCurveRow[];
+  runes: RuneDef[];
+  relics: RelicDef[];
+  mounts: MountDef[];
+  growthProperties: GrowthPropertyDef[];
   /** Lookups built by the loader. */
   index: {
     classes: Map<string, ClassDef>;
@@ -894,5 +980,9 @@ export interface GameConfig {
     portalNode: string;
     /** Field node ids per zone. */
     zoneNodes: Map<string, string[]>;
+    runes: Map<string, RuneDef>;
+    relics: Map<string, RelicDef>;
+    mounts: Map<string, MountDef>;
+    growthProperties: Map<string, GrowthPropertyDef>;
   };
 }

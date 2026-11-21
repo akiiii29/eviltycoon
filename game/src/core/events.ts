@@ -54,7 +54,7 @@ export type SimEvent =
   | { type: 'reincarnated'; tick: number; hunterId: string; count: number }
   /** The hunter entered the Reincarnation Portal (left world.hunters for `durationSec`; TECH_SPEC §5.13). */
   | { type: 'portalEntered'; tick: number; hunterId: string; durationSec: number }
-  | { type: 'learned'; tick: number; hunterId: string; kind: 'skill' | 'trait'; id: string; level: number; cost: number }
+  | { type: 'learned'; tick: number; hunterId: string; kind: 'skill' | 'trait' | 'growth'; id: string; level: number; cost: number }
   | { type: 'difficultyUnlocked'; tick: number; difficultyId: string }
   | { type: 'difficultyChanged'; tick: number; difficultyId: string }
   /** Bounties (TECH_SPEC §5.9). `reward` was moved from Town gold into escrow. */
@@ -81,7 +81,13 @@ export type SimEvent =
   | { type: 'journeyRecalled'; tick: number; journeyUid: string; journeyId: string; hunterIds: string[] }
   /** Training Ground session started (TECH_SPEC §5.15): EXP granted, gold paid (Town got `townGold` of it), level after. */
   | { type: 'trained'; tick: number; hunterId: string; exp: number; price: number; townGold: number; level: number }
-  | { type: 'commandRejected'; tick: number; command: string; reason: string };
+  | { type: 'commandRejected'; tick: number; command: string; reason: string }
+  /** M5 progression depth (TECH_SPEC §5.16). */
+  | { type: 'runeDropped'; tick: number; hunterId: string; runeId: string; grade: number }
+  | { type: 'runeSocketed'; tick: number; hunterId: string; slot: number; runeId: string; grade: number }
+  | { type: 'mountBought'; tick: number; hunterId: string; mountId: string; price: number }
+  | { type: 'materialsComposed'; tick: number; from: string; to: string; used: number; made: number; auto: boolean }
+  | { type: 'relicUpgraded'; tick: number; relicId: string; level: number; gold: number; auto: boolean };
 
 /** What a finished journey paid out (TECH_SPEC §5.11). */
 export interface JourneyRewards {

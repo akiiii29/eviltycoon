@@ -308,7 +308,9 @@ describe('personality modifiers (TECH_SPEC §5.5)', () => {
   };
 
   it('gain.gold and gain.exp scale kill rewards', () => {
-    const ctx = makeCtx(cfg({ taxRate: 0, taxMinRate: 0, expBase: 1e15 })); // no tax, no level-up: compare raw totals
+    const noLevel = cfg({ taxRate: 0, taxMinRate: 0, expBase: 1e15 });
+    // EXP per level comes from exp_curve (M5 progression): make every level unreachable there too.
+    const ctx = makeCtx({ ...noLevel, expCurve: noLevel.expCurve.map((r) => ({ ...r, exp: r.exp.map(() => 1e15) })) }); // no tax, no level-up: compare raw totals
     const plain = withPers(ctx, ['pers.plain']);
     const lucky = withPers(ctx, ['pers.lucky', 'pers.studious']);
     const jinx = withPers(ctx, ['pers.jinxed', 'pers.dreamy']);
@@ -379,10 +381,10 @@ describe('save v13 → v14', () => {
     for (const v of [12, 13]) {
       w.schemaVersion = v;
       const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: v, configVersion: base.version, savedAt: 0, world: w }), base);
-      expect(WORLD_SCHEMA_VERSION).toBe(15);
+      expect(WORLD_SCHEMA_VERSION).toBe(16);
       expect(r.migratedFrom).toBe(v);
       const m = r.world as World;
-      expect(m.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
+      expect(m.schemaVersion).toBe(16);
       expect(m.town).toMatchObject({ queue: [], queueTimerMs: 0, autoInviteTimerMs: 0, tickets: {} });
       expect(m.stats).toMatchObject({ queueJoined: 0, queueEntered: 0, invites: 0, inviteGold: 0, autoInvites: 0, donatedGold: 0, banished: 0, personalityRerolls: 0 });
       const s2 = new Simulation(base, m);

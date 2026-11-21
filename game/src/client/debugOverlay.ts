@@ -4,6 +4,7 @@ import { GEAR_SLOTS } from '../core/config/types';
 import type { SimEvent } from '../core/events';
 import { hunterStats, needMax } from '../core/formulas';
 import { bestJourneyTeam, journeyPreview, townHunterCount } from '../core/systems/journey';
+import { jobOf } from '../core/progressionStats';
 import type { Simulation } from '../core/simulation';
 import { taxMoodLoss, taxRate } from '../core/systems/tax';
 import { buildBlocker, craftMaxGearLevel, levelCost, shopCapacity, townHallLevel, upgradeBlocker } from '../core/systems/town';
@@ -532,7 +533,7 @@ export class DebugOverlay {
         return `${persMark[d?.kind ?? 'neutral']}${t(config, d?.nameKey ?? p)}`;
       }).join(', ');
       const cls = t(config, config.index.classes.get(h.classId)?.nameKey ?? h.classId);
-      const job = config.index.jobsByClass.get(h.classId)?.[h.jobTier];
+      const job = jobOf(config, h);
       const jobLabel = job ? jobName(config, job.id) : `job ${h.jobTier}`;
       const canReinc = h.level >= config.formula.maxLevel;
       const inField = !!config.index.nodes.get(h.nodeId)?.zoneId;
