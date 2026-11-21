@@ -329,7 +329,8 @@ export function expectedEnhanceCost(config: GameConfig, h: Hunter, slot: GearSlo
   const row = config.enhance[g.enhance]; // next = g.enhance + 1 → enhance[next - 1]
   if (!def || !row) return null;
   const bonus = world ? enhanceBonus(config, world) : 0;
-  return { cost: Math.round(def.basePrice * row.costFrac), successRate: Math.min(1, row.successRate + bonus) };
+  const k = personalityFactor(config, h, 'enhance.success'); // TECH_SPEC §5.5, same rate as economy.doEnhance
+  return { cost: Math.round(def.basePrice * row.costFrac), successRate: Math.min(1, (row.successRate + bonus) * k) };
 }
 
 /**

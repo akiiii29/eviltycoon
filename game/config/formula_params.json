@@ -180,12 +180,17 @@
  "reviveFeeBase": 20,
  "reviveFeePerLevel": 15,
  "reviveBrokeDelayMul": 4,
+ "queueMax": 30,
+ "queueArrivalIntervalSec": 300,
+ "autoInviteMaxHunters": 2,
+ "autoInviteIntervalSec": 3600,
+ "personalityRerollGold": 2000,
  "runeSlots": 2,
  "runeStashMax": 30,
  "growthReserveMul": 3,
  "learnGrowthScore": 1.1,
  "mountReserveMul": 2,
  "mountBuyScore": 1.12,
- "composeIntervalSec": 30,
+ "composeIntervalSec": 60,
  "relicAutoGoldMul": 2
 }

@@ -46,12 +46,15 @@ describe('no hunting offline (EHT)', () => {
     const st = JSON.stringify(w.stats);
     const [tick, timeMs] = [w.tick, w.timeMs];
     const r = sim.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, 8 * HOUR));
-    expect(r).toEqual({ awayMs: 8 * HOUR, journeys: [], reincarnations: [], buildings: [], arrivals: [] });
+    // Town is full: visitors only join the waiting queue (v14, no RNG drawn), which is not news on its own.
+    const queued = config.formula.queueMax - base.town.queue.length; // 8 h is far more than queueMax × queueArrivalIntervalSec
+    expect(r).toEqual({ awayMs: 8 * HOUR, journeys: [], reincarnations: [], buildings: [], arrivals: [], queued });
+    expect(sim.world.town.queue).toHaveLength(config.formula.queueMax);
     expect(offlineHasNews(r)).toBe(false);
     expect(JSON.stringify(sim.world.hunters)).toBe(hunters);
     expect(sim.world.town.gold).toBe(gold);
     expect(sim.world.town.storage).toEqual(storage);
-    expect(JSON.stringify(sim.world.stats)).toBe(st);
+    expect(JSON.stringify({ ...sim.world.stats, queueJoined: 0 })).toBe(JSON.stringify({ ...JSON.parse(st), queueJoined: 0 }));
     expect([sim.world.tick, sim.world.timeMs]).toEqual([tick, timeMs]);
   });
 
@@ -100,6 +103,7 @@ describe('offline wall-clock timers (constructions, arrivals)', () => {
       const w = clone(base);
       w.hunters = w.hunters.slice(0, slots - 3);
       w.town.arrivalTimerMs = 0;
+      w.town.queue = []; // v14: queued hunters would take the free slots first (tests/hunters-m5.test.ts)
       return new Simulation(config, w);
     };
     const a = make();

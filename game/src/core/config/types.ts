@@ -26,7 +26,39 @@ export interface PersonalityDef {
   id: string;
   nameKey: string;
   weight: number;
+  /** M5 (TECH_SPEC §5.5): positive / negative / neutral for the player (display only; absent = neutral). */
+  kind?: 'positive' | 'negative' | 'neutral';
   modifiers: PersonalityModifier[];
+}
+
+/**
+ * Personality modifier targets read by the sim (TECH_SPEC §5.5). `<need>` = hp/satiety/mood/stamina.
+ * goal.hunt, goal.service.<need>: utility × factor; spendRatio: shop/enhance/craft budget × factor;
+ * decay.<need>: need loss × factor; urgent.<need>: urgent threshold × factor (urgent.hp = retreat line);
+ * moveSpeed: × factor; M5: gain.gold (kill gold before tax), gain.exp (kill EXP), enhance.success (success rate).
+ */
+export const PERSONALITY_TARGETS: readonly string[] = [
+  'goal.hunt', 'spendRatio', 'moveSpeed',
+  ...(['hp', 'satiety', 'mood', 'stamina'] as const).flatMap((n) => [`goal.service.${n}`, `decay.${n}`, `urgent.${n}`]),
+  'gain.gold', 'gain.exp', 'enhance.success',
+];
+
+export type HunterTierId = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
+export const HUNTER_TIERS: readonly HunterTierId[] = ['normal', 'rare', 'superior', 'heroic', 'legendary'];
+
+/**
+ * M5 invitation ticket (config/invitation.json, TECH_SPEC §4.1): `town.invite` rolls a tier with `tierChances` (relative
+ * weights), then stat grades conditioned on that tier. Paid with one ticket of this id (town.tickets) when the Town has
+ * one, otherwise `gold` Town gold (absent = ticket only). `townHallLevel`: Town Hall level needed to buy it with gold.
+ * `autoInvite`: the row the free auto-invite (few hunters left) uses (at most one row).
+ */
+export interface InvitationDef {
+  id: string;
+  nameKey: string;
+  tierChances: Record<HunterTierId, number>;
+  gold?: number;
+  townHallLevel?: number;
+  autoInvite?: boolean;
 }
 
 export interface StatGradeDef {
@@ -631,6 +663,16 @@ export interface FormulaParams {
   reviveFeePerLevel: number;
   reviveBrokeDelayMul: number;
   /**
+   * M5 waiting queue and auto-invite (TECH_SPEC §4.1, systems/arrivals): at most queueMax hunters wait while Town slots are
+   * full, one joins every queueArrivalIntervalSec; when townHunterCount ≤ autoInviteMaxHunters a free hunter of the
+   * `autoInvite` invitation arrives every autoInviteIntervalSec. personalityRerollGold: Town gold per `hunter.rerollPersonality`.
+   */
+  queueMax: number;
+  queueArrivalIntervalSec: number;
+  autoInviteMaxHunters: number;
+  autoInviteIntervalSec: number;
+  personalityRerollGold: number;
+  /**
    * M5 progression depth (TECH_SPEC §4.1, §5.15). Runes: sockets per hunter, max runes in the Town rune stash (the lowest
    * grade beyond it is discarded).
    */
@@ -735,6 +777,8 @@ export interface GameConfig {
   classes: ClassDef[];
   personalities: PersonalityDef[];
   statGrades: StatGradeDef[];
+  /** M5 invitations (config/invitation.json), config order. */
+  invitations: InvitationDef[];
   nodes: MapNode[];
   edges: MapEdge[];
   buildings: BuildingDef[];
@@ -790,6 +834,9 @@ export interface GameConfig {
     difficulties: Map<string, DifficultyDef>;
     journeys: Map<string, JourneyDef>;
     consumables: Map<string, ConsumableDef>;
+    invitations: Map<string, InvitationDef>;
+    /** Id of the invitation with autoInvite (TECH_SPEC §4.1), or null (auto-invite rolls a plain visitor). */
+    autoInvitation: string | null;
     /** The building that sells potions (first building with potionCap), or null. */
     potionSeller: string | null;
     /** The single town square node (spawn / revive / return point). */

@@ -1,3 +1,4 @@
+import { personalityFactor } from '../hunterFactory';
 import type { GameConfig, GearSlot } from '../config/types';
 import { hunterStats } from '../formulas';
 import type { System, SystemContext } from '../system';
@@ -124,7 +125,8 @@ function doEnhance(ctx: SystemContext, h: Hunter, slot: GearSlot): void {
   world.town.gold += feeTownCut(config, cost, world); // the rest leaves the economy (gold sink)
   world.stats.enhanceTries += 1;
   // Forge level adds enhanceBonus to the success rate (TECH_SPEC §5.12); one RNG draw as before.
-  const success = ctx.rng.chance(Math.min(1, row.successRate + enhanceBonus(config, world)));
+  // Personality enhance.success scales the rate (TECH_SPEC §5.5; factor 1 = unchanged).
+  const success = ctx.rng.chance(Math.min(1, (row.successRate + enhanceBonus(config, world)) * personalityFactor(config, h, 'enhance.success')));
   if (success) {
     g.enhance += 1;
     world.stats.enhanceSuccess += 1;

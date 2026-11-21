@@ -519,7 +519,8 @@ describe('integration', () => {
     for (const j of raw.job) if (j.tier > 0) j.unlockLevel = [0, 3, 6, 9, 11][j.tier];
     for (const r of raw.rune) { r.minMonsterLevel = 1; r.dropChance = r.dropChance.map((c: number) => c * 200); }
     for (const m of raw.mount) { m.minLevel = 2; m.price = 50; }
-    for (const g of raw.growth_property) g.cost = g.cost.map(() => 60);
+    for (const g of raw.growth_property) g.cost = g.cost.map(() => 20);
+    raw.formula_params.growthReserveMul = 1;
     const cfg = loadConfig(raw as never);
     const sim = new Simulation(cfg, createWorld(cfg, 5));
     for (let i = 0; i < cfg.formula.hunterSlots; i++) sim.enqueue({ type: 'debug.spawnHunter' });

@@ -8,8 +8,9 @@ export type { GearSlot, NeedKey } from './config/types';
  * v8 = Town buildings (TECH_SPEC §5.12); v9 = journeys (TECH_SPEC §5.11);
  * v10 = gear tiers per difficulty, Town gear storage (reclaim), dismantle, auto difficulty (TECH_SPEC §5.8);
  * v11 = service supplies, potions, revive fee (TECH_SPEC §5.14); v12 = reincarnation portal (`portal`, TECH_SPEC §5.13);
- * v13–v15 reserved for parallel M5 work (placeholders in save/migrations.ts); v16 = M5 progression depth (job tree, learn
- * plans, runes, relics, mounts, growth properties; TECH_SPEC §5.15).
+ * v13 = reserved (another M5 branch; MIGRATIONS[12] is a pass-through here); v14 = waiting queue, invitations, auto-invite,
+ * donate/banish stats (TECH_SPEC §4.1); v15 = reserved (special buildings branch; pass-through here);
+ * v16 = M5 progression depth (job tree, learn plans, runes, relics, mounts, growth properties; TECH_SPEC §5.15).
  */
 export const WORLD_SCHEMA_VERSION = 16;
 
@@ -285,6 +286,19 @@ export interface PortalStay {
   enteredAtMs: number;
 }
 
+/**
+ * v14: a hunter waiting to enter Town (EHT "waiting slot", systems/arrivals, TECH_SPEC §4.1). Lightweight on purpose: the
+ * hunter is rolled (sim RNG) only when it enters, so a full town draws no RNG for its queue. `tier` = tier already rolled
+ * by an invitation (its grades are rolled for that tier on entry); absent = a plain visitor (normal grade roll).
+ */
+export interface QueueEntry {
+  uid: string;
+  source: 'visitor' | 'invite' | 'auto';
+  invitationId?: string;
+  tier?: HunterTier;
+  queuedAtMs: number;
+}
+
 export interface World {
   schemaVersion: number;
   configVersion: string;
@@ -336,6 +350,15 @@ export interface World {
     autoDifficulty: boolean;
     /** v11: stock lines by key `supply:<buildingId>` / `potion:<buildingId>` (TECH_SPEC §5.14). */
     supply: Record<string, SupplyLine>;
+    /**
+     * v14 (TECH_SPEC §4.1): hunters waiting for a free slot, front first (≤ queueMax); `queueTimerMs` counts toward the next
+     * visitor joining while Town is full; `autoInviteTimerMs` toward the free auto-invite while Town has ≤ autoInviteMaxHunters;
+     * `tickets` = invitation tickets owned, invitationId → count (`town.invite` uses one before paying gold).
+     */
+    queue: QueueEntry[];
+    queueTimerMs: number;
+    autoInviteTimerMs: number;
+    tickets: Record<string, number>;
     /**
      * v16 (TECH_SPEC §5.15): rune stash (dropped runes not socketed yet, best first), relic levels (relicId → level),
      * auto-socketing of stash runes into hunters, automatic relic purchases. Optional in the type; absent = empty / off
@@ -409,6 +432,18 @@ export interface World {
     potionGold: number;
     reviveFees: number;
     reviveBroke: number;
+    /**
+     * v14 (TECH_SPEC §4.1): visitors/invitees that joined the queue / entered from it; invitations used (gold paid for
+     * them); free auto-invites; Town gold donated to hunters; hunters banished; personality rerolls.
+     */
+    queueJoined: number;
+    queueEntered: number;
+    invites: number;
+    inviteGold: number;
+    autoInvites: number;
+    donatedGold: number;
+    banished: number;
+    personalityRerolls: number;
     /** v16 (TECH_SPEC §5.15); optional, absent = 0. */
     runesDropped?: number;
     runesDiscarded?: number;

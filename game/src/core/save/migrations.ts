@@ -212,10 +212,12 @@ export const MIGRATIONS: Record<number, Migration> = {
   },
   // v11 → v12 (Reincarnation Portal, TECH_SPEC §5.13): nobody inside the portal (keep the array if already there).
   11: (w) => ({ ...w, portal: Array.isArray(w.portal) ? w.portal : [] }),
-  // v12 → v13, v13 → v14, v14 → v15: reserved for parallel M5 work (gear slots/options, hunters, special buildings); the
-  // lead renumbers when merging. Pass-through here so v12 saves still load into v16.
+  // v12 → v13: reserved for another M5 branch (the lead renumbers on merge); pass-through here.
   12: (w) => w,
-  13: (w) => w,
+  // v13 → v14 (waiting queue, invitations, auto-invite, donate/banish; TECH_SPEC §4.1): empty queue and timers, no tickets,
+  // stats 0. Only fills missing fields, so it is safe whatever v13 ends up being.
+  13: (w) => fillMissingHunterQueue(w),
+  // v14 → v15: reserved for the special-buildings branch (the lead renumbers on merge); pass-through here.
   14: (w) => w,
   // v15 → v16 (M5 progression depth, TECH_SPEC §4.1, §5.15): every hunter (in town, on a journey, in the portal) gets the
   // explicit jobId of its tier (the only job of tiers 0..2 before the job tree); Town rune stash empty, no relic, auto-rune
@@ -239,6 +241,26 @@ export const MIGRATIONS: Record<number, Migration> = {
     };
   },
 };
+
+/** v13 → v14 fields when absent (idempotent; existing fields win). */
+export function fillMissingHunterQueue(w: Record<string, unknown>): Record<string, unknown> {
+  const town = (w.town ?? {}) as Record<string, any>;
+  const stats = (w.stats ?? {}) as Record<string, unknown>;
+  return {
+    ...w,
+    town: {
+      ...town,
+      queue: Array.isArray(town.queue) ? town.queue : [],
+      queueTimerMs: Number.isFinite(town.queueTimerMs) ? town.queueTimerMs : 0,
+      autoInviteTimerMs: Number.isFinite(town.autoInviteTimerMs) ? town.autoInviteTimerMs : 0,
+      tickets: town.tickets && typeof town.tickets === 'object' && !Array.isArray(town.tickets) ? town.tickets : {},
+    },
+    stats: {
+      queueJoined: 0, queueEntered: 0, invites: 0, inviteGold: 0, autoInvites: 0, donatedGold: 0, banished: 0, personalityRerolls: 0,
+      ...stats,
+    },
+  };
+}
 
 /**
  * Apply the v10 → v11 supply fields when absent (idempotent; existing fields win). Used at load for v12 saves made by a
