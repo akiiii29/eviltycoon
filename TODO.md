@@ -26,6 +26,9 @@ Số liệu hiện tại (headless 12 giờ `tools/headless.ts 720 <seed> 120`, 
   - 🟡 Kho đồ 12–19/24 món lúc 16 giờ (đồ L80 chưa ai đeo được); món cũ nhất bị rã khi đầy. Chưa đo độ khó Khó trở lên (cần > 16 giờ, R2). Phí cường hóa không nhân theo tier. Đồ craft chất lượng thấp chưa bị rã ngay khi chế. Bản Epic/Mythic +6 tier gốc L80 (tới 343) vẫn hơn Rare +0 tier Thường (336) — vòng tái sinh thứ hai chưa đo (> 16 giờ). `autoCraftReserve` chưa tính giá tinh chất (Dày Vò 1.000–4.800 > NL thường). Kho đồ bày bán cho hunter có ≥ `craftAffordFrac` giá nhưng giá sàn là 50%: món có thể bị rã vì người mua không đủ tiền (chưa đo tỷ lệ).
 - 🟡 Tỷ lệ bỏ đồ craft dao động theo seed: 7–17% (seed 2–3 bỏ 31–32 món). Nay món ế được rã (trả 50% NL), không còn mất trắng.
 - ⚪ UI để người chơi đặt yêu cầu vật liệu (hiện chỉ có command `town.requestMaterial`).
+- 🟡 **Vật tư dịch vụ, thuốc HP, phí hồi sinh** (TECH_SPEC §5.14, world v11): dịch vụ tiêu NL kho (yêu cầu NL thiết yếu theo vùng hunter săn, Trạm Thu Mua mua trước), hết hàng thì hunter nghỉ hồi miễn phí; thuốc HP bán ở Infirmary từ Town Hall 6, uống trước mọi luật rút lui; phí hồi sinh theo level (Town nhận phần `feeTownCut`, còn lại bị đốt). Số đo 16 giờ seed 1–5: hết hàng 0 phút, kho 12 giờ 67–141 → 119–193 NL, hunter chi 290–317k cho thuốc, nhịp Lv20 60–73 phút / Lv50 4,02–4,70 giờ / tái sinh 10,25–11,12 giờ, chết 0.
+  - 🟡 Vàng hunter **không** thấp hơn theo giờ: thuốc làm tiến trình nhanh hơn nên thu nhập cũng tăng; trong một kiếp vàng tb đi ngang hơn (8 → 16 giờ 6,5–9,0k → 6,5–13,1k) nhưng cuối game vẫn chủ yếu là tiền để dành cường hóa (mục trên). Muốn chỗ tiêu mạnh hơn: giá thuốc cao hơn (đang ~3k/hunter/giờ, phần lớn vào Town khi Town dưới mục tiêu → vàng Town 16 giờ 34–74k), hoặc giảm `feeTownShare` riêng cho thuốc.
+  - ⚪ Phí hồi sinh chưa đo được trong mô phỏng (0 chết / 16 giờ); thuốc satiety/stamina, Alchemist riêng, UI kho vật tư.
 
 ## 2. AI hunter
 
@@ -99,7 +102,7 @@ Số liệu hiện tại (headless 12 giờ `tools/headless.ts 720 <seed> 120`, 
 - ⚪ Invitation (vé gọi hunter theo tier, GDD §4.1), Donate / Banish.
 - ⚪ Đủ 9 bậc nghề (config hiện 3) và 7 slot đồ (GDD §6, hiện 3).
 - ⚪ Upgrade đồ lên tier (Dark Stone), option/set/skill trang bị.
-- ⚪ Potion/consumable, Alchemist, goal BuyPotion.
+- 🟡 Potion/consumable, goal BuyPotion — đã làm thuốc HP ở Infirmary (TECH_SPEC §5.14, xem §1); còn: Alchemist riêng, thuốc satiety/stamina/buff, UI.
 - ⚪ Training Ground (goal Train), Bank, Courage Headstone, Fountain of Life, Library of Wisdom.
 - ⚪ Rune, relic, thú cưỡi, growth property; ghép nguyên liệu (`composeTo`); `exp_curve` theo lần tái sinh.
 - ✅ ~~Bật Mood ảnh hưởng chỉ số~~ (xem §3).
