@@ -16,6 +16,9 @@
  * Env HEADLESS_JOURNEY="journeyId@minute[xN],..." sends the journeyTeamMax strongest Town hunters (bestJourneyTeam) on
  * that journey from that game minute on, N times in a row (retried each minute until accepted); journey events and
  * active journeys are printed (TECH_SPEC §5.11). Without it no journey is started (output as before journeys existed).
+ * M5 hunter systems (TECH_SPEC §4.1): the end prints the waiting queue (size/max, front entries, timers), invitation
+ * tickets and every invite / queue / banish / donate event (`hunters` log); each hunter line shows tier and personalities.
+ * Env HEADLESS_INVITE="invitationId@minute,..." uses that invitation (town.invite) at that game minute.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -95,8 +98,16 @@ let prevStorage: Record<string, number> = { ...sim.world.town.storage };
 let townGold0 = sim.world.town.gold;
 let townGoldMin = Infinity;
 const ticks = minutes * 600;
+/** HEADLESS_INVITE plan (TECH_SPEC §4.1): invitation id → game minute. */
+const invitePlan = (process.env.HEADLESS_INVITE ?? '').split(',').filter(Boolean).map((p) => {
+  const m = /^([^@]+)@(\d+)$/.exec(p.trim());
+  if (!m || !config.index.invitations.has(m[1]!)) throw new Error(`HEADLESS_INVITE: bad entry "${p}"`);
+  return { id: m[1]!, at: Number(m[2]) };
+});
+const hunterLog: string[] = [];
 for (let t = 0; t < ticks; t++) {
   if (t % 600 === 0) {
+    for (const p of invitePlan) if (p.at === t / 600) sim.enqueue({ type: 'town.invite', invitationId: p.id });
     for (const p of plans) {
       if (p.left <= 0 || p.waiting || t / 600 < p.at) continue;
       const def = config.index.journeys.get(p.id)!;
@@ -113,6 +124,12 @@ for (let t = 0; t < ticks; t++) {
   if (t % 600 === 0) townGoldMin = Math.min(townGoldMin, sim.world.town.gold); // sampled once per game-minute
   for (const e of sim.drainEvents()) {
     counts[e.type] = (counts[e.type] ?? 0) + 1;
+    if (e.type === 'hunterInvited') hunterLog.push(`${fmtMin(e.tick)} invite ${e.invitationId} ${e.tier} paid ${e.paid}${e.gold ? ` ${e.gold}g` : ''} → ${e.hunterId ?? `queue ${e.queueUid}`}`);
+    else if (e.type === 'hunterQueued' && e.source !== 'visitor') hunterLog.push(`${fmtMin(e.tick)} queued ${e.queueUid} ${e.source} pos ${e.position}`);
+    else if (e.type === 'hunterArrived' && e.fromQueue) hunterLog.push(`${fmtMin(e.tick)} ${e.hunterId} entered from queue (${e.source})`);
+    else if (e.type === 'hunterBanished') hunterLog.push(`${fmtMin(e.tick)} banished ${e.hunterId} items ${e.itemUids.length} gold ${e.gold}`);
+    else if (e.type === 'hunterDonated') hunterLog.push(`${fmtMin(e.tick)} donated ${e.gold}g → ${e.hunterId}`);
+    else if (e.type === 'commandRejected' && (e.command === 'town.invite' || e.command.startsWith('hunter.'))) hunterLog.push(`${fmtMin(e.tick)} rejected ${e.command}: ${e.reason}`);
     if (e.type === 'journeyStarted' || (e.type === 'commandRejected' && e.command === 'journey.start')) {
       const p = plans.find((x) => x.waiting && (e.type === 'commandRejected' || x.id === e.journeyId));
       if (p) { p.waiting = false; if (e.type === 'journeyStarted') p.left -= 1; }
@@ -210,8 +227,15 @@ console.log(`buildings [${levels(w)}] autoInvest ${w.town.autoInvest} plan ${w.t
 for (const s of w.town.buildings ?? []) {
   if (s.upgrade) console.log(`  building ${s.id} ${s.buildingId} Lv${s.level} → ${s.upgrade.toLevel} ${Math.ceil(s.upgrade.remainingMs / 1000)}s left`);
 }
+{
+  const q = w.town.queue ?? [];
+  const f = config.formula;
+  console.log(`queue ${q.length}/${f.queueMax} front [${q.slice(0, 5).map((e) => `${e.uid}:${e.source}${e.tier ? '/' + e.tier : ''}`).join(', ')}] queueTimer ${Math.round((w.town.queueTimerMs ?? 0) / 1000)}s autoInviteTimer ${Math.round((w.town.autoInviteTimerMs ?? 0) / 1000)}s tickets ${JSON.stringify(w.town.tickets ?? {})}`);
+  console.log(`invites ${w.stats.invites ?? 0} (gold ${w.stats.inviteGold ?? 0}) auto ${w.stats.autoInvites ?? 0} queue joined ${w.stats.queueJoined ?? 0} entered ${w.stats.queueEntered ?? 0} banished ${w.stats.banished ?? 0} donated ${w.stats.donatedGold ?? 0}g`);
+  if (hunterLog.length) { console.log('hunters'); for (const l of hunterLog) console.log('  ' + l); }
+}
 for (const h of w.hunters) {
   const n = h.needs;
   const eq = Object.entries(h.equipment).map(([s, g]) => `${s}:${g!.gearId.split('.').pop()}/${g!.qualityId.slice(2)}+${g!.enhance}${g!.difficultyId && g!.difficultyId !== config.difficulties[0]!.id ? '@' + g!.difficultyId.replace(/^diff\./, '') : ''}`).join(' ');
-  console.log(`${h.id} Lv${h.level} gold ${h.gold} kills ${h.kills} [${eq}] potions ${JSON.stringify(h.potions ?? {})} goal ${h.ai.goal ? JSON.stringify(h.ai.goal) : '-'} ${h.ai.phase} hp ${(n.hp / h.stats.hp * 100).toFixed(0)}% sat ${n.satiety.toFixed(0)} mood ${n.mood.toFixed(0)} sta ${n.stamina.toFixed(0)}`);
+  console.log(`${h.id} ${h.tier} [${h.personalities.map((p) => p.replace(/^pers\./, '')).join(',')}] Lv${h.level} gold ${h.gold} kills ${h.kills} [${eq}] potions ${JSON.stringify(h.potions ?? {})} goal ${h.ai.goal ? JSON.stringify(h.ai.goal) : '-'} ${h.ai.phase} hp ${(n.hp / h.stats.hp * 100).toFixed(0)}% sat ${n.satiety.toFixed(0)} mood ${n.mood.toFixed(0)} sta ${n.stamina.toFixed(0)}`);
 }

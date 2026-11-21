@@ -203,7 +203,7 @@ describe('portal save/load and offline', () => {
     w.schemaVersion = 11;
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 11, configVersion: config.version, savedAt: 0, world: w }), config);
     expect(r.migratedFrom).toBe(11);
-    expect(r.world.schemaVersion).toBe(12);
+    expect(r.world.schemaVersion).toBe(14);
     expect(r.world.portal).toEqual([]);
   });
 });

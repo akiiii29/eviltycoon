@@ -1,6 +1,20 @@
 /** One-way events from simulation to UI/render (VFX, sound, toasts). Never read back by the sim. */
 export type SimEvent =
-  | { type: 'hunterArrived'; tick: number; hunterId: string }
+  /** v14: `source` visitor / invite / auto (auto-invite); `fromQueue` = came out of the waiting queue (TECH_SPEC §4.1). */
+  | { type: 'hunterArrived'; tick: number; hunterId: string; source?: 'visitor' | 'invite' | 'auto'; fromQueue?: boolean }
+  /** v14: a hunter joined the waiting queue (Town full); `position` 1 = front. `tier` set for invitations. */
+  | { type: 'hunterQueued'; tick: number; queueUid: string; source: 'visitor' | 'invite' | 'auto'; tier?: string; position: number }
+  /**
+   * v14 `town.invite` / auto-invite: rolled `tier`; paid with a ticket, `gold` Town gold, or free (auto-invite). The hunter
+   * entered (`hunterId`) or waits at the queue front (`queueUid`).
+   */
+  | { type: 'hunterInvited'; tick: number; invitationId: string; tier: string; paid: 'ticket' | 'gold' | 'free'; gold: number; hunterId?: string; queueUid?: string }
+  /** v14 `hunter.donate`: Town gold moved to the hunter. */
+  | { type: 'hunterDonated'; tick: number; hunterId: string; gold: number }
+  /** v14 `hunter.banish`: the hunter left for good (gear → Town gear storage, see gearReclaimed; gold/bag leave with it). */
+  | { type: 'hunterBanished'; tick: number; hunterId: string; itemUids: string[]; gold: number }
+  /** v14 `hunter.rerollPersonality`: new personalities for `gold` Town gold. */
+  | { type: 'personalityRerolled'; tick: number; hunterId: string; from: string[]; to: string[]; gold: number }
   | { type: 'hunterLeft'; tick: number; hunterId: string }
   | { type: 'needLow'; tick: number; hunterId: string; need: string; value: number }
   | { type: 'goalChanged'; tick: number; hunterId: string; goal: string; reason: string }

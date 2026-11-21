@@ -813,5 +813,90 @@
   "key": "pot.hp.7.name",
   "vi": "Thuốc hồi máu hư không",
   "en": "Void healing draught"
+ },
+ {
+  "key": "inv.common.name",
+  "vi": "Thư mời thường",
+  "en": "Common invitation"
+ },
+ {
+  "key": "inv.silver.name",
+  "vi": "Thư mời bạc",
+  "en": "Silver invitation"
+ },
+ {
+  "key": "inv.gold.name",
+  "vi": "Thư mời vàng",
+  "en": "Gold invitation"
+ },
+ {
+  "key": "inv.royal.name",
+  "vi": "Chiếu thư hoàng gia",
+  "en": "Royal summons"
+ },
+ {
+  "key": "pers.lucky.name",
+  "vi": "Tay hên",
+  "en": "Lucky"
+ },
+ {
+  "key": "pers.studious.name",
+  "vi": "Ham học",
+  "en": "Studious"
+ },
+ {
+  "key": "pers.steady.name",
+  "vi": "Tay vững",
+  "en": "Steady hands"
+ },
+ {
+  "key": "pers.lighteater.name",
+  "vi": "Ăn ít",
+  "en": "Light eater"
+ },
+ {
+  "key": "pers.tireless.name",
+  "vi": "Bền bỉ",
+  "en": "Tireless"
+ },
+ {
+  "key": "pers.eager.name",
+  "vi": "Hăng hái",
+  "en": "Eager"
+ },
+ {
+  "key": "pers.skittish.name",
+  "vi": "Hay hoảng",
+  "en": "Skittish"
+ },
+ {
+  "key": "pers.jinxed.name",
+  "vi": "Xui xẻo",
+  "en": "Jinxed"
+ },
+ {
+  "key": "pers.dreamy.name",
+  "vi": "Lơ đãng",
+  "en": "Dreamy"
+ },
+ {
+  "key": "pers.clumsy.name",
+  "vi": "Vụng về",
+  "en": "Clumsy"
+ },
+ {
+  "key": "pers.gloomy.name",
+  "vi": "U sầu",
+  "en": "Gloomy"
+ },
+ {
+  "key": "pers.lavish.name",
+  "vi": "Hào phóng",
+  "en": "Lavish"
+ },
+ {
+  "key": "pers.homebody.name",
+  "vi": "Ham nhà",
+  "en": "Homebody"
  }
 ]
