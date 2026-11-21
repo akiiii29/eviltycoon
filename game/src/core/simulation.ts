@@ -22,7 +22,7 @@ import { initialBuildings, townSystem } from './systems/town';
 import { WORLD_SCHEMA_VERSION, type World } from './world';
 
 export const TICK_MS = 100; // 10 ticks per second (TECH_SPEC §3.2)
-/** Avoid a spiral of death after a long frame or tab switch; offline progress handles longer gaps. */
+/** Avoid a spiral of death after a long frame or tab switch; longer gaps only advance wall-clock timers (TECH_SPEC §9). */
 const MAX_TICKS_PER_ADVANCE = 600;
 
 /**
@@ -80,6 +80,7 @@ export function createWorld(config: GameConfig, seed: number): World {
     hunters: [],
     monsters: [],
     journeys: [],
+    portal: [],
     zones: {},
     stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, gearDismantled: 0, gearReclaimed: 0, gearRelisted: 0 },
   };

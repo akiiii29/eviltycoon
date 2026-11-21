@@ -311,7 +311,7 @@ describe('migration v9 → v10', () => {
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 9, configVersion: base.version, savedAt: 0, world: w }), base);
     expect(r.migratedFrom).toBe(9);
     expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
-    expect(WORLD_SCHEMA_VERSION).toBe(10);
+    expect(WORLD_SCHEMA_VERSION).toBe(12);
     expect(r.world.hunters[0]!.equipment.weapon).toEqual({ uid: 'e1', gearId: 'gear.w.club', qualityId: 'q.rare', enhance: 1, difficultyId: EASY });
     expect(r.world.town.shop[0]!.difficultyId).toBe(EASY);
     expect(r.world.town.crafting['bld.smithy']).toEqual({ gearId: 'gear.w.club', remainingMs: 500, difficultyId: EASY });

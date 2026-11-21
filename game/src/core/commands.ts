@@ -5,7 +5,7 @@ import { spawnHunter } from './systems/arrivals';
 import { setGoal } from './systems/ai';
 import { dismantleStoredGear, listStoredGear, reclaimHunterGear, startCraft } from './systems/crafting';
 import { servicePrice } from './systems/services';
-import { reincarnate } from './systems/progression';
+import { portalStayOf, reincarnateBlocker, sendToPortal } from './systems/progression';
 import { cancelBounty, postBounty, validateBounty } from './systems/bounty';
 import { buildingLevel, cancelUpgrade, startBuild, startUpgrade } from './systems/town';
 import { setTaxRate, validateTaxRate } from './systems/tax';
@@ -35,7 +35,7 @@ export type Command =
   | { type: 'town.setAutoDifficulty'; on: boolean }
   /** GDD §6: toggle automatic recipe choice for idle craft buildings. */
   | { type: 'town.setAutoCraft'; on: boolean }
-  /** GDD §8: manually reincarnate a max-level hunter. */
+  /** GDD §8: send a max-level hunter in Town to the Reincarnation Portal (reincarnates after reincarnationSec; TECH_SPEC §5.13). */
   | { type: 'hunter.reincarnate'; hunterId: string }
   /** GDD §8: switch to an unlocked difficulty (affects new monster spawns only; turns town.autoDifficulty off). */
   | { type: 'town.setDifficulty'; difficultyId: string }
@@ -75,8 +75,16 @@ export type Command =
 
 type Handler<C extends Command> = (ctx: SystemContext, cmd: C) => string | null;
 
-function controllable(ctx: SystemContext, hunterId: string): string | null {
+/** Away (journey / Reincarnation Portal): not in world.hunters, so no command can reach it. */
+function awayReason(ctx: SystemContext, hunterId: string): string | null {
   if (journeyOfHunter(ctx.world, hunterId)) return 'hunter is on a journey';
+  if (portalStayOf(ctx.world, hunterId)) return 'hunter is in the reincarnation portal';
+  return null;
+}
+
+function controllable(ctx: SystemContext, hunterId: string): string | null {
+  const away = awayReason(ctx, hunterId);
+  if (away) return away;
   const h = findHunter(ctx.world, hunterId);
   if (!h) return 'unknown hunter';
   if (!isAlive(h)) return 'hunter is dead';
@@ -111,7 +119,8 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     return null;
   },
   'debug.removeHunter': (ctx, cmd) => {
-    if (journeyOfHunter(ctx.world, cmd.hunterId)) return 'hunter is on a journey';
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
     const i = ctx.world.hunters.findIndex((h) => h.id === cmd.hunterId);
     if (i < 0) return 'unknown hunter';
     ctx.world.hunters.splice(i, 1);
@@ -120,7 +129,8 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     return null;
   },
   'debug.restoreNeeds': (ctx, cmd) => {
-    if (journeyOfHunter(ctx.world, cmd.hunterId)) return 'hunter is on a journey';
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
     const h = findHunter(ctx.world, cmd.hunterId);
     if (!h) return 'unknown hunter';
     if (!isAlive(h)) return 'hunter is dead';
@@ -153,10 +163,13 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     const bad = controllable(ctx, cmd.hunterId);
     if (bad) return bad;
     const h = findHunter(ctx.world, cmd.hunterId)!;
-    // Same rule as auto-reincarnation (progressionSystem): only in Town, so a level-1 hunter never wakes up in a
-    // max-level zone. Order it home with Move first.
+    // Same rule as auto-reincarnation (progressionSystem): only from Town. Order it home with Move first.
     if (ctx.config.index.nodes.get(h.nodeId)?.zoneId) return 'hunter is not in town';
-    return reincarnate(ctx, h);
+    const why = reincarnateBlocker(ctx.config, h);
+    if (why) return why;
+    if (h.ai.goal?.type === 'reincarnate') return null; // already on its way
+    // Walk to the portal; the reincarnation itself happens there (progression.enterPortal / advancePortal).
+    return sendToPortal(ctx, h, 'order') ? null : 'no path';
   },
   'town.setDifficulty': (ctx, cmd) => {
     if (!ctx.config.index.difficulties.has(cmd.difficultyId)) return 'unknown difficulty';

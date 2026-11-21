@@ -184,6 +184,10 @@ export const MIGRATIONS: Record<number, Migration> = {
       stats: { gearDismantled: 0, gearReclaimed: 0, gearRelisted: 0, ...stats },
     };
   },
+  // v10 → v11: PLACEHOLDER (pass-through) for a migration another branch adds; the real one replaces it on merge.
+  10: (w) => w,
+  // v11 → v12 (Reincarnation Portal, TECH_SPEC §5.13): nobody inside the portal (keep the array if already there).
+  11: (w) => ({ ...w, portal: Array.isArray(w.portal) ? w.portal : [] }),
 };
 
 /** Apply the v7 → v8 building fields when absent (idempotent; existing fields win). Used at load for v9 saves made before buildings. */

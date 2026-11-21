@@ -32,6 +32,8 @@ export type SimEvent =
   | { type: 'skillCast'; tick: number; hunterId: string; skillId: string; targets: number }
   | { type: 'jobChanged'; tick: number; hunterId: string; jobId: string; tier: number }
   | { type: 'reincarnated'; tick: number; hunterId: string; count: number }
+  /** The hunter entered the Reincarnation Portal (left world.hunters for `durationSec`; TECH_SPEC §5.13). */
+  | { type: 'portalEntered'; tick: number; hunterId: string; durationSec: number }
   | { type: 'learned'; tick: number; hunterId: string; kind: 'skill' | 'trait'; id: string; level: number; cost: number }
   | { type: 'difficultyUnlocked'; tick: number; difficultyId: string }
   | { type: 'difficultyChanged'; tick: number; difficultyId: string }

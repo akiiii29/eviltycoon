@@ -6,9 +6,10 @@ export type { GearSlot, NeedKey } from './config/types';
 /**
  * Bump when the World shape changes and add a migration in save/migrations.ts.
  * v8 = Town buildings (TECH_SPEC §5.12); v9 = journeys (TECH_SPEC §5.11);
- * v10 = gear tiers per difficulty, Town gear storage (reclaim), dismantle, auto difficulty (TECH_SPEC §5.8).
+ * v10 = gear tiers per difficulty, Town gear storage (reclaim), dismantle, auto difficulty (TECH_SPEC §5.8);
+ * v11 = reserved for another branch (placeholder migration); v12 = reincarnation portal (`portal`, TECH_SPEC §5.13).
  */
-export const WORLD_SCHEMA_VERSION = 10;
+export const WORLD_SCHEMA_VERSION = 12;
 
 export type Grade = 'normal' | 'high' | 'highest';
 export type HunterTier = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
@@ -31,7 +32,9 @@ export type Goal =
   /** M2: try to enhance the gear in a slot at the forge. */
   | { type: 'enhance'; slot: GearSlot }
   /** M3: learn/upgrade a skill (gold) or a trait (trait points) at the Academy (re-validated on arrival). */
-  | { type: 'learn'; kind: 'skill' | 'trait'; id: string };
+  | { type: 'learn'; kind: 'skill' | 'trait'; id: string }
+  /** v12: walk to the Reincarnation Portal and enter it (re-validated on arrival; TECH_SPEC §5.13). */
+  | { type: 'reincarnate' };
 
 /** Temporary stat modifier from a buff skill. */
 export interface Buff {
@@ -218,6 +221,20 @@ export interface Journey {
   cost: number;
 }
 
+/**
+ * v12: a hunter inside the Reincarnation Portal (systems/progression.ts, TECH_SPEC §5.13). Like a journey member, the
+ * hunter is MOVED out of `world.hunters` while inside (no system sees it; it keeps its slot and counts in allHunters).
+ * When `remainingMs` reaches 0 (game time while playing, wall-clock time while offline) progression.reincarnate runs
+ * and the hunter comes back at the portal node at level 1.
+ */
+export interface PortalStay {
+  hunter: Hunter;
+  durationMs: number;
+  remainingMs: number;
+  /** world.timeMs when the hunter entered. */
+  enteredAtMs: number;
+}
+
 export interface World {
   schemaVersion: number;
   configVersion: string;
@@ -273,6 +290,8 @@ export interface World {
   monsters: Monster[];
   /** v9: teams away on a journey, in departure order. */
   journeys: Journey[];
+  /** v12: hunters inside the Reincarnation Portal, in entry order. */
+  portal: PortalStay[];
   zones: Record<string, { respawnMs: number }>;
   stats: {
     kills: number;

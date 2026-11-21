@@ -73,7 +73,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       id: { kind: 'string', nonEmpty: true },
       x: { kind: 'number' },
       y: { kind: 'number' },
-      kind: { kind: 'enum', values: ['square', 'road', 'door', 'gate', 'field'] },
+      kind: { kind: 'enum', values: ['square', 'road', 'door', 'gate', 'field', 'portal'] },
       zoneId: { kind: 'ref', table: 'zone', optional: true },
     },
   },
@@ -313,7 +313,6 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'serviceFullFrac', 'serviceLowBase', 'serviceLowWeight', 'serviceWeight', 'bagReturnScore', 'restScoreWeight',
   'retreatTripMul', 'retreatKillMul', 'retreatHpCap',
   'feeTownTargetMul', 'feeTownTargetMin', 'servicePriceLatePct', 'servicePriceLateLevel',
-  'offlineMaxHours', 'offlineEfficiency', 'offlineSampleSec', 'offlineWindowMin', 'offlineMinWindowSec', 'offlineMinAwaySec',
   'bountyMaxActive', 'bountyMaxKills', 'bountyCompletionFrac', 'bountyZoneBonus', 'bountyTormentFromOrder', 'bountyTormentDropBonus',
   'bountyAutoIntervalSec', 'bountyAutoGoldMul', 'bountyAutoRewardFrac', 'bountyAutoKills', 'bountyAutoExpireSec',
   'townInvestIntervalSec', 'investCraftLeadLevels', 'investUrgentReserveMul', 'investTargetMul', 'investImportSec', 'investImportPriceMul',
@@ -321,7 +320,7 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'taxRate', 'taxMinRate', 'taxMaxRate', 'taxMoodFreeRate', 'taxMoodPerKill',
   'journeyTeamMax', 'journeyMaxActive', 'journeySuccessAtRec', 'journeySuccessExp', 'journeySuccessMin', 'journeySuccessMax',
   'journeyReturnNeedFrac',
-  'offlineGrowthModel', 'offlineModelStepSec', 'offlineModelCalMin', 'offlineModelCalMax', 'offlineHuntDuty', 'offlineTripSec',
+  'reincarnationSec',
   'zoneCrowdMul', 'zoneCrowdMinRho', 'retreatBurstMul', 'defSoftKnee', 'journeyRefKills',
   // Economy pass 2 (TECH_SPEC §5.4, §5.8, §5.12).
   'enhanceMinNetFrac', 'upgradeSavingsConcreteFrac', 'enhanceVsUpgradeMul', 'investTownHallLeadLevels', 'investUrgentImportSec', 'investValueService', 'investValueShop', 'investValueForge', 'investValueAcademy', 'investValueTradingPost', 'investValueStorehouse', 'investValueTownHall', 'investValueCraft', 'investReadyMul',
@@ -402,13 +401,6 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('retreatTripMul', 0, 100);
     range('retreatKillMul', 0, 100);
     range('retreatHpCap', 0, 0.95);
-    // Offline progress (TECH_SPEC §9).
-    range('offlineMaxHours', 0, 72);
-    range('offlineEfficiency', 0, 2);
-    range('offlineSampleSec', 1, 3600);
-    range('offlineWindowMin', 1, 1440);
-    range('offlineMinWindowSec', 0, 86400);
-    range('offlineMinAwaySec', 0, 86400);
     // Bounties (TECH_SPEC §5.9).
     range('bountyMaxActive', 0, 100);
     range('bountyMaxKills', 1, 1e6);
@@ -452,12 +444,8 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     if (typeof o.journeySuccessMin === 'number' && typeof o.journeySuccessMax === 'number' && o.journeySuccessMin > o.journeySuccessMax) {
       issues.push({ path: 'formula_params.journeySuccessMin', message: 'must be <= journeySuccessMax' });
     }
-    range('offlineGrowthModel', 0, 1);
-    range('offlineModelStepSec', 10, 3600);
-    range('offlineModelCalMin', 0, 1);
-    range('offlineModelCalMax', 1, 100);
-    range('offlineHuntDuty', 0.01, 1);
-    range('offlineTripSec', 0, 3600);
+    // Reincarnation Portal (TECH_SPEC §5.13).
+    range('reincarnationSec', 0, 86400);
     // Economy pass 2.
     range('enhanceMinNetFrac', -1, 1);
     range('upgradeSavingsConcreteFrac', 0, 10);
@@ -511,6 +499,9 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
 
   const squares = nodes.filter((n) => n.kind === 'square');
   if (squares.length !== 1) issues.push({ path: 'map_node', message: `need exactly one "square" node, got ${squares.length}` });
+  // Reincarnation Portal (TECH_SPEC §5.13): at most one (none = reincarnation happens at the square).
+  const portals = nodes.filter((n) => n.kind === 'portal');
+  if (portals.length > 1) issues.push({ path: 'map_node', message: `at most one "portal" node, got ${portals.length}` });
 
   nodes.forEach((n, i) => {
     if (n.kind === 'field' && !n.zoneId) issues.push({ path: `map_node[${i}].zoneId`, message: 'field node needs zoneId' });
@@ -699,6 +690,7 @@ export function loadConfig(raw: RawConfig): GameConfig {
       difficulties: new Map(difficulties.map((d) => [d.id, d])),
       journeys: new Map(journeys.map((j) => [j.id, j])),
       squareNode: nodes.find((n) => n.kind === 'square')!.id,
+      portalNode: (nodes.find((n) => n.kind === 'portal') ?? nodes.find((n) => n.kind === 'square')!).id,
       zoneNodes,
     },
   };
