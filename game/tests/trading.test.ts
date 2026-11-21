@@ -66,16 +66,22 @@ function arrive(h: Hunter, goal: Goal): void {
 const ofType = <T extends SimEvent['type']>(evs: SimEvent[], t: T) =>
   evs.filter((e): e is Extract<SimEvent, { type: T }> => e.type === t);
 
+/** Gel of one copy of every level-1 recipe (an empty level-1 hunter wants them all, M5 8 slots). */
+const L1_GEL = base.gear.filter((g) => g.level === 1).reduce((n, g) => n + (g.materials.find((m) => m.materialId === 'mat.gel')?.count ?? 0), 0);
+
 describe('automatic requests from auto-craft needs', () => {
   it('requests materials for min(wanters, requestMaxCopies) crafts of every useful recipe, minus storage', () => {
     const ctx = makeCtx();
-    addHunter(ctx, { level: 1 }); // empty slots → club (gel 4), padded (gel 3 + hide 1), charm (gel 5) are upgrades
-    expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({ 'mat.gel': 12, 'mat.hide': 1 });
+    // Empty slots → every level-1 piece is an upgrade: club (gel 4), padded head/body/gloves/shoes (gel 1 each, body + hide 1),
+    // charm necklace/ring/belt (gel 2 / 2 / 1) — 13 gel, 1 hide.
+    addHunter(ctx, { level: 1 });
+    expect(L1_GEL).toBe(13);
+    expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({ 'mat.gel': L1_GEL, 'mat.hide': 1 });
     ctx.world.town.storage = { 'mat.gel': 5 };
-    expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({ 'mat.gel': 7, 'mat.hide': 1 });
+    expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({ 'mat.gel': L1_GEL - 5, 'mat.hide': 1 });
     addHunter(ctx, { level: 1 });
     addHunter(ctx, { level: 1 }); // 3 wanters → capped at 2 copies
-    expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({ 'mat.gel': 19, 'mat.hide': 2 });
+    expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({ 'mat.gel': 2 * L1_GEL - 5, 'mat.hide': 2 });
   });
 
   it('requests nothing when auto-craft is off or nobody would be upgraded', () => {
@@ -84,11 +90,8 @@ describe('automatic requests from auto-craft needs', () => {
     ctx.world.town.autoCraft = false;
     expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({});
     ctx.world.town.autoCraft = true;
-    h.equipment = {
-      weapon: { uid: 'a', gearId: 'gear.w.club', qualityId: 'q.mythic', enhance: 5 },
-      body: { uid: 'b', gearId: 'gear.a.padded', qualityId: 'q.mythic', enhance: 5 },
-      necklace: { uid: 'c', gearId: 'gear.r.charm', qualityId: 'q.mythic', enhance: 5 },
-    };
+    h.equipment = Object.fromEntries(ctx.config.gear.filter((g) => g.level === 1)
+      .map((g) => [g.slot, { uid: g.slot, gearId: g.id, qualityId: 'q.mythic', enhance: 5 }]));
     expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({});
   });
 
@@ -97,7 +100,7 @@ describe('automatic requests from auto-craft needs', () => {
     addHunter(ctx, { level: 1, gold: 0 });
     expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({});
     ctx.world.hunters[0]!.gold = 1000;
-    expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({ 'mat.gel': 12, 'mat.hide': 1 });
+    expect(autoMaterialDemand(ctx.config, ctx.world)).toEqual({ 'mat.gel': L1_GEL, 'mat.hide': 1 });
   });
 });
 
@@ -109,16 +112,16 @@ describe('request-based buying at the Trading Post', () => {
     expect(surplusFloor(ctx.config, ctx.world)).toBe(5 * autoCraftReserve(ctx.config, ctx.world));
     arrive(h, { type: 'sell' });
     economySystem.update(ctx);
-    // gel: 12 requested × 4 = 48; 3 gel + 4 ore (unrequested) discarded.
-    expect(h.gold).toBe(48);
-    expect(ctx.world.town.gold).toBe(52);
-    expect(ctx.world.town.storage).toEqual({ 'mat.gel': 12 });
+    // gel: 13 requested × 4 = 52; 2 gel + 4 ore (unrequested) discarded.
+    expect(h.gold).toBe(52);
+    expect(ctx.world.town.gold).toBe(48);
+    expect(ctx.world.town.storage).toEqual({ 'mat.gel': 13 });
     expect(h.bag).toEqual({});
-    expect(ctx.world.stats.materialsSold).toBe(12);
-    expect(ctx.world.stats.materialsDiscarded).toBe(7);
+    expect(ctx.world.stats.materialsSold).toBe(13);
+    expect(ctx.world.stats.materialsDiscarded).toBe(6);
     const evs = ctx.events.drain();
-    expect(ofType(evs, 'materialsSold')).toMatchObject([{ units: 12, gold: 48 }]);
-    expect(ofType(evs, 'materialsDiscarded')).toMatchObject([{ hunterId: h.id, units: 7 }]);
+    expect(ofType(evs, 'materialsSold')).toMatchObject([{ units: 13, gold: 52 }]);
+    expect(ofType(evs, 'materialsDiscarded')).toMatchObject([{ hunterId: h.id, units: 6 }]);
     expect(materialDemand(ctx.config, ctx.world)).toEqual({ 'mat.hide': 1 }); // the gel request is filled
   });
 
@@ -202,12 +205,12 @@ describe('player request command (town.requestMaterial)', () => {
     const h = addHunter(ctx, { level: 1, gold: 0, bag: { 'mat.gel': 20 } });
     ctx.world.town.gold = 100; // no surplus purchases
     applyCommand(ctx, { type: 'town.requestMaterial', materialId: 'mat.gel', count: 5 });
-    expect(materialDemand(ctx.config, ctx.world)['mat.gel']).toBe(12 + 5);
+    expect(materialDemand(ctx.config, ctx.world)['mat.gel']).toBe(L1_GEL + 5);
     arrive(h, { type: 'sell' });
     economySystem.update(ctx);
-    expect(ctx.world.town.storage).toEqual({ 'mat.gel': 17 });
+    expect(ctx.world.town.storage).toEqual({ 'mat.gel': L1_GEL + 5 });
     expect(ctx.world.town.requests).toEqual({});
-    expect(h.gold).toBe(68);
+    expect(h.gold).toBe((L1_GEL + 5) * 4);
   });
 });
 

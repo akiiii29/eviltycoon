@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Gear tiers per difficulty, reclaim on reincarnation, Town gear storage, dismantle, auto difficulty (TECH_SPEC §5.8).
  */
 import { describe, expect, it } from 'vitest';
@@ -125,7 +125,8 @@ describe('tier crafting', () => {
     const it = world.town.shop[0]!;
     expect(it.difficultyId).toBe(NORMAL);
     const q = base.index.qualities.get(it.qualityId)!;
-    expect(it.listPrice).toBe(Math.round(60 * q.priceMult * normal.gearPriceMul!));
+    const grade = base.index.gearGrades.get(it.gradeId ?? base.gearGrades[0]!.id)!; // M5: × grade priceMult
+    expect(it.listPrice).toBe(Math.round(60 * q.priceMult * normal.gearPriceMul! * grade.priceMult));
     expect(ofType(ctx.events.drain(), 'gearCrafted')[0]).toMatchObject({ difficultyId: NORMAL });
   });
 

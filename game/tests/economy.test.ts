@@ -205,7 +205,9 @@ describe('crafting', () => {
     const it = ctx.world.town.shop[0]!;
     const q = config.index.qualities.get(it.qualityId)!;
     expect(q).toBeDefined();
-    expect(it).toMatchObject({ gearId: 'gear.w.club', enhance: 0, price: Math.round(60 * q.priceMult) });
+    // M5: × the rolled grade's priceMult (TECH_SPEC §4.2).
+    const grade = config.index.gearGrades.get(it.gradeId ?? config.gearGrades[0]!.id)!;
+    expect(it).toMatchObject({ gearId: 'gear.w.club', enhance: 0, price: Math.round(60 * q.priceMult * grade.priceMult) });
     expect(it.uid).toMatch(/^g\d+$/);
     expect(ctx.world.stats.crafted).toBe(1);
     expect(ofType(ctx.events.drain(), 'gearCrafted')).toMatchObject([{ buildingId: 'bld.smithy', itemUid: it.uid }]);
@@ -228,26 +230,34 @@ describe('crafting', () => {
 
   it('treats a missing crafting entry (old save) as idle', () => {
     const ctx = makeCtx();
-    addHunter(ctx, { level: 1 }); // empty accessory slot → a charm is worth crafting
+    const h = addHunter(ctx, { level: 1 }); // empty necklace (ring/belt worn) → a charm is worth crafting
+    h.equipment.ring = { uid: 'r', gearId: 'gear.ring.charm', qualityId: 'q.rare', enhance: 0 };
+    h.equipment.belt = { uid: 'b', gearId: 'gear.belt.charm', qualityId: 'q.rare', enhance: 0 };
     delete ctx.world.town.crafting['bld.jeweler'];
     ctx.world.town.crafting['bld.smithy'] = { gearId: 'gear.w.club', remainingMs: 99_999 }; // keep smithy off the gel
     ctx.world.town.storage = { 'mat.gel': 5 };
     craftingSystem.update(ctx);
-    expect(ctx.world.town.crafting['bld.jeweler']).toEqual({ gearId: 'gear.r.charm', remainingMs: 20_000, difficultyId: 'diff.easy' });
+    expect(ctx.world.town.crafting['bld.jeweler']).toEqual({ gearId: 'gear.r.charm', remainingMs: config.index.gear.get('gear.r.charm')!.craftSec * 1000, difficultyId: 'diff.easy' });
   });
 
   it('auto-craft skips recipes already covered by the shop, consumes materials and town gold', () => {
     const ctx = makeCtx();
-    addHunter(ctx, { level: 1 });
-    // smithy can make club (4 gel) and padded (3 gel + 1 hide); tusk gear is level 4 (> 1 + ahead?).
+    const h = addHunter(ctx, { level: 1 });
+    // Accessories worn: the jeweler has nothing to make. Smithy: club (4 gel) and the padded pieces (gel / gel + hide);
+    // tusk gear is level 4 (> 1 + ahead?).
+    for (const slot of ['necklace', 'ring', 'belt'] as const) {
+      h.equipment[slot] = { uid: slot, gearId: config.gear.find((g) => g.slot === slot && g.level === 1)!.id, qualityId: 'q.rare', enhance: 0 };
+    }
     ctx.world.town.storage = { 'mat.gel': 7, 'mat.hide': 1, 'mat.tusk': 3 };
+    const padded = config.index.gear.get('gear.a.padded')!;
     shopItem(ctx.world, 'gear.w.club', 60); // a Rare club already on sale covers the weapon slot → padded
     const gold0 = ctx.world.town.gold;
     craftingSystem.update(ctx);
-    expect(ctx.world.town.crafting['bld.smithy']).toEqual({ gearId: 'gear.a.padded', remainingMs: 20_000, difficultyId: 'diff.easy' });
-    expect(ctx.world.town.gold).toBe(gold0 - Math.round(60 * config.formula.craftGoldFrac));
-    expect(ctx.world.town.storage).toEqual({ 'mat.gel': 4, 'mat.tusk': 3 });
-    // jeweler: charm needs 5 gel (only 4 left), fang needs level 5 → nothing.
+    // Every armor piece helps one hunter: tie on count and level → gearId (gear.a.padded = the body).
+    expect(ctx.world.town.crafting['bld.smithy']).toEqual({ gearId: 'gear.a.padded', remainingMs: padded.craftSec * 1000, difficultyId: 'diff.easy' });
+    expect(ctx.world.town.gold).toBe(gold0 - Math.round(padded.basePrice * config.formula.craftGoldFrac));
+    expect(padded.materials).toEqual([{ materialId: 'mat.gel', count: 1 }, { materialId: 'mat.hide', count: 1 }]);
+    expect(ctx.world.town.storage).toEqual({ 'mat.gel': 6, 'mat.tusk': 3 });
     expect(ctx.world.town.crafting['bld.jeweler']).toBeNull();
     expect(ofType(ctx.events.drain(), 'craftStarted')).toMatchObject([{ buildingId: 'bld.smithy', gearId: 'gear.a.padded' }]);
   });
