@@ -153,7 +153,7 @@ export const MIGRATIONS: Record<number, Migration> = {
       stats: { journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, ...stats },
     };
   },
-  // v9 → v10: RESERVED for the gear/difficulty branch (identity here so the chain reaches v11). The lead renumbers on merge.
+  // v9 → v10: PLACEHOLDER (pass-through) for the gear/difficulty branch; the real one replaces it on merge.
   9: (w) => w,
   // v10 → v11 (supplies, potions, revive fee — TECH_SPEC §5.13): every supply line full at the building's level with the tier
   // of the median hunter level (the save keeps playing as before supplies existed), potion lines empty, hunters (also those
@@ -180,6 +180,8 @@ export const MIGRATIONS: Record<number, Migration> = {
       },
     };
   },
+  // v11 → v12 (Reincarnation Portal, TECH_SPEC §5.13): nobody inside the portal (keep the array if already there).
+  11: (w) => ({ ...w, portal: Array.isArray(w.portal) ? w.portal : [] }),
 };
 
 /** Apply the v7 → v8 building fields when absent (idempotent; existing fields win). Used at load for v9 saves made before buildings. */

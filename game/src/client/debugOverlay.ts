@@ -450,6 +450,7 @@ export class DebugOverlay {
       case 'enhance': return `cường hóa ${slotName(config, g.slot)}`;
       case 'learn': return `học ${g.kind === 'skill' ? skillName(config, g.id) : traitName(config, g.id)}`;
       case 'buyPotion': return `mua ${name(config, config.index.consumables.get(g.consumableId)?.nameKey, g.consumableId)}`;
+      case 'reincarnate': return 'đi tới Cổng Tái Sinh';
       default: return 'dạo';
     }
   }
@@ -459,10 +460,11 @@ export class DebugOverlay {
     this.stats.innerHTML = `
       config <b>${esc(config.version)}</b> · seed ${world.seed}<br>
       tick <b>${world.tick}</b> · time <b>${fmtTime(world.timeMs)}</b> · ${this.sim.paused ? '<b>PAUSED</b>' : `x${this.sim.speed}`}<br>
-      hunters ${world.hunters.length}${(world.journeys ?? []).length ? ` (+${(world.journeys ?? []).reduce((a, j) => a + j.hunters.length, 0)} đi xa)` : ''}/${config.formula.hunterSlots} · next arrival ${Math.max(0, config.formula.arrivalIntervalSec - world.town.arrivalTimerMs / 1000).toFixed(0)}s<br>
+      hunters ${world.hunters.length}${(world.journeys ?? []).length ? ` (+${(world.journeys ?? []).reduce((a, j) => a + j.hunters.length, 0)} đi xa)` : ''}${(world.portal ?? []).length ? ` (+${(world.portal ?? []).length} trong cổng)` : ''}/${config.formula.hunterSlots} · next arrival ${Math.max(0, config.formula.arrivalIntervalSec - world.town.arrivalTimerMs / 1000).toFixed(0)}s<br>
       town gold <b>${world.town.gold}</b> · monsters ${world.monsters.length} · kills ${world.stats.kills} · deaths ${world.stats.deaths} · services ${world.stats.serviceUses}<br>
       bán NL ${world.stats.materialsSold} · bỏ NL ${world.stats.materialsDiscarded ?? 0} · bỏ đồ ${world.stats.gearScrapped ?? 0} · shop ${world.town.shop.length} · chế ${world.stats.crafted} · mua ${world.stats.gearBought} · cường hóa ${world.stats.enhanceSuccess}/${world.stats.enhanceTries}<br>
       kỹ năng ${world.stats.skillCasts} · chuyển nghề ${world.stats.jobChanges} · tái sinh ${world.stats.reincarnations} · học ${world.stats.learned}
+      ${(world.portal ?? []).length ? `<br>Cổng Tái Sinh: ${esc((world.portal ?? []).map((p) => `${p.hunter.id} R${p.hunter.reincarnation} còn ${fmtTime(p.remainingMs)}`).join(', '))}` : ''}
       ${this.status ? `<br><span class="debug-status">${esc(this.status)}</span>` : ''}`;
 
     this.town.innerHTML = this.renderTown();
@@ -527,6 +529,7 @@ function progressLine(config: GameConfig, e: SimEvent): string | null {
   switch (e.type) {
     case 'jobChanged': return `${e.hunterId} chuyển nghề → ${jobName(config, e.jobId)}`;
     case 'reincarnated': return `${e.hunterId} tái sinh lần ${e.count}`;
+    case 'portalEntered': return `${e.hunterId} vào Cổng Tái Sinh (${Math.round(e.durationSec / 60)} phút)`;
     case 'learned': {
       const n = e.kind === 'skill' ? skillName(config, e.id) : traitName(config, e.id);
       return `${e.hunterId} học ${n} Lv${e.level} -${e.cost}${e.kind === 'skill' ? 'g' : ' điểm'}`;

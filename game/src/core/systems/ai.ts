@@ -1,6 +1,7 @@
 import { backstopHpFloor, currentZone, sameGoal, scoreGoals, shouldRetreatBeforeNextKill, urgentNeed } from '../ai/utility';
 import type { System, SystemContext } from '../system';
 import { dist, findMonster, isAlive, type Goal, type Hunter } from '../world';
+import { enterPortal } from './progression';
 import { buildingDoor } from './town';
 
 /** Destination node for a goal. */
@@ -17,6 +18,7 @@ function destination(ctx: SystemContext, h: Hunter, goal: Goal): string | null {
     case 'enhance': return buildingDoor(config, world, config.index.forge);
     case 'learn': return buildingDoor(config, world, config.index.academy);
     case 'buyPotion': return config.index.potionSeller ? buildingDoor(config, world, config.index.potionSeller) : null;
+    case 'reincarnate': return config.index.portalNode;
     case 'dead': return null;
   }
 }
@@ -191,6 +193,9 @@ export const aiSystem: System = {
             continue; // performed by the economy system at the door, which clears the goal
           case 'learn':
             continue; // performed by the academy system at the door, which clears the goal
+          case 'reincarnate':
+            enterPortal(ctx, h); // leaves world.hunters (or clears the goal if it no longer qualifies)
+            continue;
           default:
             continue; // services are handled by the services system
         }

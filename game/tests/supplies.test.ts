@@ -253,16 +253,18 @@ describe('potions', () => {
   it('drinks in the field under the drink line, which is above the backstop and kill-boundary lines', () => {
     const ctx = shopCtx();
     const t = potionTiers(config);
-    const h = addHunter(ctx, { level: 12, potions: { [t[1]!.id]: 2 } });
-    placeInZone(h, 'zone.ruins');
+    const h = addHunter(ctx, { level: 20, potions: { [t[1]!.id]: 2 } });
+    placeInZone(h, 'zone.meadow');
     const max = needMax(config, h, 'hp');
     const line = potionDrinkLine(config, nav, ctx.world, h);
+    expect(line).toBeLessThan(0.9);
     expect(line).toBeGreaterThanOrEqual(f.potionUseHpFrac);
     expect(line).toBeGreaterThanOrEqual(Math.max(urgentThreshold(config, h, 'hp'), retreatHpFloor(config, nav, ctx.world, h)));
-    // Any HP at which the kill boundary would send the hunter home is under the drink line.
-    for (let frac = 0.05; frac < 1; frac += 0.05) {
+    // Any HP at which the kill boundary would send the hunter home is under the drink line (capped at 0.95: above that a
+    // potion cannot help, the zone is simply too hard).
+    for (let frac = 0.05; frac < 0.949; frac += 0.05) {
       h.needs.hp = frac * max;
-      if (shouldRetreatBeforeNextKill(config, nav, ctx.world, h, 'zone.ruins')) expect(frac).toBeLessThan(line);
+      if (shouldRetreatBeforeNextKill(config, nav, ctx.world, h, 'zone.meadow')) expect(frac).toBeLessThan(line);
     }
     h.needs.hp = Math.min(0.95, line + 0.02) * max;
     expect(maybeDrink(ctx, h)).toBe(false);
@@ -317,7 +319,7 @@ describe('revive fee', () => {
   });
 });
 
-describe('migration v9 → v11', () => {
+describe('migration v9 → v11 (→ v12)', () => {
   it('adds full supply lines, empty potion packs (journey hunters too) and zero stats', () => {
     const s = new Simulation(config, createWorld(config, 3));
     for (let i = 0; i < 4; i++) s.enqueue({ type: 'debug.spawnHunter' });
@@ -331,10 +333,10 @@ describe('migration v9 → v11', () => {
     w.schemaVersion = 9;
     setLevel(w as World, INF, 3);
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 9, configVersion: config.version, savedAt: 0, world: w }), config);
-    expect(WORLD_SCHEMA_VERSION).toBe(11);
+    expect(WORLD_SCHEMA_VERSION).toBe(12);
     expect(r.migratedFrom).toBe(9);
     const m = r.world;
-    expect(m.schemaVersion).toBe(11);
+    expect(m.schemaVersion).toBe(12);
     expect(lineStock(m, lineKey('supply', INF))).toBe(config.index.buildings.get(INF)!.supplyCap![2]);
     expect(lineStock(m, lineKey('supply', REST))).toBe(config.index.buildings.get(REST)!.supplyCap![0]);
     expect(lineStock(m, lineKey('potion', INF))).toBe(0);

@@ -1,6 +1,6 @@
 /**
  * M4 acceptance (docs/QA_M4.md): cross-system scenarios for Trading Post requests, Bounty, Tax, Journey, Town Hall /
- * buildings, offline progress and save migrations v0 → v9, all through the public command API in one world.
+ * buildings, offline progress (wall-clock timers only) and save migrations v0 → v12, all through the public command API in one world.
  * Per-system rules are unit-tested in bounty/tax/journey/town/trading/offline/save.test.ts; this file checks that
  * they hold together (invariants, accounting, determinism across save/load, old saves loading into a working M4 town).
  * Item ids (QA-…) refer to the checklist in docs/QA_M4.md.
@@ -9,14 +9,13 @@ import type { GameConfig } from '../src/core/config/types';
 import type { Command } from '../src/core/commands';
 import type { SimEvent } from '../src/core/events';
 import { needMax } from '../src/core/formulas';
-import { applyOffline, estimateOffline, offlineJourneyMs, recordSample, type OfflineTracker } from '../src/core/offline';
+import { advanceOfflineWallClock, offlineWallClockMs } from '../src/core/offline';
 import { deserialize, SAVE_FORMAT, serialize } from '../src/core/save/save';
 import { createWorld, Simulation } from '../src/core/simulation';
 import { bountyKillShare } from '../src/core/systems/bounty';
 import { advanceJourneys, allHunters, bestJourneyTeam, townHunterCount } from '../src/core/systems/journey';
 import { taxRate } from '../src/core/systems/tax';
 import { shopCapacity, townHallLevel } from '../src/core/systems/town';
-import { materialDemand } from '../src/core/systems/trading';
 import { isAlive, WORLD_SCHEMA_VERSION, type World } from '../src/core/world';
 import { testConfig } from './helpers';
 
@@ -79,7 +78,6 @@ function violations(cfg: GameConfig, w: World): string[] {
 
 interface RunResult {
   sim: Simulation;
-  tracker: OfflineTracker | null;
   events: SimEvent[];
   rejected: Rejection[];
   violations: string[];
@@ -94,7 +92,6 @@ interface RunResult {
  */
 function runSession(seed: number, swapAt = -1, minutes = 20): RunResult {
   let sim = new Simulation(config, createWorld(config, seed));
-  let tracker: OfflineTracker | null = null;
   const events: SimEvent[] = [];
   const rejected: Rejection[] = [];
   const bad: string[] = [];
@@ -113,11 +110,10 @@ function runSession(seed: number, swapAt = -1, minutes = 20): RunResult {
         bounties: (w().town.bounties ?? []).length,
         upgrades: w().town.buildings.filter((b) => b.upgrade).length,
       };
-      const text = serialize(w(), T0, tracker);
+      const text = serialize(w(), T0);
       const loaded = deserialize(text, config);
       sim = new Simulation(config, createWorld(config, 1));
       sim.setWorld(loaded.world);
-      tracker = loaded.offline;
     }
     switch (t) {
       case 0:
@@ -164,7 +160,6 @@ function runSession(seed: number, swapAt = -1, minutes = 20): RunResult {
     if (t === recallAt && recallUid) send({ type: 'journey.recall', journeyUid: recallUid });
 
     sim.step();
-    tracker = recordSample(config, w(), tracker);
     for (const e of sim.drainEvents()) {
       if (e.type === 'commandRejected') rejected.push({ command: e.command, reason: e.reason });
       if (e.type === 'journeyStarted' && sent === 2) recallUid = e.journeyUid;
@@ -172,7 +167,7 @@ function runSession(seed: number, swapAt = -1, minutes = 20): RunResult {
     }
     if (t % MIN === MIN - 1) for (const v of violations(config, w())) bad.push(`t=${t}: ${v}`);
   }
-  return { sim, tracker, events, rejected, violations: bad, atSwap };
+  return { sim, events, rejected, violations: bad, atSwap };
 }
 
 const sum = (evs: SimEvent[], type: string, key: string) =>
@@ -296,10 +291,8 @@ describe('QA-OFFLINE: credit on load with a journey and an upgrade in flight', (
     const r0 = deserialize(text, config);
     const sim = new Simulation(config, createWorld(config, 1));
     sim.setWorld(r0.world);
-    const r = estimateOffline(config, sim.world, r0.offline, r0.savedAt, now);
-    if (!r.skipped) applyOffline(config, sim.world, r, r0.offline);
-    r.journeys = sim.runBetweenTicks((ctx) => advanceJourneys(ctx, offlineJourneyMs(r0.savedAt, now), true));
-    return { sim, r, tracker: r0.offline };
+    const r = sim.runBetweenTicks((ctx) => advanceOfflineWallClock(ctx, offlineWallClockMs(r0.savedAt, now)));
+    return { sim, r };
   }
 
   function savedWithJourneyAndUpgrade(): string {
@@ -310,8 +303,7 @@ describe('QA-OFFLINE: credit on load with a journey and an upgrade in flight', (
     // Bring everyone home so a team is available, then start a 10-minute journey and a Town Hall upgrade.
     for (const h of controllable(w)) s.enqueue({ type: 'hunter.move', hunterId: h.id, zoneId: 'town' });
     const def = config.index.journeys.get(JOURNEY)!;
-    let tr = session.tracker;
-    for (let i = 0; i < 3 * MIN && bestJourneyTeam(config, w, def).length === 0; i++) { s.step(); tr = recordSample(config, w, tr); }
+    for (let i = 0; i < 3 * MIN && bestJourneyTeam(config, w, def).length === 0; i++) s.step();
     s.enqueue({ type: 'journey.start', journeyId: JOURNEY, hunterIds: bestJourneyTeam(config, w, def).map((h) => h.id) });
     w.town.gold += 5_000;
     for (const m of config.index.buildings.get('bld.townhall')!.upgradeCost[townHallLevel(config, w)]?.materials ?? []) {
@@ -320,12 +312,11 @@ describe('QA-OFFLINE: credit on load with a journey and an upgrade in flight', (
     s.world.town.autoInvest = false;
     if (!w.town.buildings.some((b) => b.upgrade)) s.enqueue({ type: 'town.upgrade', buildingInstanceId: 'plot.townhall' });
     s.step();
-    tr = recordSample(config, w, tr);
     const rej = s.drainEvents().filter((e) => e.type === 'commandRejected');
     expect(rej).toEqual([]);
     expect(w.journeys).toHaveLength(1);
     expect(w.town.buildings.some((b) => b.upgrade)).toBe(true);
-    return serialize(w, T0, tr);
+    return serialize(w, T0);
   }
 
   let text: string;
@@ -335,35 +326,39 @@ describe('QA-OFFLINE: credit on load with a journey and an upgrade in flight', (
     before = deserialize(text, config).world;
   });
 
-  it('2 h away: rates credited, the journey resolves offline, the build timer does not move (known limitation)', () => {
+  it('2 h away: no hunting is credited; the journey resolves and the upgrade finishes on wall-clock time', () => {
     const { sim, r } = load(text, T0 + 2 * 3_600_000);
     const w = sim.world;
-    expect(r.skipped).toBeNull();
-    expect(r.creditedMs).toBe(2 * 3_600_000 * f.offlineEfficiency);
-    expect(r.kills).toBeGreaterThan(0);
+    expect(r.awayMs).toBe(2 * 3_600_000);
     expect(r.journeys).toHaveLength(1);
     expect(w.journeys).toEqual([]);
     expect(ofType(sim.drainEvents(), 'journeyCompleted')[0]?.offline).toBe(true);
-    // Offline does not count construction time (TODO §4): the running upgrade has exactly the time it had.
     const up0 = before.town.buildings.find((b) => b.upgrade)!;
-    expect(w.town.buildings.find((b) => b.id === up0.id)!.upgrade!.remainingMs).toBe(up0.upgrade!.remainingMs);
-    // Materials credited only up to what the Trading Post asks for; invariants hold and the game runs on.
-    for (const [id, n] of Object.entries(r.materials)) expect(n).toBeLessThanOrEqual((materialDemand(config, before)[id] ?? 0));
+    expect(up0.upgrade!.remainingMs).toBeLessThan(2 * 3_600_000);
+    expect(r.buildings.map((b) => b.instanceId)).toContain(up0.id);
+    expect(w.town.buildings.find((b) => b.id === up0.id)!.upgrade).toBeNull();
+    // Hunters that stayed in Town gained nothing (EHT: no hunting offline); the game time did not move.
+    const away = new Set(r.journeys.flatMap((j) => j.hunterIds));
+    for (const h0 of before.hunters) {
+      if (away.has(h0.id)) continue;
+      const h = w.hunters.find((x) => x.id === h0.id)!;
+      expect([h.level, h.exp, h.gold, h.kills]).toEqual([h0.level, h0.exp, h0.gold, h0.kills]);
+    }
+    expect([w.tick, w.timeMs]).toEqual([before.tick, before.timeMs]);
     expect(violations(config, w)).toEqual([]);
     for (let i = 0; i < MIN; i++) sim.step();
     expect(violations(config, sim.world)).toEqual([]);
   });
 
-  it('20 h away is capped at offlineMaxHours; a journey still resolves by the raw gap', () => {
+  it('20 h away: timers use the raw gap (no cap); the journey still resolves', () => {
     const { r } = load(text, T0 + 20 * 3_600_000);
-    expect(r.capped).toBe(true);
-    expect(r.creditedMs).toBe(f.offlineMaxHours * 3_600_000 * f.offlineEfficiency);
+    expect(r.awayMs).toBe(20 * 3_600_000);
     expect(r.journeys).toHaveLength(1);
   });
 
   it('a clock that went backwards credits nothing and leaves the journey running', () => {
     const { sim, r } = load(text, T0 - 60_000);
-    expect(r.skipped).not.toBeNull();
+    expect(r.awayMs).toBe(0);
     expect(r.journeys).toEqual([]);
     expect(sim.world.journeys).toHaveLength(1);
   });
@@ -411,7 +406,7 @@ function downgrade(src: World, v: number): Record<string, any> {
 /** Case id of the "v9 save made before buildings existed" (a version number no real case uses). */
 const PRE_BUILDING_V9 = -9;
 
-describe('QA-MIG: every schema version v0..v10 (and a pre-building v9) loads into a working M4 town', () => {
+describe('QA-MIG: every schema version v0..v11 (and a pre-building v9) loads into a working M4 town', () => {
   let base: World;
   beforeAll(() => {
     const s = new Simulation(config, createWorld(config, 2));
