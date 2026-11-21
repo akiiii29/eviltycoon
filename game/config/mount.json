@@ -1,0 +1,5 @@
+[
+ {"id":"mount.pony","nameKey":"mount.pony.name","moveSpeedMul":1.08,"price":1500,"minLevel":25},
+ {"id":"mount.stag","nameKey":"mount.stag.name","moveSpeedMul":1.16,"price":8000,"minLevel":55},
+ {"id":"mount.drake","nameKey":"mount.drake.name","moveSpeedMul":1.25,"price":30000,"minLevel":85}
+]

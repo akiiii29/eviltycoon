@@ -3,6 +3,7 @@ import type { GameConfig, GearDef } from '../core/config/types';
 import { GEAR_SLOTS } from '../core/config/types';
 import type { SimEvent } from '../core/events';
 import { hunterStats, needMax } from '../core/formulas';
+import { jobOf } from '../core/progressionStats';
 import { bestJourneyTeam, journeyPreview } from '../core/systems/journey';
 import type { Simulation } from '../core/simulation';
 import { taxMoodLoss, taxRate } from '../core/systems/tax';
@@ -484,7 +485,7 @@ export class DebugOverlay {
       }).join('');
       const pers = h.personalities.map((p) => t(config, config.index.personalities.get(p)?.nameKey ?? p)).join(', ');
       const cls = t(config, config.index.classes.get(h.classId)?.nameKey ?? h.classId);
-      const job = config.index.jobsByClass.get(h.classId)?.[h.jobTier];
+      const job = jobOf(config, h);
       const jobLabel = job ? jobName(config, job.id) : `job ${h.jobTier}`;
       const canReinc = h.level >= config.formula.maxLevel;
       const inField = !!config.index.nodes.get(h.nodeId)?.zoneId;

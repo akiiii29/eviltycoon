@@ -813,5 +813,230 @@
   "key": "pot.hp.7.name",
   "vi": "Thuốc hồi máu hư không",
   "en": "Void healing draught"
+ },
+ {
+  "key": "job.vanguard.3a.name",
+  "vi": "Hiệp Sĩ Thành Lũy",
+  "en": "Bulwark Knight"
+ },
+ {
+  "key": "job.vanguard.4a.name",
+  "vi": "Chúa Tể Khiên Thần",
+  "en": "Aegis Lord"
+ },
+ {
+  "key": "job.vanguard.3b.name",
+  "vi": "Kẻ Tàn Phá",
+  "en": "Ravager"
+ },
+ {
+  "key": "job.vanguard.4b.name",
+  "vi": "Sứ Giả Chiến Tranh",
+  "en": "Warbringer"
+ },
+ {
+  "key": "job.vanguard.3c.name",
+  "vi": "Đấu Kiếm Sư",
+  "en": "Duelist"
+ },
+ {
+  "key": "job.vanguard.4c.name",
+  "vi": "Kiếm Thánh",
+  "en": "Sword Saint"
+ },
+ {
+  "key": "job.warden.3a.name",
+  "vi": "Tường Sắt",
+  "en": "Ironwall"
+ },
+ {
+  "key": "job.warden.4a.name",
+  "vi": "Bất Hoại",
+  "en": "Unbroken"
+ },
+ {
+  "key": "job.warden.3b.name",
+  "vi": "Kẻ Báo Thù",
+  "en": "Avenger"
+ },
+ {
+  "key": "job.warden.4b.name",
+  "vi": "Phán Quan",
+  "en": "Judicator"
+ },
+ {
+  "key": "job.warden.3c.name",
+  "vi": "Lính Canh",
+  "en": "Sentinel"
+ },
+ {
+  "key": "job.warden.4c.name",
+  "vi": "Vọng Gác Vĩnh Hằng",
+  "en": "Eternal Watch"
+ },
+ {
+  "key": "job.strider.3a.name",
+  "vi": "Kiểm Lâm",
+  "en": "Ranger"
+ },
+ {
+  "key": "job.strider.4a.name",
+  "vi": "Hộ Vệ Hoang Dã",
+  "en": "Wildwarden"
+ },
+ {
+  "key": "job.strider.3b.name",
+  "vi": "Thiện Xạ",
+  "en": "Sharpshooter"
+ },
+ {
+  "key": "job.strider.4b.name",
+  "vi": "Mắt Tử Thần",
+  "en": "Deadeye"
+ },
+ {
+  "key": "job.strider.3c.name",
+  "vi": "Du Kích",
+  "en": "Skirmisher"
+ },
+ {
+  "key": "job.strider.4c.name",
+  "vi": "Bóng Ma Lữ Hành",
+  "en": "Phantom Strider"
+ },
+ {
+  "key": "job.arcanist.3a.name",
+  "vi": "Hộ Vệ Cổ Ngữ",
+  "en": "Runeguard"
+ },
+ {
+  "key": "job.arcanist.4a.name",
+  "vi": "Pháo Đài Phép",
+  "en": "Spellfortress"
+ },
+ {
+  "key": "job.arcanist.3b.name",
+  "vi": "Hỏa Thuật Sư",
+  "en": "Pyromancer"
+ },
+ {
+  "key": "job.arcanist.4b.name",
+  "vi": "Hiền Giả Tro Tàn",
+  "en": "Cinder Sage"
+ },
+ {
+  "key": "job.arcanist.3c.name",
+  "vi": "Thời Thuật Sư",
+  "en": "Chronomancer"
+ },
+ {
+  "key": "job.arcanist.4c.name",
+  "vi": "Kẻ Dệt Thời Gian",
+  "en": "Timeweaver"
+ },
+ {
+  "key": "job.reaver.3a.name",
+  "vi": "Canh Mộ",
+  "en": "Gravewarden"
+ },
+ {
+  "key": "job.reaver.4a.name",
+  "vi": "Hiệp Sĩ Vong Linh",
+  "en": "Lich Knight"
+ },
+ {
+  "key": "job.reaver.3b.name",
+  "vi": "Đồ Tể",
+  "en": "Butcher"
+ },
+ {
+  "key": "job.reaver.4b.name",
+  "vi": "Vua Tàn Sát",
+  "en": "Carnage King"
+ },
+ {
+  "key": "job.reaver.3c.name",
+  "vi": "Dạ Kiếm",
+  "en": "Nightblade"
+ },
+ {
+  "key": "job.reaver.4c.name",
+  "vi": "Thần Chết Bóng Tối",
+  "en": "Shadow Reaper"
+ },
+ {
+  "key": "rune.might.name",
+  "vi": "Ngữ Lực",
+  "en": "Rune of Might"
+ },
+ {
+  "key": "rune.ward.name",
+  "vi": "Ngữ Giáp",
+  "en": "Rune of Warding"
+ },
+ {
+  "key": "rune.vigor.name",
+  "vi": "Ngữ Sinh",
+  "en": "Rune of Vigor"
+ },
+ {
+  "key": "rune.edge.name",
+  "vi": "Ngữ Bén",
+  "en": "Rune of the Edge"
+ },
+ {
+  "key": "rune.veil.name",
+  "vi": "Ngữ Ảnh",
+  "en": "Rune of the Veil"
+ },
+ {
+  "key": "rune.haste.name",
+  "vi": "Ngữ Tốc",
+  "en": "Rune of Haste"
+ },
+ {
+  "key": "relic.wisdom.name",
+  "vi": "Thánh Tích Minh Triết",
+  "en": "Relic of Wisdom"
+ },
+ {
+  "key": "relic.fortune.name",
+  "vi": "Thánh Tích Vận May",
+  "en": "Relic of Fortune"
+ },
+ {
+  "key": "relic.patron.name",
+  "vi": "Thánh Tích Bảo Trợ",
+  "en": "Relic of Patronage"
+ },
+ {
+  "key": "mount.pony.name",
+  "vi": "Ngựa Lùn",
+  "en": "Pony"
+ },
+ {
+  "key": "mount.stag.name",
+  "vi": "Hươu Chiến",
+  "en": "War Stag"
+ },
+ {
+  "key": "mount.drake.name",
+  "vi": "Rồng Đất",
+  "en": "Ground Drake"
+ },
+ {
+  "key": "growth.hp.name",
+  "vi": "Rèn Thể",
+  "en": "Toughness"
+ },
+ {
+  "key": "growth.atk.name",
+  "vi": "Rèn Lực",
+  "en": "Strength"
+ },
+ {
+  "key": "growth.def.name",
+  "vi": "Rèn Giáp",
+  "en": "Hardiness"
  }
 ]

@@ -11,6 +11,8 @@ function fastConfig() {
   const raw = JSON.parse(JSON.stringify(readRawConfig())) as Record<string, any>;
   raw.formula_params.maxLevel = 8;
   raw.formula_params.expBase = 4;
+  // EXP per level comes from exp_curve (M5): the same cheap curve round(4 × L^1.15) in every reincarnation column.
+  for (const r of raw.exp_curve) r.exp = r.exp.map(() => Math.round(4 * Math.pow(r.level, raw.formula_params.expExponent)));
   for (const j of raw.job) if (j.tier > 0) j.unlockLevel = j.tier === 1 ? 4 : 7;
   return loadConfig(raw as any);
 }

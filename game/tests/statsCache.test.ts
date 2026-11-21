@@ -48,6 +48,17 @@ describe('statsCache: memoised hunterStats (TECH_SPEC §10)', () => {
       ['buff value', () => { h.buffs[0]!.value = 30; }],
       ['mood', () => { h.needs.mood = 0; }],
       ['unequip', () => { delete h.equipment.weapon; }],
+      // M5 (progressionStats.ts): job branch, growth properties, runes.
+      ['job tier 3', () => { h.jobTier = 3; }],
+      ['job branch', () => { h.jobId = config.index.jobsByClass.get(h.classId)!.filter((j) => j.tier === 3)[1]!.id; }],
+      ['growth', () => { h.growth = { 'growth.atk': 2 }; }],
+      ['growth level', () => { h.growth!['growth.atk'] = 3; }],
+      ['growth hp', () => { h.growth!['growth.hp'] = 1; }],
+      ['rune socket', () => { h.runes = [{ runeId: 'rune.might', grade: 1 }, null]; }],
+      ['rune grade', () => { h.runes![0]!.grade = 4; }],
+      ['rune second', () => { h.runes![1] = { runeId: 'rune.edge', grade: 2 }; }],
+      ['rune type', () => { h.runes![0]!.runeId = 'rune.vigor'; }],
+      ['rune out', () => { h.runes![0] = null; }],
     ];
     for (const [label, change] of steps) {
       hunterStats(config, h);

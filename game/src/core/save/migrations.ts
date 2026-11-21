@@ -212,6 +212,32 @@ export const MIGRATIONS: Record<number, Migration> = {
   },
   // v11 → v12 (Reincarnation Portal, TECH_SPEC §5.13): nobody inside the portal (keep the array if already there).
   11: (w) => ({ ...w, portal: Array.isArray(w.portal) ? w.portal : [] }),
+  // v12 → v13, v13 → v14, v14 → v15: reserved for parallel M5 work (gear slots/options, hunters, special buildings); the
+  // lead renumbers when merging. Pass-through here so v12 saves still load into v16.
+  12: (w) => w,
+  13: (w) => w,
+  14: (w) => w,
+  // v15 → v16 (M5 progression depth, TECH_SPEC §4.1, §5.15): every hunter (in town, on a journey, in the portal) gets the
+  // explicit jobId of its tier (the only job of tiers 0..2 before the job tree); Town rune stash empty, no relic, auto-rune
+  // on, auto-relic off; new counters 0. Idempotent: existing fields win.
+  15: (w, config) => {
+    const town = (w.town ?? {}) as Record<string, unknown>;
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    const withJob = (h: Record<string, any>) => {
+      if (typeof h.jobId === 'string') return h;
+      const job = config.index.jobsByClass.get(String(h.classId))?.find((j) => j.tier === (Number(h.jobTier) || 0));
+      return job ? { ...h, jobId: job.id } : h;
+    };
+    const list = (v: unknown) => (Array.isArray(v) ? v : []) as Record<string, any>[];
+    return {
+      ...w,
+      hunters: list(w.hunters).map(withJob),
+      journeys: list(w.journeys).map((j) => ({ ...j, hunters: list(j.hunters).map(withJob) })),
+      portal: list(w.portal).map((p) => (p.hunter ? { ...p, hunter: withJob(p.hunter) } : p)),
+      town: { runes: [], relics: {}, autoRune: true, autoRelic: false, ...town },
+      stats: { runesDropped: 0, runesDiscarded: 0, materialsComposed: 0, relicUpgrades: 0, mountsBought: 0, growthBought: 0, ...stats },
+    };
+  },
 };
 
 /**

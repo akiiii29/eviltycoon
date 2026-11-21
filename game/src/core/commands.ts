@@ -10,6 +10,13 @@ import { cancelBounty, postBounty, validateBounty } from './systems/bounty';
 import { buildingLevel, cancelUpgrade, startBuild, startUpgrade } from './systems/town';
 import { setTaxRate, validateTaxRate } from './systems/tax';
 import { journeyOfHunter, recallJourney, startJourney, townHunterCount, validateJourney } from './systems/journey';
+import { chooseJob } from './systems/progression';
+import { learnPlanBlocker, readyStudy } from './systems/academy';
+import { compose } from './systems/compose';
+import { socketRune, unsocketRune } from './systems/runes';
+import { upgradeRelic } from './systems/relics';
+import { mountBlocker } from './systems/mounts';
+import type { LearnKind } from './world';
 
 /** Player/debug commands. Queued by UI, applied at the start of the next tick (TECH_SPEC §3.1). */
 export type Command =
@@ -71,7 +78,35 @@ export type Command =
    */
   | { type: 'journey.start'; journeyId: string; hunterIds: string[] }
   /** Bring a running journey's team home now (no reward, cost not refunded). */
-  | { type: 'journey.recall'; journeyUid: string };
+  | { type: 'journey.recall'; journeyUid: string }
+  // ---- M5 progression depth (TECH_SPEC §4.1, §5.15) ----
+  /**
+   * Choose the hunter's branch of the job tree by naming a job of it (a branch job or a later one of the same branch).
+   * Stored as `jobBranch` (kept across reincarnation); changes job now when that job is next and unlocked. Rejected when
+   * the hunter already advanced into another branch (until it reincarnates).
+   */
+  | { type: 'hunter.chooseJob'; hunterId: string; jobId: string }
+  /**
+   * Study plan: the next level of a skill (gold), trait (trait points) or growth property (gold). Kept on the hunter until
+   * learned; the AI goes to the Academy for it as soon as it can be paid and spends nothing of that currency meanwhile.
+   * Rejected only when it can never happen (unknown, another class, maxed); sends the hunter now when it is in Town and can.
+   */
+  | { type: 'hunter.learn'; hunterId: string; kind: LearnKind; id: string }
+  /** Drop the hunter's study plan (the AI picks what to learn again). */
+  | { type: 'hunter.cancelLearn'; hunterId: string }
+  /** Buy a mount at the Shop (hunter in Town, level, faster than its own, gold ≥ price). */
+  | { type: 'hunter.buyMount'; hunterId: string; mountId: string }
+  /** Socket rune `stashIndex` of the Town rune stash into socket `slot` of the hunter (the old rune goes back). */
+  | { type: 'hunter.socketRune'; hunterId: string; slot: number; stashIndex: number }
+  | { type: 'hunter.unsocketRune'; hunterId: string; slot: number }
+  /** Toggle automatic socketing of stash runes into hunters in Town. */
+  | { type: 'town.setAutoRune'; on: boolean }
+  /** Compose `count` units of `materialId`'s composeTo material from Town Storage (`materialId` = the source). */
+  | { type: 'town.compose'; materialId: string; count: number }
+  /** Buy the next level of a relic with Town gold and storage materials. */
+  | { type: 'town.upgradeRelic'; relicId: string }
+  /** Toggle automatic relic purchases (off by default). */
+  | { type: 'town.setAutoRelic'; on: boolean };
 
 type Handler<C extends Command> = (ctx: SystemContext, cmd: C) => string | null;
 
@@ -226,6 +261,73 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     return null;
   },
   'journey.recall': (ctx, cmd) => (recallJourney(ctx, cmd.journeyUid) ? null : 'unknown journey'),
+  'hunter.chooseJob': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    return chooseJob(ctx, h, cmd.jobId);
+  },
+  'hunter.learn': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    if (cmd.kind !== 'skill' && cmd.kind !== 'trait' && cmd.kind !== 'growth') return 'unknown study kind';
+    const plan = { kind: cmd.kind, id: cmd.id };
+    const why = learnPlanBlocker(ctx.config, h, plan);
+    if (why) return why;
+    h.learnPlan = plan;
+    // Go now when it can be done now (in Town, Academy built); otherwise the AI goes once it can (ai/utility.bestLearn).
+    const inTown = !ctx.config.index.nodes.get(h.nodeId)?.zoneId;
+    if (controllable(ctx, h.id) === null && inTown && buildingLevel(ctx.world, ctx.config.index.academy) >= 1 && readyStudy(ctx.config, h, plan.kind, plan.id, ctx.world)) {
+      setGoal(ctx, h, { type: 'learn', kind: plan.kind, id: plan.id }, 'order', true);
+    }
+    return null;
+  },
+  'hunter.cancelLearn': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    if (!h.learnPlan) return 'no study plan';
+    delete h.learnPlan;
+    return null;
+  },
+  'hunter.buyMount': (ctx, cmd) => {
+    const bad = controllable(ctx, cmd.hunterId);
+    if (bad) return bad;
+    const h = findHunter(ctx.world, cmd.hunterId)!;
+    if (ctx.config.index.nodes.get(h.nodeId)?.zoneId) return 'hunter is not in town';
+    if (buildingLevel(ctx.world, ctx.config.index.shop) < 1) return 'shop not built';
+    const why = mountBlocker(ctx.config, h, cmd.mountId);
+    if (why) return why;
+    return setGoal(ctx, h, { type: 'buyMount', mountId: cmd.mountId }, 'order', true) ? null : 'no path';
+  },
+  'hunter.socketRune': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    return socketRune(ctx, h, cmd.slot, cmd.stashIndex);
+  },
+  'hunter.unsocketRune': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    return unsocketRune(ctx, h, cmd.slot);
+  },
+  'town.setAutoRune': (ctx, cmd) => {
+    ctx.world.town.autoRune = !!cmd.on;
+    return null;
+  },
+  'town.compose': (ctx, cmd) => compose(ctx, cmd.materialId, cmd.count),
+  'town.upgradeRelic': (ctx, cmd) => upgradeRelic(ctx, cmd.relicId),
+  'town.setAutoRelic': (ctx, cmd) => {
+    ctx.world.town.autoRelic = !!cmd.on;
+    return null;
+  },
 };
 
 export function applyCommand(ctx: SystemContext, cmd: Command): void {

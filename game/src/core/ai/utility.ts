@@ -6,14 +6,15 @@ import {
 } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
 import type { NavGraph } from '../pathfinding';
-import { canLearnTrait, nextSkillStudy } from '../systems/academy';
+import { canLearnTrait, nextGrowth, nextSkillStudy, readyStudy } from '../systems/academy';
+import { bestMount } from '../systems/mounts';
 import { bestPotionPurchase } from '../systems/consumables';
 import { servicePrice } from '../systems/services';
 import { serviceInStock } from '../systems/supplies';
 import { buildingLevel, enhanceBonus, gearCraftable } from '../systems/town';
 import { bountyZoneMul } from '../systems/bounty';
 import { bagHasSellable, bagUnrequested, materialDemand, requestZoneMul, type Demand } from '../systems/trading';
-import { bagCount, type Goal, type Hunter, type ShopItem, type World } from '../world';
+import { bagCount, type Goal, type Hunter, type LearnKind, type ShopItem, type World } from '../world';
 
 export interface Candidate {
   goal: Goal;
@@ -281,6 +282,7 @@ export function sameGoal(a: Goal | null, b: Goal | null): boolean {
   if (a.type === 'enhance' && b.type === 'enhance') return a.slot === b.slot;
   if (a.type === 'learn' && b.type === 'learn') return a.kind === b.kind && a.id === b.id;
   if (a.type === 'buyPotion' && b.type === 'buyPotion') return a.consumableId === b.consumableId;
+  if (a.type === 'buyMount' && b.type === 'buyMount') return a.mountId === b.mountId;
   return true;
 }
 
@@ -480,13 +482,25 @@ const TRAIT_PRIORITY: readonly ModStat[] = ['atkPct', 'hpPct', 'defPct', 'atkSpe
  * Skills first: cheapest learnable next level (ties → skill id), only if gold ≥ cost × enhanceGoldReserveMul
  * (at level 1 the starting gold is kept back, so a fresh hunter hunts before studying).
  * Otherwise a learnable trait (enough points, not maxed), by TRAIT_PRIORITY then trait id; cost = point cost.
+ * Otherwise (M5, TECH_SPEC §5.15) the cheapest next growth property level (ties → id) when the gold beyond the gear
+ * savings (enhanceSavingsHold) is ≥ cost × growthReserveMul.
+ * A player study plan (`h.learnPlan`, command hunter.learn) comes first as soon as it can be done (gold ≥ cost, no
+ * reserve); until then the AI spends nothing of that plan's currency: a gold plan (skill / growth) blocks the automatic
+ * skill and growth picks, a trait plan blocks the automatic trait pick.
  */
-export function bestLearn(config: GameConfig, h: Hunter, world?: World): { kind: 'skill' | 'trait'; id: string; cost: number } | null {
+export function bestLearn(config: GameConfig, h: Hunter, world?: World): { kind: LearnKind; id: string; cost: number } | null {
   const f = config.formula;
+  const plan = h.learnPlan;
+  if (plan) {
+    const now = readyStudy(config, h, plan.kind, plan.id, world);
+    if (now) return now;
+  }
+  const goldFree = !plan || plan.kind === 'trait';
+  const pointsFree = !plan || plan.kind !== 'trait';
   // A level-1 hunter hunts first: it only studies with gold to spare beyond its starting purse.
   const spare = h.level >= 2 ? h.gold : h.gold - f.startingGold;
   let skill: { id: string; cost: number } | null = null;
-  for (const def of config.skills) {
+  if (goldFree) for (const def of config.skills) {
     const next = nextSkillStudy(config, h, def.id, world);
     if (!next || spare < next.cost * f.enhanceGoldReserveMul) continue;
     if (!skill || next.cost < skill.cost || (next.cost === skill.cost && def.id < skill.id)) skill = { id: def.id, cost: next.cost };
@@ -494,13 +508,23 @@ export function bestLearn(config: GameConfig, h: Hunter, world?: World): { kind:
   if (skill) return { kind: 'skill', ...skill };
 
   let trait: { id: string; cost: number; rank: number } | null = null;
-  for (const def of config.traits) {
+  if (pointsFree) for (const def of config.traits) {
     if (!canLearnTrait(config, h, def.id)) continue;
     const r = TRAIT_PRIORITY.indexOf(def.stat);
     const rank = r < 0 ? TRAIT_PRIORITY.length : r;
     if (!trait || rank < trait.rank || (rank === trait.rank && def.id < trait.id)) trait = { id: def.id, cost: def.pointCost, rank };
   }
-  return trait ? { kind: 'trait', id: trait.id, cost: trait.cost } : null;
+  if (trait) return { kind: 'trait', id: trait.id, cost: trait.cost };
+
+  if (!goldFree || config.growthProperties.length === 0) return null;
+  let growth: { id: string; cost: number } | null = null;
+  for (const def of config.growthProperties) {
+    const next = nextGrowth(config, h, def.id, world);
+    if (next && (!growth || next.cost < growth.cost)) growth = { id: def.id, cost: next.cost };
+  }
+  if (!growth || spare < growth.cost * f.growthReserveMul) return null;
+  if (spare - enhanceSavingsHold(config, h, world) < growth.cost * f.growthReserveMul) return null;
+  return { kind: 'growth', ...growth };
 }
 
 /**
@@ -597,8 +621,13 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
     }
     const learn = built(config.index.academy) ? bestLearn(config, h, world) : null;
     if (learn) {
-      const s = (learn.kind === 'skill' ? f.learnSkillScore : f.learnTraitScore) * econMul;
+      const s = (learn.kind === 'skill' ? f.learnSkillScore : learn.kind === 'trait' ? f.learnTraitScore : f.learnGrowthScore) * econMul;
       out.push({ goal: { type: 'learn', kind: learn.kind, id: learn.id }, score: s, label: `learn ${learn.kind} ${learn.id}` });
+    }
+    // Mounts (TECH_SPEC §5.15): bought at the Shop with gold beyond the gear savings.
+    const mount = built(config.index.shop) ? bestMount(config, h, world) : null;
+    if (mount) {
+      out.push({ goal: { type: 'buyMount', mountId: mount.id }, score: f.mountBuyScore * econMul, label: `buyMount ${mount.id}` });
     }
 
     // Potions (TECH_SPEC §5.14): restock the pack at the seller, scored like an economy goal.

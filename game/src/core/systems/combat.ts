@@ -1,6 +1,7 @@
 import { critChance, critMultiplier, dodgeChance, hunterStats, mitigated, monsterStats } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
 import { gainExp } from '../progress';
+import { dropRune } from './runes';
 import { SpatialHash } from '../spatial';
 import type { System, SystemContext } from '../system';
 import { bagCount, dist, findHunter, findMonster, isAlive, newAiState, type Hunter, type Monster } from '../world';
@@ -71,6 +72,7 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
     h.bag[d.materialId] = (h.bag[d.materialId] ?? 0) + 1;
   }
   dropEssence(ctx, h, m); // gear-tier essence of the monster's difficulty (TECH_SPEC §5.8); no RNG draw on Easy
+  dropRune(ctx, h, m); // runes into the Town stash (TECH_SPEC §5.15); no RNG draw below the lowest minMonsterLevel
   gainExp(ctx, h, ms.exp);
 }
 
