@@ -50,16 +50,22 @@ export function queueHasRoom(ctx: SystemContext): boolean {
   return q(ctx).length < ctx.config.formula.queueMax;
 }
 
-/** Add a waiting hunter (front = enters first: paid invitations). Caller checks queueHasRoom. */
+/** Add a waiting hunter (front = invitations: ahead of visitors, behind earlier invitations). Caller checks queueHasRoom. */
 export function joinQueue(ctx: SystemContext, entry: Omit<QueueEntry, 'uid' | 'queuedAtMs'>, front = false): QueueEntry {
   const { world } = ctx;
   // Own counter (not world.nextId): queueing must not shift the ids of hunters/gear made later.
   const n = (world.stats.queueJoined ?? 0) + 1;
   world.stats.queueJoined = n;
   const e: QueueEntry = { uid: `q${n}`, ...entry, queuedAtMs: world.timeMs };
-  if (front) q(ctx).unshift(e);
-  else q(ctx).push(e);
-  ctx.events.emit(world.tick, { type: 'hunterQueued', queueUid: e.uid, source: e.source, tier: e.tier, position: front ? 1 : q(ctx).length });
+  // `front`: ahead of every plain visitor, behind earlier invitations (first invited, first in).
+  const list = q(ctx);
+  let at = list.length;
+  if (front) {
+    at = list.findIndex((x) => x.source === 'visitor');
+    if (at < 0) at = list.length;
+  }
+  list.splice(at, 0, e);
+  ctx.events.emit(world.tick, { type: 'hunterQueued', queueUid: e.uid, source: e.source, tier: e.tier, position: at + 1 });
   return e;
 }
 

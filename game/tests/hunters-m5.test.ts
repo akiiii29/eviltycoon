@@ -234,8 +234,13 @@ describe('invitations: tier odds drive grade rolls', () => {
     expect(q.hunterId).toBeUndefined();
     expect(ctx.world.town.queue[0]).toMatchObject({ uid: q.queueUid, source: 'invite', tier: q.tier, invitationId: inv.id });
     expect(ctx.world.town.tickets[inv.id]).toBeUndefined();
+    // A second invitation queues behind the first one, still ahead of the plain visitor.
+    ctx.world.town.gold += inv.gold!;
+    applyCommand(ctx, { type: 'town.invite', invitationId: inv.id });
+    const q2 = ofType(ctx.events.drain(), 'hunterInvited')[0]!;
+    expect(ctx.world.town.queue.map((x) => x.uid)).toEqual([q.queueUid, q2.queueUid, 'q-old']);
     expect(ctx.world.town.gold).toBe(5);
-    expect(ctx.world.stats).toMatchObject({ invites: 2, inviteGold: inv.gold });
+    expect(ctx.world.stats).toMatchObject({ invites: 3, inviteGold: 2 * inv.gold! });
     // Queue full and town full → rejected; ticket-only row without a ticket → rejected; Town Hall gate.
     const small = makeCtx(cfg({ queueMax: 0 }));
     fill(small);
@@ -289,10 +294,12 @@ describe('personality modifiers (TECH_SPEC §5.5)', () => {
     h.gold = 0;
     return h;
   };
+  /** A monster worth ≥ 10 gold on Easy, so ×1.15 / ×0.88 survive rounding (same as tests/tax.test.ts). */
+  const RICH = 'mon.hollowlord';
   const kill = (ctx: SystemContext, h: Hunter) => {
-    const zone = base.zones[0]!;
+    const zone = base.zones.find((z) => z.monsters.some((zm) => zm.monsterId === RICH))!;
     const m: Monster = {
-      id: `m${ctx.world.nextId++}`, defId: zone.monsters[0]!.monsterId, zoneId: zone.id, hp: 1, position: { x: 0, y: 0 }, home: { x: 0, y: 0 },
+      id: `m${ctx.world.nextId++}`, defId: RICH, zoneId: zone.id, hp: 1, position: { x: 0, y: 0 }, home: { x: 0, y: 0 },
       targetHunterId: null, attackCdMs: 0, difficultyId: 'diff.easy',
     };
     ctx.world.monsters.push(m);
@@ -312,6 +319,9 @@ describe('personality modifiers (TECH_SPEC §5.5)', () => {
     expect(plain.gold).toBe(10 * ms.gold);
     expect(lucky.gold).toBe(10 * Math.round(ms.gold * k('pers.lucky', 'gain.gold')));
     expect(jinx.gold).toBe(10 * Math.round(ms.gold * k('pers.jinxed', 'gain.gold')));
+    expect(ms.gold).toBeGreaterThanOrEqual(10);
+    expect(lucky.gold).toBeGreaterThan(plain.gold);
+    expect(plain.gold).toBeGreaterThan(jinx.gold);
     expect(ms.exp).toBeGreaterThan(0);
     expect(plain.level).toBe(1);
     expect(plain.exp).toBeCloseTo(10 * ms.exp, 9);
