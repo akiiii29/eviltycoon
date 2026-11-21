@@ -3,7 +3,7 @@ import type { SystemContext } from './system';
 import { findHunter, isAlive } from './world';
 import { spawnHunter } from './systems/arrivals';
 import { setGoal } from './systems/ai';
-import { startCraft } from './systems/crafting';
+import { dismantleStoredGear, listStoredGear, reclaimHunterGear, startCraft } from './systems/crafting';
 import { servicePrice } from './systems/services';
 import { reincarnate } from './systems/progression';
 import { cancelBounty, postBounty, validateBounty } from './systems/bounty';
@@ -20,13 +20,24 @@ export type Command =
   | { type: 'debug.spawnHunter' }
   | { type: 'debug.removeHunter'; hunterId: string }
   | { type: 'debug.restoreNeeds'; hunterId: string }
-  /** GDD §6: start crafting a gear in a craft building from Town Storage materials. */
-  | { type: 'town.craft'; buildingId: string; gearId: string }
+  /**
+   * GDD §6: start crafting a gear in a craft building from Town Storage materials, at gear tier `difficultyId`
+   * (an unlocked difficulty ≤ the current one; default the base tier; TECH_SPEC §5.8).
+   */
+  | { type: 'town.craft'; buildingId: string; gearId: string; difficultyId?: string }
+  /** TECH_SPEC §5.8: move a hunter's equipment into Town gear storage (hunter in Town, not on a journey). */
+  | { type: 'hunter.reclaimGear'; hunterId: string }
+  /** Put a stored item on sale in the shop (needs a free shop slot). */
+  | { type: 'town.listGear'; itemUid: string }
+  /** Dismantle a stored item into dismantleReturnFrac of its recipe materials. */
+  | { type: 'town.dismantleGear'; itemUid: string }
+  /** Toggle the automatic difficulty step-up after reincarnations (manual town.setDifficulty turns it off). */
+  | { type: 'town.setAutoDifficulty'; on: boolean }
   /** GDD §6: toggle automatic recipe choice for idle craft buildings. */
   | { type: 'town.setAutoCraft'; on: boolean }
   /** GDD §8: manually reincarnate a max-level hunter. */
   | { type: 'hunter.reincarnate'; hunterId: string }
-  /** GDD §8: switch to an unlocked difficulty (affects new monster spawns only). */
+  /** GDD §8: switch to an unlocked difficulty (affects new monster spawns only; turns town.autoDifficulty off). */
   | { type: 'town.setDifficulty'; difficultyId: string }
   /** GDD §8: toggle automatic reincarnation of max-level hunters in town. */
   | { type: 'town.setAutoReincarnate'; on: boolean }
@@ -120,7 +131,20 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     h.needs.hp = hunterStats(ctx.config, h).hp;
     return null;
   },
-  'town.craft': (ctx, cmd) => startCraft(ctx, cmd.buildingId, cmd.gearId),
+  'town.craft': (ctx, cmd) => startCraft(ctx, cmd.buildingId, cmd.gearId, cmd.difficultyId),
+  'hunter.reclaimGear': (ctx, cmd) => {
+    const bad = controllable(ctx, cmd.hunterId);
+    if (bad) return bad;
+    const h = findHunter(ctx.world, cmd.hunterId)!;
+    if (ctx.config.index.nodes.get(h.nodeId)?.zoneId) return 'hunter is not in town';
+    return reclaimHunterGear(ctx, h);
+  },
+  'town.listGear': (ctx, cmd) => listStoredGear(ctx, cmd.itemUid),
+  'town.dismantleGear': (ctx, cmd) => dismantleStoredGear(ctx, cmd.itemUid),
+  'town.setAutoDifficulty': (ctx, cmd) => {
+    ctx.world.town.autoDifficulty = !!cmd.on;
+    return null;
+  },
   'town.setAutoCraft': (ctx, cmd) => {
     ctx.world.town.autoCraft = !!cmd.on;
     return null;
@@ -138,6 +162,8 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     if (!ctx.config.index.difficulties.has(cmd.difficultyId)) return 'unknown difficulty';
     if (!ctx.world.town.unlockedDifficulties.includes(cmd.difficultyId)) return 'difficulty locked';
     ctx.world.town.difficulty = cmd.difficultyId;
+    // The player's choice wins over the automatic step-up (TECH_SPEC §5.8); town.setAutoDifficulty turns it back on.
+    ctx.world.town.autoDifficulty = false;
     ctx.events.emit(ctx.world.tick, { type: 'difficultyChanged', difficultyId: cmd.difficultyId });
     return null;
   },

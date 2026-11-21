@@ -3,7 +3,7 @@
  *
  * Each hunter object keeps one entry per mode (steady / live) holding a snapshot of every input hunterStats reads:
  * config + formula identity, every `h.stats` field, classId, jobTier, reincarnation, level, each gear slot's
- * gearId/qualityId/enhance, trait levels, and for live stats also each buff's stat/value and `needs.mood`.
+ * gearId/qualityId/enhance/difficultyId, trait levels, and for live stats also each buff's stat/value and `needs.mood`.
  * A call compares the snapshot with the hunter's current values (by value, so in-place mutation is caught) and
  * recomputes on any difference. No tick/id key: state that changes mid-tick (level-up, a new buff, mood decay,
  * equipping) simply misses, so results are identical to computing every time.
@@ -28,7 +28,7 @@ interface Entry {
   jobTier: number;
   reincarnation: number;
   level: number;
-  /** Per GEAR_SLOTS slot: gearId, qualityId, enhance (null gearId = empty slot). */
+  /** Per GEAR_SLOTS slot: gearId, qualityId, enhance, difficultyId (gear tier; null gearId = empty slot). */
   gear: (string | number | null)[];
   traitKeys: string[];
   traitVals: number[];
@@ -77,8 +77,8 @@ function matches(e: Entry, config: GameConfig, h: Hunter, steady: boolean): bool
     const g = h.equipment[slot];
     if (!g) {
       if (e.gear[j] !== null) return false;
-    } else if (e.gear[j] !== g.gearId || e.gear[j + 1] !== g.qualityId || e.gear[j + 2] !== g.enhance) return false;
-    j += 3;
+    } else if (e.gear[j] !== g.gearId || e.gear[j + 1] !== g.qualityId || e.gear[j + 2] !== g.enhance || e.gear[j + 3] !== (g.difficultyId ?? null)) return false;
+    j += 4;
   }
   i = 0;
   for (const k in h.traits) {
@@ -105,8 +105,8 @@ function capture(config: GameConfig, h: Hunter, steady: boolean, out: Readonly<S
   const gear: (string | number | null)[] = [];
   for (const slot of GEAR_SLOTS) {
     const g = h.equipment[slot];
-    if (g) gear.push(g.gearId, g.qualityId, g.enhance);
-    else gear.push(null, null, null);
+    if (g) gear.push(g.gearId, g.qualityId, g.enhance, g.difficultyId ?? null);
+    else gear.push(null, null, null, null);
   }
   const traitKeys: string[] = [];
   const traitVals: number[] = [];

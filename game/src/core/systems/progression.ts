@@ -4,6 +4,8 @@ import { hunterStats } from '../formulas';
 import type { System, SystemContext } from '../system';
 import { isAlive, type Hunter, type World } from '../world';
 import { allHunters } from './journey';
+import { reclaimGear } from './crafting';
+import { autoAdvanceDifficulty } from './gearTier';
 
 /**
  * M3 progression (GDD §8): automatic job changes, reincarnation and difficulty unlocks.
@@ -30,7 +32,8 @@ function inTown(config: GameConfig, h: Hunter): boolean {
 
 /**
  * Reincarnate a max-level hunter back to level 1 (GDD §8). Returns null on success, else the reason.
- * Keeps skills, traits and equipment; resets level/EXP/job/base stats; grants trait points.
+ * Keeps skills and traits; equipment is reclaimed into Town gear storage (crafting.reclaimGear); resets
+ * level/EXP/job/base stats; grants trait points.
  */
 export function reincarnate(ctx: SystemContext, h: Hunter): string | null {
   const f = ctx.config.formula;
@@ -43,6 +46,8 @@ export function reincarnate(ctx: SystemContext, h: Hunter): string | null {
   h.stats = { ...h.rollStats };
   h.traitPoints += f.traitPointsPerReinc;
   h.buffs = [];
+  // Reclaim (TECH_SPEC §5.8): equipment goes to Town gear storage (stats kept), to be resold or dismantled.
+  reclaimGear(ctx, h);
   // A level-1 hunter must re-decide (e.g. leave a zone that is now too hard).
   h.ai = newAiState();
   h.needs.hp = hunterStats(ctx.config, h).hp;
@@ -90,5 +95,6 @@ export const progressionSystem: System = {
       }
     }
     checkDifficultyUnlocks(ctx);
+    autoAdvanceDifficulty(ctx); // town.autoDifficulty (gearTier.ts, TECH_SPEC §5.8)
   },
 };

@@ -251,6 +251,11 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       monsterAtkMul: { kind: 'number', min: 0.01 },
       monsterDefMul: { kind: 'number', min: 0.01 },
       rewardMul: { kind: 'number', min: 0.01 },
+      gearStatMul: { kind: 'number', min: 0.01, optional: true },
+      gearPriceMul: { kind: 'number', min: 0.01, optional: true },
+      gearPrefixKey: { kind: 'ref', table: 'loc', optional: true },
+      essenceId: { kind: 'ref', table: 'material', optional: true },
+      essenceDropChance: { kind: 'number', min: 0, max: 1, optional: true },
     },
   },
   journey: {
@@ -320,6 +325,8 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'zoneCrowdMul', 'zoneCrowdMinRho', 'retreatBurstMul', 'defSoftKnee', 'journeyRefKills',
   // Economy pass 2 (TECH_SPEC §5.4, §5.8, §5.12).
   'enhanceMinNetFrac', 'upgradeSavingsConcreteFrac', 'enhanceVsUpgradeMul', 'investTownHallLeadLevels', 'investUrgentImportSec', 'investValueService', 'investValueShop', 'investValueForge', 'investValueAcademy', 'investValueTradingPost', 'investValueStorehouse', 'investValueTownHall', 'investValueCraft', 'investReadyMul',
+  // Gear tiers per difficulty, reclaim, dismantle (TECH_SPEC §5.8).
+  'dismantleReturnFrac', 'gearStorageMax', 'craftEssencePerLevel', 'diffAutoAdvanceFrac',
 ];
 
 export class ConfigError extends Error {
@@ -372,6 +379,10 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('servicePriceLatePct', 0, 100);
     range('servicePriceLateLevel', 0, 1000);
     range('craftMinSellChance', 0, 1);
+    range('dismantleReturnFrac', 0, 1);
+    range('gearStorageMax', 0, 1000);
+    range('craftEssencePerLevel', 0, 100);
+    range('diffAutoAdvanceFrac', 0, 1e6);
     // Shop markdown schedule: the floor must be reachable (and offered) before an item is scrapped.
     // The scrap age is derived from it (crafting.shopScrapAgeSec), so only the inputs need checking.
     range('shopStaleSec', 1, 1e6);
@@ -585,6 +596,18 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
   if (diffs[0] && (diffs[0].unlockHunters !== 0 || diffs[0].unlockReincarnation !== 0)) {
     issues.push({ path: 'difficulty', message: 'the first difficulty must be unlocked from the start (0/0)' });
   }
+  // Gear tiers (TECH_SPEC §5.8): the first difficulty is the base tier (old gear migrates to it).
+  if (diffs[0] && (diffs[0].essenceId || (diffs[0].gearStatMul ?? 1) !== 1 || (diffs[0].gearPriceMul ?? 1) !== 1)) {
+    issues.push({ path: 'difficulty', message: 'the first difficulty is the base gear tier: no essenceId, gearStatMul/gearPriceMul 1' });
+  }
+  diffs.forEach((d, i) => {
+    if (i > 0 && (d.gearStatMul ?? 1) < (diffs[i - 1]!.gearStatMul ?? 1)) {
+      issues.push({ path: `difficulty.${d.id}.gearStatMul`, message: 'must not decrease with difficulty order' });
+    }
+    if (d.essenceId && !(d.essenceDropChance && d.essenceDropChance > 0)) {
+      issues.push({ path: `difficulty.${d.id}.essenceDropChance`, message: 'needed (> 0) with essenceId' });
+    }
+  });
   (raw.enhance as EnhanceDef[]).forEach((e, i) => {
     if (e.level !== i + 1) issues.push({ path: `enhance[${i}].level`, message: `expected ${i + 1} (rows must be +1, +2, … in order)` });
   });

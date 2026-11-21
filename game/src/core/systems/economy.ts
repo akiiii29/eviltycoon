@@ -103,7 +103,9 @@ function doShop(ctx: SystemContext, h: Hunter, itemUid: string): void {
   world.town.shop.splice(i, 1);
   const price = item.price;
   // Equip a plain GearInstance (shop-only fields price/listPrice/listedAtMs are dropped).
-  h.equipment[def.slot] = { uid: item.uid, gearId: item.gearId, qualityId: item.qualityId, enhance: item.enhance }; // previous item is discarded
+  const g: GearInstance = { uid: item.uid, gearId: item.gearId, qualityId: item.qualityId, enhance: item.enhance };
+  if (item.difficultyId !== undefined) g.difficultyId = item.difficultyId; // gear tier (TECH_SPEC §5.8)
+  h.equipment[def.slot] = g; // previous item is discarded
   // No free heal when max HP rises; only clamp if the new max is lower.
   h.needs.hp = Math.min(h.needs.hp, hunterStats(config, h).hp);
   world.stats.gearBought += 1;

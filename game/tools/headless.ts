@@ -1,6 +1,7 @@
 /**
  * Headless run for tuning (TECH_SPEC §11): npx vite-node tools/headless.ts [minutes] [seed] [snapshotEveryMin]
- * Prints a timeline (town gold, shop items, storage units, hunter gold avg/max, avg level) every
+ * Prints a timeline (town gold, shop items, storage units, hunter gold avg/max, avg level, current difficulty, items in
+ * Town gear storage — TECH_SPEC §5.8) every
  * snapshotEveryMin game minutes (default 60) plus the town gold ledger of that window (in: services, shop sales,
  * forge/academy fee cut; out: material purchases, craft gold), the bounty ledger (escrow posted, refunds, paid to hunters,
  * kingdom completion gold), the Town tax on kill gold (`tax`), the building ledger (gold invested in builds/upgrades
@@ -48,7 +49,7 @@ function snapshot(w: World, min: number): string {
   if (req) for (const k in req) reqUnits += req[k]!;
   return `t=${String(min).padStart(4)}m townGold ${String(w.town.gold).padStart(6)} shop ${String(w.town.shop.length).padStart(2)} ` +
     `storage ${String(storage).padStart(4)} bags ${String(bags).padStart(4)} requests ${String(reqUnits).padStart(3)} ` +
-    `hunterGold avg ${String(avg).padStart(6)} max ${String(Math.max(0, ...gold)).padStart(6)} avgLv ${lv}`;
+    `hunterGold avg ${String(avg).padStart(6)} max ${String(Math.max(0, ...gold)).padStart(6)} avgLv ${lv} diff ${w.town.difficulty.replace(/^diff\./, '')} gearStore ${(w.town.gearStorage ?? []).length}`;
 }
 
 /** Planned journeys: destination, first minute, launches left; `waiting` = a start command is in flight. */
@@ -178,6 +179,6 @@ for (const s of w.town.buildings ?? []) {
 }
 for (const h of w.hunters) {
   const n = h.needs;
-  const eq = Object.entries(h.equipment).map(([s, g]) => `${s}:${g!.gearId.split('.').pop()}/${g!.qualityId.slice(2)}+${g!.enhance}`).join(' ');
+  const eq = Object.entries(h.equipment).map(([s, g]) => `${s}:${g!.gearId.split('.').pop()}/${g!.qualityId.slice(2)}+${g!.enhance}${g!.difficultyId && g!.difficultyId !== config.difficulties[0]!.id ? '@' + g!.difficultyId.replace(/^diff\./, '') : ''}`).join(' ');
   console.log(`${h.id} Lv${h.level} gold ${h.gold} kills ${h.kills} [${eq}] goal ${h.ai.goal ? JSON.stringify(h.ai.goal) : '-'} ${h.ai.phase} hp ${(n.hp / h.stats.hp * 100).toFixed(0)}% sat ${n.satiety.toFixed(0)} mood ${n.mood.toFixed(0)} sta ${n.stamina.toFixed(0)}`);
 }

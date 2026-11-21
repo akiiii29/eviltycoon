@@ -16,7 +16,17 @@ export type SimEvent =
   /** A shop item left unsold at its floor price for shopFloorHoldSec was removed (no refund). */
   | { type: 'gearScrapped'; tick: number; itemUid: string; gearId: string; qualityId: string; price: number }
   | { type: 'craftStarted'; tick: number; buildingId: string; gearId: string }
-  | { type: 'gearCrafted'; tick: number; buildingId: string; itemUid: string; gearId: string; qualityId: string }
+  | { type: 'gearCrafted'; tick: number; buildingId: string; itemUid: string; gearId: string; qualityId: string; difficultyId?: string }
+  /**
+   * TECH_SPEC §5.8: an item was dismantled — `materials` (floor(count × dismantleReturnFrac) of its recipe incl. tier essence)
+   * went to Town Storage. `source`: shop = unsold at scrap age (instead of gearScrapped), storage = gear storage over
+   * gearStorageMax, command = `town.dismantleGear`.
+   */
+  | { type: 'gearDismantled'; tick: number; itemUid: string; gearId: string; qualityId: string; difficultyId?: string; source: 'shop' | 'storage' | 'command'; materials: Record<string, number> }
+  /** TECH_SPEC §5.8: a hunter's equipment went to Town gear storage (on reincarnation or `hunter.reclaimGear`). */
+  | { type: 'gearReclaimed'; tick: number; hunterId: string; itemUids: string[]; reason: 'reincarnation' | 'command' }
+  /** A stored (reclaimed) item was put back on sale in the shop. */
+  | { type: 'gearRelisted'; tick: number; itemUid: string; gearId: string; price: number }
   | { type: 'gearBought'; tick: number; hunterId: string; itemUid: string; gearId: string; price: number }
   | { type: 'enhanceResult'; tick: number; hunterId: string; slot: string; success: boolean; level: number; cost: number }
   | { type: 'skillCast'; tick: number; hunterId: string; skillId: string; targets: number }

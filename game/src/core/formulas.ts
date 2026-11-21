@@ -24,12 +24,16 @@ const PERCENT = 100;
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-/** Main stat value of a gear instance: base × quality × (1 + enhance × enhanceStatPerLevel). */
+/**
+ * Main stat value of a gear instance: base × quality × tier × (1 + enhance × enhanceStatPerLevel).
+ * tier = gearStatMul of the difficulty the item was crafted at (TECH_SPEC §5.8; absent/unknown = 1).
+ */
 export function gearMainValue(config: GameConfig, g: GearInstance): number {
   const def = config.index.gear.get(g.gearId);
   const q = config.index.qualities.get(g.qualityId);
   if (!def || !q) return 0;
-  return def.mainValue * q.statMult * (1 + g.enhance * config.formula.enhanceStatPerLevel);
+  const tier = g.difficultyId ? (config.index.difficulties.get(g.difficultyId)?.gearStatMul ?? 1) : 1;
+  return def.mainValue * q.statMult * tier * (1 + g.enhance * config.formula.enhanceStatPerLevel);
 }
 
 export function gearMainStat(config: GameConfig, g: GearInstance): MainStat | undefined {

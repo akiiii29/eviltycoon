@@ -233,7 +233,7 @@ describe('crafting', () => {
     ctx.world.town.crafting['bld.smithy'] = { gearId: 'gear.w.club', remainingMs: 99_999 }; // keep smithy off the gel
     ctx.world.town.storage = { 'mat.gel': 5 };
     craftingSystem.update(ctx);
-    expect(ctx.world.town.crafting['bld.jeweler']).toEqual({ gearId: 'gear.r.charm', remainingMs: 20_000 });
+    expect(ctx.world.town.crafting['bld.jeweler']).toEqual({ gearId: 'gear.r.charm', remainingMs: 20_000, difficultyId: 'diff.easy' });
   });
 
   it('auto-craft skips recipes already covered by the shop, consumes materials and town gold', () => {
@@ -244,7 +244,7 @@ describe('crafting', () => {
     shopItem(ctx.world, 'gear.w.club', 60); // a Rare club already on sale covers the weapon slot → padded
     const gold0 = ctx.world.town.gold;
     craftingSystem.update(ctx);
-    expect(ctx.world.town.crafting['bld.smithy']).toEqual({ gearId: 'gear.a.padded', remainingMs: 20_000 });
+    expect(ctx.world.town.crafting['bld.smithy']).toEqual({ gearId: 'gear.a.padded', remainingMs: 20_000, difficultyId: 'diff.easy' });
     expect(ctx.world.town.gold).toBe(gold0 - Math.round(60 * config.formula.craftGoldFrac));
     expect(ctx.world.town.storage).toEqual({ 'mat.gel': 4, 'mat.tusk': 3 });
     // jeweler: charm needs 5 gel (only 4 left), fang needs level 5 → nothing.
@@ -295,7 +295,7 @@ describe('town commands', () => {
     expect(ctx.world.town.storage).toEqual({ 'mat.gel': 4 });
     ctx.world.town.gold = cost; // manual craft needs only the cost, not the auto-craft reserve
     expect(reasons({ type: 'town.craft', buildingId: 'bld.smithy', gearId: 'gear.w.club' })).toEqual([]);
-    expect(ctx.world.town.crafting['bld.smithy']).toEqual({ gearId: 'gear.w.club', remainingMs: 20_000 });
+    expect(ctx.world.town.crafting['bld.smithy']).toEqual({ gearId: 'gear.w.club', remainingMs: 20_000, difficultyId: 'diff.easy' });
     expect(ctx.world.town.storage).toEqual({});
     expect(ctx.world.town.gold).toBe(0);
     expect(reasons({ type: 'town.craft', buildingId: 'bld.smithy', gearId: 'gear.w.club' })).toEqual(['building is busy']);

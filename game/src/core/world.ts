@@ -5,9 +5,10 @@ export type { GearSlot, NeedKey } from './config/types';
 
 /**
  * Bump when the World shape changes and add a migration in save/migrations.ts.
- * v8 = Town buildings (TECH_SPEC §5.12); v9 = journeys (TECH_SPEC §5.11).
+ * v8 = Town buildings (TECH_SPEC §5.12); v9 = journeys (TECH_SPEC §5.11);
+ * v10 = gear tiers per difficulty, Town gear storage (reclaim), dismantle, auto difficulty (TECH_SPEC §5.8).
  */
-export const WORLD_SCHEMA_VERSION = 9;
+export const WORLD_SCHEMA_VERSION = 10;
 
 export type Grade = 'normal' | 'high' | 'highest';
 export type HunterTier = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
@@ -46,6 +47,12 @@ export interface GearInstance {
   gearId: string;
   qualityId: string;
   enhance: number;
+  /**
+   * v10: gear tier = id of the difficulty it was crafted at (main stat × that difficulty's gearStatMul, TECH_SPEC §5.8).
+   * Optional in the type so code that creates gear without a tier (journey loot) gets the base tier; the v9 → v10
+   * migration writes the base difficulty id on every existing item.
+   */
+  difficultyId?: string;
 }
 
 export interface ShopItem extends GearInstance {
@@ -60,6 +67,8 @@ export interface ShopItem extends GearInstance {
 export interface CraftJob {
   gearId: string;
   remainingMs: number;
+  /** v10: gear tier the job was started at (its essence is already paid); absent = base tier. */
+  difficultyId?: string;
 }
 
 export type GoalType = Goal['type'];
@@ -251,6 +260,13 @@ export interface World {
      * absent = config `taxRate`.
      */
     taxRate?: number;
+    /**
+     * v10: Town gear storage — equipment reclaimed from hunters (on reincarnation or `hunter.reclaimGear`), oldest first.
+     * Items keep quality/enhance/tier; they are put back on sale in the shop or dismantled (TECH_SPEC §5.8).
+     */
+    gearStorage: GearInstance[];
+    /** v10: step the difficulty up automatically once enough hunters have reincarnated (formula diffAutoAdvanceFrac). */
+    autoDifficulty: boolean;
   };
   /** Arrays (not maps) so iteration order is stable and deterministic. */
   hunters: Hunter[];
@@ -294,6 +310,10 @@ export interface World {
     journeysFailed: number;
     journeysRecalled: number;
     journeyGold: number;
+    /** v10: items dismantled into materials (shop items at scrap age, stored gear, command) / equipment reclaimed into storage / stored items put back on sale. */
+    gearDismantled: number;
+    gearReclaimed: number;
+    gearRelisted: number;
   };
 }
 

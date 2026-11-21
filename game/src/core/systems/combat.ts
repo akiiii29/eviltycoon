@@ -5,6 +5,7 @@ import { SpatialHash } from '../spatial';
 import type { System, SystemContext } from '../system';
 import { bagCount, dist, findHunter, findMonster, isAlive, newAiState, type Hunter, type Monster } from '../world';
 import { bountyOnKill } from './bounty';
+import { dropEssence } from './gearTier';
 import { stepTowards } from './movement';
 import { grantKillGold } from './tax';
 
@@ -66,6 +67,7 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
     if (bagCount(h) >= config.formula.bagCapacity) break;
     h.bag[d.materialId] = (h.bag[d.materialId] ?? 0) + 1;
   }
+  dropEssence(ctx, h, m); // gear-tier essence of the monster's difficulty (TECH_SPEC §5.8); no RNG draw on Easy
   gainExp(ctx, h, ms.exp);
 }
 
