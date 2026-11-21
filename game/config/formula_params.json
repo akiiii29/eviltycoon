@@ -169,7 +169,7 @@
  "gearStorageMax": 64,
  "craftEssencePerLevel": 0.05,
  "diffAutoAdvanceFrac": 0.5,
- "storageCapBase": 150,
+ "storageCapBase": 100,
  "diffAutoMinRatio": 0.6,
  "supplyRequestBatches": 3,
  "potionTownHallLevel": 6,
