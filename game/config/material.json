@@ -16,5 +16,12 @@
   { "id": "mat.sigil", "nameKey": "mat.sigil.name", "price": 380 },
   { "id": "mat.void", "nameKey": "mat.void.name", "price": 300 },
   { "id": "mat.shade", "nameKey": "mat.shade.name", "price": 420 },
-  { "id": "mat.star", "nameKey": "mat.star.name", "price": 600 }
+  { "id": "mat.star", "nameKey": "mat.star.name", "price": 600 },
+  { "id": "mat.ess.normal", "nameKey": "mat.ess.normal.name", "price": 40 },
+  { "id": "mat.ess.hard", "nameKey": "mat.ess.hard.name", "price": 90 },
+  { "id": "mat.ess.expert", "nameKey": "mat.ess.expert.name", "price": 200 },
+  { "id": "mat.ess.nightmare", "nameKey": "mat.ess.nightmare.name", "price": 450 },
+  { "id": "mat.ess.torment1", "nameKey": "mat.ess.torment1.name", "price": 1000 },
+  { "id": "mat.ess.torment2", "nameKey": "mat.ess.torment2.name", "price": 2200 },
+  { "id": "mat.ess.torment3", "nameKey": "mat.ess.torment3.name", "price": 4800 }
 ]

@@ -5,9 +5,9 @@ export type { GearSlot, NeedKey } from './config/types';
 
 /**
  * Bump when the World shape changes and add a migration in save/migrations.ts.
- * v8 = Town buildings (TECH_SPEC §5.12); v9 = journeys (TECH_SPEC §5.11); v10 = reserved for another branch
- * (placeholder migration, renumbered on merge); v11 = service supplies, potions, revive fee (TECH_SPEC §5.14);
- * v12 = reincarnation portal (`portal`, TECH_SPEC §5.13).
+ * v8 = Town buildings (TECH_SPEC §5.12); v9 = journeys (TECH_SPEC §5.11);
+ * v10 = gear tiers per difficulty, Town gear storage (reclaim), dismantle, auto difficulty (TECH_SPEC §5.8);
+ * v11 = service supplies, potions, revive fee (TECH_SPEC §5.14); v12 = reincarnation portal (`portal`, TECH_SPEC §5.13).
  */
 export const WORLD_SCHEMA_VERSION = 12;
 
@@ -33,7 +33,7 @@ export type Goal =
   | { type: 'enhance'; slot: GearSlot }
   /** M3: learn/upgrade a skill (gold) or a trait (trait points) at the Academy (re-validated on arrival). */
   | { type: 'learn'; kind: 'skill' | 'trait'; id: string }
-  /** v11: buy HP potions of a tier at the potion seller (re-validated on arrival, TECH_SPEC §5.13). */
+  /** v11: buy HP potions of a tier at the potion seller (re-validated on arrival, TECH_SPEC §5.14). */
   | { type: 'buyPotion'; consumableId: string }
   /** v12: walk to the Reincarnation Portal and enter it (re-validated on arrival; TECH_SPEC §5.13). */
   | { type: 'reincarnate' };
@@ -52,6 +52,12 @@ export interface GearInstance {
   gearId: string;
   qualityId: string;
   enhance: number;
+  /**
+   * v10: gear tier = id of the difficulty it was crafted at (main stat × that difficulty's gearStatMul, TECH_SPEC §5.8).
+   * Optional in the type so code that creates gear without a tier (journey loot) gets the base tier; the v9 → v10
+   * migration writes the base difficulty id on every existing item.
+   */
+  difficultyId?: string;
 }
 
 export interface ShopItem extends GearInstance {
@@ -66,6 +72,8 @@ export interface ShopItem extends GearInstance {
 export interface CraftJob {
   gearId: string;
   remainingMs: number;
+  /** v10: gear tier the job was started at (its essence is already paid); absent = base tier. */
+  difficultyId?: string;
 }
 
 export type GoalType = Goal['type'];
@@ -123,7 +131,7 @@ export interface Hunter {
   arrivedAtMs: number;
   /**
    * v11: potions carried (consumableId → count, at most potionCarryMax in total) and the time until the next one may be
-   * drunk (TECH_SPEC §5.13). Optional so code that builds hunters by hand keeps working; absent = none / ready.
+   * drunk (TECH_SPEC §5.14). Optional so code that builds hunters by hand keeps working; absent = none / ready.
    */
   potions?: Record<string, number>;
   potionCdMs?: number;
@@ -190,7 +198,7 @@ export interface BuildingState {
 }
 
 /**
- * v11: one stock line of a building (systems/supplies.ts, TECH_SPEC §5.13): service servings (`supply:<buildingId>`) or
+ * v11: one stock line of a building (systems/supplies.ts, TECH_SPEC §5.14): service servings (`supply:<buildingId>`) or
  * potions (`potion:<buildingId>`). Stock per recipe id; at most one batch in production.
  */
 export interface SupplyLine {
@@ -290,7 +298,14 @@ export interface World {
      * absent = config `taxRate`.
      */
     taxRate?: number;
-    /** v11: stock lines by key `supply:<buildingId>` / `potion:<buildingId>` (TECH_SPEC §5.13). */
+    /**
+     * v10: Town gear storage — equipment reclaimed from hunters (on reincarnation or `hunter.reclaimGear`), oldest first.
+     * Items keep quality/enhance/tier; they are put back on sale in the shop or dismantled (TECH_SPEC §5.8).
+     */
+    gearStorage: GearInstance[];
+    /** v10: step the difficulty up automatically once enough hunters have reincarnated (formula diffAutoAdvanceFrac). */
+    autoDifficulty: boolean;
+    /** v11: stock lines by key `supply:<buildingId>` / `potion:<buildingId>` (TECH_SPEC §5.14). */
     supply: Record<string, SupplyLine>;
   };
   /** Arrays (not maps) so iteration order is stable and deterministic. */
@@ -337,8 +352,12 @@ export interface World {
     journeysFailed: number;
     journeysRecalled: number;
     journeyGold: number;
+    /** v10: items dismantled into materials (shop items at scrap age, stored gear, command) / equipment reclaimed into storage / stored items put back on sale. */
+    gearDismantled: number;
+    gearReclaimed: number;
+    gearRelisted: number;
     /**
-     * v11 (TECH_SPEC §5.13): supply units produced / served; arrivals turned away by an empty service; game ms of empty
+     * v11 (TECH_SPEC §5.14): supply units produced / served; arrivals turned away by an empty service; game ms of empty
      * service stock (sum over services); potions produced / bought / drunk, gold hunters paid for them; revive fees paid
      * and revives that could not pay in full.
      */

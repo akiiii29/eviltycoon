@@ -1,13 +1,14 @@
 /**
  * Headless run for tuning (TECH_SPEC §11): npx vite-node tools/headless.ts [minutes] [seed] [snapshotEveryMin]
- * Prints a timeline (town gold, shop items, storage units, hunter gold avg/max, avg level) every
+ * Prints a timeline (town gold, shop items, storage units, hunter gold avg/max, avg level, current difficulty, items in
+ * Town gear storage — TECH_SPEC §5.8) every
  * snapshotEveryMin game minutes (default 60) plus the town gold ledger of that window (in: services, shop sales,
  * forge/academy fee cut; out: material purchases, craft gold), the bounty ledger (escrow posted, refunds, paid to hunters,
  * kingdom completion gold), the Town tax on kill gold (`tax`), the building ledger (gold invested in builds/upgrades
  * incl. material imports, refunds, material units consumed; TECH_SPEC §5.12) with every building's level (`*` = upgrade
  * running) and the hunter gold ledger (gross: kill gold before tax, enhance and skill-study spending), then event counts,
  * stats, active bounties, buildings and the final hunter list.
- * Supplies/potions/revive (TECH_SPEC §5.13): per window `supply` = service stockout minutes per service (inf/rest/tav/inn),
+ * Supplies/potions/revive (TECH_SPEC §5.14): per window `supply` = service stockout minutes per service (inf/rest/tav/inn),
  * units served / produced, turned-away arrivals; `potion` = bought / drunk, gold hunters paid (Town cut), HP retreats started
  * while carrying a potion; `revive` = fees paid (Town cut), revives that could not pay. Potion and revive gold are explicit
  * ledger terms (not in `fees`).
@@ -20,6 +21,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { loadConfig, type RawConfig } from '../src/core/config/load';
 import { createWorld, Simulation } from '../src/core/simulation';
+import { craftGoldCost } from '../src/core/systems/crafting';
 import { bestJourneyTeam } from '../src/core/systems/journey';
 import { salePrice } from '../src/core/systems/trading';
 import type { World } from '../src/core/world';
@@ -52,7 +54,7 @@ function snapshot(w: World, min: number): string {
   if (req) for (const k in req) reqUnits += req[k]!;
   return `t=${String(min).padStart(4)}m townGold ${String(w.town.gold).padStart(6)} shop ${String(w.town.shop.length).padStart(2)} ` +
     `storage ${String(storage).padStart(4)} bags ${String(bags).padStart(4)} requests ${String(reqUnits).padStart(3)} ` +
-    `hunterGold avg ${String(avg).padStart(6)} max ${String(Math.max(0, ...gold)).padStart(6)} avgLv ${lv}`;
+    `hunterGold avg ${String(avg).padStart(6)} max ${String(Math.max(0, ...gold)).padStart(6)} avgLv ${lv} diff ${w.town.difficulty.replace(/^diff\./, '')} gearStore ${(w.town.gearStorage ?? []).length}`;
 }
 
 /** Planned journeys: destination, first minute, launches left; `waiting` = a start command is in flight. */
@@ -78,7 +80,7 @@ const levels = (w: World): string =>
   (w.town.buildings ?? []).map((s) => `${short(s.buildingId)}${s.level}${s.upgrade ? '*' : ''}`).join(' ');
 /** Hunter side (gross amounts the hunters paid): enhance tries, skill study. Kill gold is the residual of the window. */
 const hl = { enh: 0, skill: 0 };
-/** Supplies / potions / revive fee (TECH_SPEC §5.13), per window. */
+/** Supplies / potions / revive fee (TECH_SPEC §5.14), per window. */
 const sp = { potGold: 0, potTown: 0, potBought: 0, potUsed: 0, revFee: 0, revTown: 0, served: 0, made: 0, denied: 0, potRetreat: 0 };
 const svcIds = config.buildings.filter((b) => b.supplyCap).map((b) => b.id);
 const stockoutMs = (w: World) => svcIds.map((id) => w.town.supply?.[`supply:${id}`]?.stockoutMs ?? 0);
@@ -138,6 +140,11 @@ for (let t = 0; t < ticks; t++) {
     else if (e.type === 'buildingCancelled') inv.refund += e.refund;
     else if (e.type === 'buildingCompleted') inv.done += 1;
     else if (e.type === 'taxCollected') tax += e.gold;
+    else if (e.type === 'craftStarted') {
+      // Gear tier of the job just started (TECH_SPEC §5.8): craft gold × gearPriceMul.
+      const g = config.index.gear.get(e.gearId);
+      if (g) ledger.craft += craftGoldCost(config, g, sim.world.town.crafting[e.buildingId]?.difficultyId);
+    }
     if (e.type === 'potionBought') { sp.potGold += e.gold; sp.potTown += e.townGold; sp.potBought += e.count; }
     else if (e.type === 'potionUsed') sp.potUsed += 1;
     else if (e.type === 'hunterRevived') { sp.revFee += e.fee ?? 0; sp.revTown += e.townGold ?? 0; }
@@ -148,7 +155,6 @@ for (let t = 0; t < ticks; t++) {
       const hh = sim.world.hunters.find((x) => x.id === e.hunterId);
       if (hh && Object.values(hh.potions ?? {}).some((n) => n > 0)) sp.potRetreat += 1;
     }
-    else if (e.type === 'craftStarted') ledger.craft += Math.round((config.index.gear.get(e.gearId)?.basePrice ?? 0) * config.formula.craftGoldFrac);
     if (e.type === 'goalChanged') reasons[`${e.goal.split(':')[0]} <- ${e.reason.split(' ')[0]}`] = (reasons[`${e.goal.split(':')[0]} <- ${e.reason.split(' ')[0]}`] ?? 0) + 1;
   }
   if (snapEvery > 0 && (t + 1) % (snapEvery * 600) === 0) {
@@ -206,6 +212,6 @@ for (const s of w.town.buildings ?? []) {
 }
 for (const h of w.hunters) {
   const n = h.needs;
-  const eq = Object.entries(h.equipment).map(([s, g]) => `${s}:${g!.gearId.split('.').pop()}/${g!.qualityId.slice(2)}+${g!.enhance}`).join(' ');
+  const eq = Object.entries(h.equipment).map(([s, g]) => `${s}:${g!.gearId.split('.').pop()}/${g!.qualityId.slice(2)}+${g!.enhance}${g!.difficultyId && g!.difficultyId !== config.difficulties[0]!.id ? '@' + g!.difficultyId.replace(/^diff\./, '') : ''}`).join(' ');
   console.log(`${h.id} Lv${h.level} gold ${h.gold} kills ${h.kills} [${eq}] potions ${JSON.stringify(h.potions ?? {})} goal ${h.ai.goal ? JSON.stringify(h.ai.goal) : '-'} ${h.ai.phase} hp ${(n.hp / h.stats.hp * 100).toFixed(0)}% sat ${n.satiety.toFixed(0)} mood ${n.mood.toFixed(0)} sta ${n.stamina.toFixed(0)}`);
 }

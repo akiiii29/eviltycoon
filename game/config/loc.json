@@ -710,6 +710,76 @@
   "en": "Hollow Throne"
  },
  {
+  "key": "tier.normal.prefix",
+  "vi": "Tôi Luyện",
+  "en": "Tempered"
+ },
+ {
+  "key": "mat.ess.normal.name",
+  "vi": "Bụi Lửa Thường",
+  "en": "Normal Kiln Dust"
+ },
+ {
+  "key": "tier.hard.prefix",
+  "vi": "Mài Sắc",
+  "en": "Honed"
+ },
+ {
+  "key": "mat.ess.hard.name",
+  "vi": "Bụi Lửa Khó",
+  "en": "Hard Kiln Dust"
+ },
+ {
+  "key": "tier.expert.prefix",
+  "vi": "Khắc Ấn",
+  "en": "Runed"
+ },
+ {
+  "key": "mat.ess.expert.name",
+  "vi": "Bụi Lửa Chuyên Gia",
+  "en": "Expert Kiln Dust"
+ },
+ {
+  "key": "tier.nightmare.prefix",
+  "vi": "Rèn Ác Mộng",
+  "en": "Dreadforged"
+ },
+ {
+  "key": "mat.ess.nightmare.name",
+  "vi": "Bụi Lửa Ác Mộng",
+  "en": "Nightmare Kiln Dust"
+ },
+ {
+  "key": "tier.torment1.prefix",
+  "vi": "Phẫn Nộ I",
+  "en": "Wrathbound I"
+ },
+ {
+  "key": "mat.ess.torment1.name",
+  "vi": "Bụi Lửa Dày Vò I",
+  "en": "Torment Kiln Dust I"
+ },
+ {
+  "key": "tier.torment2.prefix",
+  "vi": "Phẫn Nộ II",
+  "en": "Wrathbound II"
+ },
+ {
+  "key": "mat.ess.torment2.name",
+  "vi": "Bụi Lửa Dày Vò II",
+  "en": "Torment Kiln Dust II"
+ },
+ {
+  "key": "tier.torment3.prefix",
+  "vi": "Phẫn Nộ III",
+  "en": "Wrathbound III"
+ },
+ {
+  "key": "mat.ess.torment3.name",
+  "vi": "Bụi Lửa Dày Vò III",
+  "en": "Torment Kiln Dust III"
+ },
+ {
   "key": "pot.hp.1.name",
   "vi": "Thuốc hồi máu nhỏ",
   "en": "Minor healing draught"

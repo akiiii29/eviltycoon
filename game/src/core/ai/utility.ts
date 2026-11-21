@@ -245,7 +245,7 @@ export function shouldRetreatBeforeNextKill(config: GameConfig, nav: NavGraph, w
 }
 
 /**
- * HP fraction under which a hunter carrying potions drinks one in the field (TECH_SPEC §5.13; 0 in town): the highest of
+ * HP fraction under which a hunter carrying potions drinks one in the field (TECH_SPEC §5.14; 0 in town): the highest of
  *  - potionUseHpFrac,
  *  - the kill-boundary line max(HP urgent threshold, retreatHpFloor) + one kill (shouldRetreatBeforeNextKill),
  *  - the middle of the field HP needs band (needsOk's HP term at 0.5, about where returnTown overtakes hunt),
@@ -571,7 +571,7 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
       if (b.kind !== 'service' || !b.need || b.price === undefined) continue;
       const lv = buildingLevel(world, b.id);
       if (lv < 1) continue; // not built yet
-      if (!serviceInStock(world, b)) continue; // out of supplies (TECH_SPEC §5.13): rest instead
+      if (!serviceInStock(world, b)) continue; // out of supplies (TECH_SPEC §5.14): rest instead
       const frac = needFrac(config, h, b.need);
       if (frac >= f.serviceFullFrac || h.gold < servicePrice(config, h, b, lv)) continue;
       const base = frac < f.softNeedFrac ? f.serviceLowBase + f.serviceLowWeight * (1 - frac) : f.serviceWeight * (1 - frac);
@@ -600,7 +600,7 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
       out.push({ goal: { type: 'learn', kind: learn.kind, id: learn.id }, score: s, label: `learn ${learn.kind} ${learn.id}` });
     }
 
-    // Potions (TECH_SPEC §5.13): restock the pack at the seller, scored like an economy goal.
+    // Potions (TECH_SPEC §5.14): restock the pack at the seller, scored like an economy goal.
     const potion = bestPotionPurchase(config, world, h);
     if (potion) {
       out.push({ goal: { type: 'buyPotion', consumableId: potion.consumable.id }, score: f.potionBuyScore * econMul, label: `buyPotion ${potion.consumable.id}` });

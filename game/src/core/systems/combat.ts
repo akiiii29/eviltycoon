@@ -6,6 +6,7 @@ import type { System, SystemContext } from '../system';
 import { bagCount, dist, findHunter, findMonster, isAlive, newAiState, type Hunter, type Monster } from '../world';
 import { bountyOnKill } from './bounty';
 import { payReviveFee, reviveDelayMs } from './consumables';
+import { dropEssence } from './gearTier';
 import { stepTowards } from './movement';
 import { grantKillGold } from './tax';
 
@@ -33,7 +34,7 @@ function buildAggroIndex(ctx: SystemContext): void {
 
 function killHunter(ctx: SystemContext, h: Hunter): void {
   h.needs.hp = 0;
-  // Revive fee (TECH_SPEC §5.13): a hunter who cannot pay it in full waits longer.
+  // Revive fee (TECH_SPEC §5.14): a hunter who cannot pay it in full waits longer.
   h.deadMs = reviveDelayMs(ctx.config, ctx.world, h);
   h.ai = { ...newAiState(), goal: { type: 'dead' } };
   h.attackCdMs = 0;
@@ -69,6 +70,7 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
     if (bagCount(h) >= config.formula.bagCapacity) break;
     h.bag[d.materialId] = (h.bag[d.materialId] ?? 0) + 1;
   }
+  dropEssence(ctx, h, m); // gear-tier essence of the monster's difficulty (TECH_SPEC §5.8); no RNG draw on Easy
   gainExp(ctx, h, ms.exp);
 }
 

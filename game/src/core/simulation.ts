@@ -33,7 +33,7 @@ const MAX_TICKS_PER_ADVANCE = 600;
  * after crafting and before `bounty`, so investment spends spare Town gold before the auto-bounty looks at it. `potionUse` drinks
  * between skills and the backstop (a potion answers the hit before a retreat fires); `consumables` sells potions at the door;
  * `supplies` produces service/potion stock after the Trading Post and before crafting (essential materials first,
- * TECH_SPEC §5.13). New systems go here and in §3.2.
+ * TECH_SPEC §5.14). New systems go here and in §3.2.
  */
 export const DEFAULT_SYSTEMS: readonly System[] = [
   arrivalsSystem,
@@ -82,6 +82,8 @@ export function createWorld(config: GameConfig, seed: number): World {
       buildings: initialBuildings(config),
       autoInvest: true,
       investPlan: null,
+      gearStorage: [],
+      autoDifficulty: true,
       supply: initialSupply(config),
     },
     hunters: [],
@@ -89,7 +91,7 @@ export function createWorld(config: GameConfig, seed: number): World {
     journeys: [],
     portal: [],
     zones: {},
-    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, supplyProduced: 0, supplyUsed: 0, serviceStockouts: 0, supplyStockoutMs: 0, potionsProduced: 0, potionsBought: 0, potionsUsed: 0, potionGold: 0, reviveFees: 0, reviveBroke: 0 },
+    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, gearDismantled: 0, gearReclaimed: 0, gearRelisted: 0, supplyProduced: 0, supplyUsed: 0, serviceStockouts: 0, supplyStockoutMs: 0, potionsProduced: 0, potionsBought: 0, potionsUsed: 0, potionGold: 0, reviveFees: 0, reviveBroke: 0 },
   };
 }
 

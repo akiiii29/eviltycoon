@@ -119,6 +119,17 @@ export interface DifficultyDef {
   monsterAtkMul: number;
   monsterDefMul: number;
   rewardMul: number;
+  /**
+   * Gear tier of this difficulty (TECH_SPEC §5.8): gear crafted at this tier has main stat × gearStatMul and
+   * price/craft gold × gearPriceMul (absent = 1). The first difficulty is the base tier (1, no essence).
+   */
+  gearStatMul?: number;
+  gearPriceMul?: number;
+  /** Loc key of the tier prefix shown before the gear name (absent = no prefix). */
+  gearPrefixKey?: string;
+  /** Material dropped only by monsters spawned under this difficulty (chance essenceDropChance per kill); tier crafts need it. */
+  essenceId?: string;
+  essenceDropChance?: number;
 }
 
 /** Gold, Town Storage materials and build time to reach one building level (TECH_SPEC §5.12). */
@@ -158,18 +169,18 @@ export interface BuildingDef {
   /** storehouse only: extra copies kept by the automatic material requests (per level). */
   requestCopies?: number[];
   /**
-   * service only: max supply units in stock (per level; one unit = one serving, TECH_SPEC §5.13). Missing = the service
+   * service only: max supply units in stock (per level; one unit = one serving, TECH_SPEC §5.14). Missing = the service
    * needs no supplies (unlimited, as before supplies existed).
    */
   supplyCap?: number[];
-  /** Potion seller (the Infirmary, TECH_SPEC §5.13): max potions in stock over every tier (per level). */
+  /** Potion seller (the Infirmary, TECH_SPEC §5.14): max potions in stock over every tier (per level). */
   potionCap?: number[];
 }
 
 export type ConsumableKind = 'supply' | 'potion';
 
 /**
- * A stock recipe (config/consumable.json, TECH_SPEC §5.13): `materials` from Town Storage → `units` in the stock of
+ * A stock recipe (config/consumable.json, TECH_SPEC §5.14): `materials` from Town Storage → `units` in the stock of
  * `buildingId` after `craftSec`. `kind` supply = service servings (fungible across tiers); potion = an HP potion hunters
  * buy (`price` before level scaling) and drink in the field (`heal` × max HP). Rows of one building + kind form a tier
  * ladder by `minLevel` (the tier a hunter / the town median level uses).
@@ -569,7 +580,22 @@ export interface FormulaParams {
   /** Kills per HP bar that count as journey power 1 per member (formulas.zonePower); the AI uses zoneRefKills. */
   journeyRefKills: number;
   /**
-   * Supplies and potions (TECH_SPEC §5.13, systems/supplies.ts, systems/consumables.ts). Automatic requests keep at most
+   * Gear tiers (TECH_SPEC §5.8): a dismantled item (shop item at scrap age, stored gear over gearStorageMax, command)
+   * returns floor(count × dismantleReturnFrac) of every material of its recipe (incl. tier essence) to Town Storage.
+   * 0 = old behaviour (scrapped, nothing back).
+   */
+  dismantleReturnFrac: number;
+  /** Max reclaimed items kept in Town gear storage; the oldest beyond it are dismantled. */
+  gearStorageMax: number;
+  /** Essence units a tier craft needs: max(1, round(gear.level × craftEssencePerLevel)). */
+  craftEssencePerLevel: number;
+  /**
+   * Auto difficulty (town.autoDifficulty): step up to the next unlocked difficulty when at least
+   * ceil(diffAutoAdvanceFrac × hunters) hunters have reincarnation ≥ its unlockReincarnation. > 1 = never.
+   */
+  diffAutoAdvanceFrac: number;
+  /**
+   * Supplies and potions (TECH_SPEC §5.14, systems/supplies.ts, systems/consumables.ts). Automatic requests keep at most
    * supplyRequestBatches batches of the essential recipe per stock line.
    */
   supplyRequestBatches: number;
@@ -647,7 +673,7 @@ export interface GameConfig {
   /** Sorted by order (index 0 = starting difficulty). */
   difficulties: DifficultyDef[];
   journeys: JourneyDef[];
-  /** Stock recipes in config order (TECH_SPEC §5.13). */
+  /** Stock recipes in config order (TECH_SPEC §5.14). */
   consumables: ConsumableDef[];
   loc: LocEntry[];
   /** Lookups built by the loader. */

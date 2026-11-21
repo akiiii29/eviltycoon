@@ -24,7 +24,7 @@ export function servicePrice(config: GameConfig, h: Hunter, b: BuildingDef, buil
 
 /**
  * Town services (GDD §5): a hunter at the door pays once, goes inside, recovers the need,
- * then comes out and decides again. Each entry takes one supply unit (systems/supplies.ts, TECH_SPEC §5.13); with the
+ * then comes out and decides again. Each entry takes one supply unit (systems/supplies.ts, TECH_SPEC §5.14); with the
  * stock empty the hunter is turned away unpaid (`serviceStockout`) and decides again (resting in town still regenerates).
  */
 export const servicesSystem: System = {

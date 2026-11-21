@@ -253,6 +253,11 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       monsterAtkMul: { kind: 'number', min: 0.01 },
       monsterDefMul: { kind: 'number', min: 0.01 },
       rewardMul: { kind: 'number', min: 0.01 },
+      gearStatMul: { kind: 'number', min: 0.01, optional: true },
+      gearPriceMul: { kind: 'number', min: 0.01, optional: true },
+      gearPrefixKey: { kind: 'ref', table: 'loc', optional: true },
+      essenceId: { kind: 'ref', table: 'material', optional: true },
+      essenceDropChance: { kind: 'number', min: 0, max: 1, optional: true },
     },
   },
   journey: {
@@ -285,7 +290,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       failRewardFrac: { kind: 'number', min: 0, max: 1 },
     },
   },
-  // Supplies and potions (TECH_SPEC §5.13).
+  // Supplies and potions (TECH_SPEC §5.14).
   consumable: {
     idField: 'id',
     row: {
@@ -341,7 +346,9 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'zoneCrowdMul', 'zoneCrowdMinRho', 'retreatBurstMul', 'defSoftKnee', 'journeyRefKills',
   // Economy pass 2 (TECH_SPEC §5.4, §5.8, §5.12).
   'enhanceMinNetFrac', 'upgradeSavingsConcreteFrac', 'enhanceVsUpgradeMul', 'investTownHallLeadLevels', 'investUrgentImportSec', 'investValueService', 'investValueShop', 'investValueForge', 'investValueAcademy', 'investValueTradingPost', 'investValueStorehouse', 'investValueTownHall', 'investValueCraft', 'investReadyMul',
-  // Supplies, potions, revive fee (TECH_SPEC §5.13).
+  // Gear tiers per difficulty, reclaim, dismantle (TECH_SPEC §5.8).
+  'dismantleReturnFrac', 'gearStorageMax', 'craftEssencePerLevel', 'diffAutoAdvanceFrac',
+  // Supplies, potions, revive fee (TECH_SPEC §5.14).
   'supplyRequestBatches', 'potionTownHallLevel', 'potionCarryMax', 'potionPriceLevelPct', 'potionSpendFrac', 'potionBuyScore',
   'potionUseHpFrac', 'potionCooldownSec', 'reviveFeeBase', 'reviveFeePerLevel', 'reviveBrokeDelayMul',
 ];
@@ -396,6 +403,10 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('servicePriceLatePct', 0, 100);
     range('servicePriceLateLevel', 0, 1000);
     range('craftMinSellChance', 0, 1);
+    range('dismantleReturnFrac', 0, 1);
+    range('gearStorageMax', 0, 1000);
+    range('craftEssencePerLevel', 0, 100);
+    range('diffAutoAdvanceFrac', 0, 1e6);
     // Shop markdown schedule: the floor must be reachable (and offered) before an item is scrapped.
     // The scrap age is derived from it (crafting.shopScrapAgeSec), so only the inputs need checking.
     range('shopStaleSec', 1, 1e6);
@@ -475,7 +486,7 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('investValueTownHall', 0, 1000);
     range('investValueCraft', 0, 1000);
     range('investReadyMul', 0, 1000);
-    // Supplies, potions, revive fee (TECH_SPEC §5.13).
+    // Supplies, potions, revive fee (TECH_SPEC §5.14).
     range('supplyRequestBatches', 0, 100);
     range('potionTownHallLevel', 1, 100);
     range('potionCarryMax', 0, 100);
@@ -557,7 +568,7 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
       issues.push({ path: `building[${i}]`, message: `needs a Town Hall level above its max level ${th.maxLevel}` });
     }
   });
-  // Stock recipes (TECH_SPEC §5.13): supplies belong to a service with supplyCap, potions to the building with potionCap
+  // Stock recipes (TECH_SPEC §5.14): supplies belong to a service with supplyCap, potions to the building with potionCap
   // (at most one) and need heal + price; every stock line needs a tier at minLevel 1 so any hunter level has one.
   const consumables = raw.consumable as ConsumableDef[];
   const typeById = new Map(buildings.map((b) => [b.id, b]));
@@ -635,6 +646,18 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
   if (diffs[0] && (diffs[0].unlockHunters !== 0 || diffs[0].unlockReincarnation !== 0)) {
     issues.push({ path: 'difficulty', message: 'the first difficulty must be unlocked from the start (0/0)' });
   }
+  // Gear tiers (TECH_SPEC §5.8): the first difficulty is the base tier (old gear migrates to it).
+  if (diffs[0] && (diffs[0].essenceId || (diffs[0].gearStatMul ?? 1) !== 1 || (diffs[0].gearPriceMul ?? 1) !== 1)) {
+    issues.push({ path: 'difficulty', message: 'the first difficulty is the base gear tier: no essenceId, gearStatMul/gearPriceMul 1' });
+  }
+  diffs.forEach((d, i) => {
+    if (i > 0 && (d.gearStatMul ?? 1) < (diffs[i - 1]!.gearStatMul ?? 1)) {
+      issues.push({ path: `difficulty.${d.id}.gearStatMul`, message: 'must not decrease with difficulty order' });
+    }
+    if (d.essenceId && !(d.essenceDropChance && d.essenceDropChance > 0)) {
+      issues.push({ path: `difficulty.${d.id}.essenceDropChance`, message: 'needed (> 0) with essenceId' });
+    }
+  });
   (raw.enhance as EnhanceDef[]).forEach((e, i) => {
     if (e.level !== i + 1) issues.push({ path: `enhance[${i}].level`, message: `expected ${i + 1} (rows must be +1, +2, … in order)` });
   });

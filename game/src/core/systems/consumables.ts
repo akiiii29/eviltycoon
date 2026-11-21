@@ -1,5 +1,5 @@
 /**
- * HP potions and the revive fee (TECH_SPEC §5.13) — the hunter gold sinks.
+ * HP potions and the revive fee (TECH_SPEC §5.14) — the hunter gold sinks.
  *
  * - Potions are made by the potion seller's stock line (the Infirmary, systems/supplies.ts) from Town Storage materials,
  *   one stock per tier (config/consumable.json `kind: potion`), once the Town Hall reaches potionTownHallLevel.

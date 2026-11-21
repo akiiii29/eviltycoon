@@ -1,4 +1,4 @@
-/** Service supplies, potions and the revive fee (TECH_SPEC §5.13). */
+/** Service supplies, potions and the revive fee (TECH_SPEC §5.14). */
 import { describe, expect, it } from 'vitest';
 import { potionDrinkLine, retreatHpFloor, scoreGoals, shouldRetreatBeforeNextKill, urgentThreshold } from '../src/core/ai/utility';
 import { loadConfig, type RawConfig } from '../src/core/config/load';

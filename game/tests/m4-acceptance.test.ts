@@ -378,6 +378,12 @@ function downgrade(src: World, v: number): Record<string, any> {
     for (const h of hunters) del(h, 'potions', 'potionCdMs');
     del(w.stats, 'supplyProduced', 'supplyUsed', 'serviceStockouts', 'supplyStockoutMs', 'potionsProduced', 'potionsBought', 'potionsUsed', 'potionGold', 'reviveFees', 'reviveBroke');
   }
+  if (v < 10) {
+    del(w.town, 'gearStorage', 'autoDifficulty'); del(w.stats, 'gearDismantled', 'gearReclaimed', 'gearRelisted');
+    for (const h of hunters) for (const g of Object.values(h.equipment ?? {})) del(g as Record<string, any>, 'difficultyId');
+    for (const it of w.town.shop ?? []) del(it, 'difficultyId');
+    for (const job of Object.values(w.town.crafting ?? {})) del(job as Record<string, any> | undefined, 'difficultyId');
+  }
   if (v < 9) { delete w.journeys; del(w.stats, 'journeysStarted', 'journeysSucceeded', 'journeysFailed', 'journeysRecalled', 'journeyGold'); }
   if (v < 8) { del(w.town, 'buildings', 'autoInvest', 'investPlan'); del(w.stats, 'buildingsBuilt', 'buildingUpgrades', 'investGold', 'investMaterials', 'investImportGold'); }
   if (v < 7) { del(w.town, 'bounties', 'autoBounty', 'taxRate'); del(w.stats, 'bountiesPosted', 'bountiesCompleted', 'bountyGoldPaid', 'bountyKingdomGold', 'taxCollected'); }
@@ -403,10 +409,7 @@ function downgrade(src: World, v: number): Record<string, any> {
   return w;
 }
 
-/** Case id of the "v9 save made before buildings existed" (a version number no real case uses). */
-const PRE_BUILDING_V9 = -9;
-
-describe('QA-MIG: every schema version v0..v11 (and a pre-building v9) loads into a working M4 town', () => {
+describe('QA-MIG: every schema version v0..v11 (and a pre-building current version) loads into a working M4 town', () => {
   let base: World;
   beforeAll(() => {
     const s = new Simulation(config, createWorld(config, 2));
@@ -416,18 +419,17 @@ describe('QA-MIG: every schema version v0..v11 (and a pre-building v9) loads int
   });
   const oldSave = (v: number): Record<string, any> => {
     expect(base.journeys).toEqual([]);
-    if (v !== PRE_BUILDING_V9) return downgrade(base, v);
-    const w = downgrade(base, 9); // v9 made before buildings existed
+    if (v < WORLD_SCHEMA_VERSION) return downgrade(base, v);
+    const w = downgrade(base, WORLD_SCHEMA_VERSION); // current version saved by a v9 build made before buildings existed
     delete w.town.buildings; delete w.town.autoInvest; delete w.town.investPlan;
     return w;
   };
   const cases: [string, number][] = [];
   for (let v = 0; v < WORLD_SCHEMA_VERSION; v++) cases.push([`v${v}`, v]);
-  cases.push(['v9 without buildings', PRE_BUILDING_V9]);
+  cases.push([`v${WORLD_SCHEMA_VERSION} without buildings`, WORLD_SCHEMA_VERSION]);
 
   it.each(cases)('%s', (_label, version) => {
     const old = oldSave(version);
-    expect(old.schemaVersion).toBe(version === PRE_BUILDING_V9 ? 9 : version);
     const text = JSON.stringify({ format: SAVE_FORMAT, schemaVersion: old.schemaVersion, configVersion: config.version, savedAt: T0, world: old });
     const r = deserialize(text, config);
     const w = r.world;
@@ -441,6 +443,11 @@ describe('QA-MIG: every schema version v0..v11 (and a pre-building v9) loads int
     expect(w.town.buildings.map((s) => s.id)).toEqual(config.plots.filter((p) => p.startBuilding).map((p) => p.id));
     expect(w.town.autoInvest).toBe(true);
     expect(w.town.requests).toBeDefined();
+    // v10 (gear tiers, TECH_SPEC §5.8): gear storage, auto difficulty, every existing item on the base tier.
+    expect(Array.isArray(w.town.gearStorage)).toBe(true);
+    expect(typeof w.town.autoDifficulty).toBe('boolean');
+    for (const h of w.hunters) for (const g of Object.values(h.equipment)) expect(g!.difficultyId).toBe(config.difficulties[0]!.id);
+    for (const it of w.town.shop) expect(it.difficultyId).toBe(config.difficulties[0]!.id);
     expect(taxRate(config, w)).toBe(f.taxRate);
     expect(violations(config, w)).toEqual([]);
 

@@ -19,7 +19,12 @@
   "monsterHpMul": 2.2,
   "monsterAtkMul": 1.8,
   "monsterDefMul": 1.8,
-  "rewardMul": 2
+  "rewardMul": 2,
+  "gearStatMul": 1.6,
+  "gearPriceMul": 1.6,
+  "gearPrefixKey": "tier.normal.prefix",
+  "essenceId": "mat.ess.normal",
+  "essenceDropChance": 0.03
  },
  {
   "id": "diff.hard",
@@ -30,7 +35,12 @@
   "monsterHpMul": 4.5,
   "monsterAtkMul": 3.2,
   "monsterDefMul": 3,
-  "rewardMul": 4
+  "rewardMul": 4,
+  "gearStatMul": 2.5,
+  "gearPriceMul": 2.5,
+  "gearPrefixKey": "tier.hard.prefix",
+  "essenceId": "mat.ess.hard",
+  "essenceDropChance": 0.03
  },
  {
   "id": "diff.expert",
@@ -41,7 +51,12 @@
   "monsterHpMul": 9,
   "monsterAtkMul": 5.5,
   "monsterDefMul": 5,
-  "rewardMul": 8
+  "rewardMul": 8,
+  "gearStatMul": 4,
+  "gearPriceMul": 4,
+  "gearPrefixKey": "tier.expert.prefix",
+  "essenceId": "mat.ess.expert",
+  "essenceDropChance": 0.03
  },
  {
   "id": "diff.nightmare",
@@ -52,7 +67,12 @@
   "monsterHpMul": 18,
   "monsterAtkMul": 9,
   "monsterDefMul": 8,
-  "rewardMul": 16
+  "rewardMul": 16,
+  "gearStatMul": 6.5,
+  "gearPriceMul": 6.5,
+  "gearPrefixKey": "tier.nightmare.prefix",
+  "essenceId": "mat.ess.nightmare",
+  "essenceDropChance": 0.03
  },
  {
   "id": "diff.torment1",
@@ -63,7 +83,12 @@
   "monsterHpMul": 36,
   "monsterAtkMul": 15,
   "monsterDefMul": 13,
-  "rewardMul": 32
+  "rewardMul": 32,
+  "gearStatMul": 10,
+  "gearPriceMul": 10,
+  "gearPrefixKey": "tier.torment1.prefix",
+  "essenceId": "mat.ess.torment1",
+  "essenceDropChance": 0.03
  },
  {
   "id": "diff.torment2",
@@ -74,7 +99,12 @@
   "monsterHpMul": 72,
   "monsterAtkMul": 24,
   "monsterDefMul": 20,
-  "rewardMul": 64
+  "rewardMul": 64,
+  "gearStatMul": 15,
+  "gearPriceMul": 15,
+  "gearPrefixKey": "tier.torment2.prefix",
+  "essenceId": "mat.ess.torment2",
+  "essenceDropChance": 0.03
  },
  {
   "id": "diff.torment3",
@@ -85,6 +115,11 @@
   "monsterHpMul": 144,
   "monsterAtkMul": 38,
   "monsterDefMul": 32,
-  "rewardMul": 128
+  "rewardMul": 128,
+  "gearStatMul": 22,
+  "gearPriceMul": 22,
+  "gearPrefixKey": "tier.torment3.prefix",
+  "essenceId": "mat.ess.torment3",
+  "essenceDropChance": 0.03
  }
 ]

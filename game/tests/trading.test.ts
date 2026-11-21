@@ -282,9 +282,24 @@ describe('AI: prefer zones that drop requested materials', () => {
   });
 });
 
-describe('gearScrapped event/stat', () => {
-  it('the crafting system reports items scrapped after shopScrapAgeSec', () => {
-    const ctx = makeCtx(cfg({ shopStaleSec: 600, shopMarkdownPct: 10, shopMarkdownFloor: 0.8, shopFloorHoldSec: 600 }));
+describe('gearScrapped / gearDismantled event/stat', () => {
+  it('an item unsold at shopScrapAgeSec is dismantled: dismantleReturnFrac of its recipe goes to storage', () => {
+    const ctx = makeCtx(cfg({ shopStaleSec: 600, shopMarkdownPct: 10, shopMarkdownFloor: 0.8, shopFloorHoldSec: 600, dismantleReturnFrac: 0.5 }));
+    ctx.world.town.autoCraft = false;
+    ctx.world.timeMs = 1800 * 1000;
+    ctx.world.town.shop.push({ uid: 'g1', gearId: 'gear.w.club', qualityId: 'q.rare', enhance: 0, price: 48, listPrice: 60, listedAtMs: 0 });
+    craftingSystem.update(ctx);
+    expect(ctx.world.town.shop).toEqual([]);
+    expect(ctx.world.town.storage['mat.gel']).toBe(2); // club = 4 gel → floor(4 × 0.5)
+    expect(ctx.world.stats.gearDismantled).toBe(1);
+    expect(ctx.world.stats.gearScrapped).toBe(0); // exclusive per item
+    const evs = ctx.events.drain();
+    expect(ofType(evs, 'gearScrapped')).toEqual([]);
+    expect(ofType(evs, 'gearDismantled')).toMatchObject([{ itemUid: 'g1', gearId: 'gear.w.club', source: 'shop', materials: { 'mat.gel': 2 } }]);
+  });
+
+  it('with dismantleReturnFrac 0 the crafting system reports items scrapped after shopScrapAgeSec (as before dismantling)', () => {
+    const ctx = makeCtx(cfg({ shopStaleSec: 600, shopMarkdownPct: 10, shopMarkdownFloor: 0.8, shopFloorHoldSec: 600, dismantleReturnFrac: 0 }));
     ctx.world.town.autoCraft = false;
     ctx.world.timeMs = 1800 * 1000; // 2 steps to the floor × 600 s + 600 s at the floor
     ctx.world.town.shop.push({ uid: 'g1', gearId: 'gear.w.club', qualityId: 'q.rare', enhance: 0, price: 48, listPrice: 60, listedAtMs: 0 });

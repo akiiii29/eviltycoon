@@ -1,5 +1,5 @@
 /**
- * Service supplies and potion stock (TECH_SPEC §5.13; EHT-style "the Inn sells goods made from materials").
+ * Service supplies and potion stock (TECH_SPEC §5.14; EHT-style "the Inn sells goods made from materials").
  *
  * - Every service building with `supplyCap` has a stock line `supply:<buildingId>`: one unit = one serving. Units are made
  *   from Town Storage materials by the recipes of config/consumable.json (`kind: supply`), one batch at a time

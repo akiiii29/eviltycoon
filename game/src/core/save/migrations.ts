@@ -153,9 +153,39 @@ export const MIGRATIONS: Record<number, Migration> = {
       stats: { journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, ...stats },
     };
   },
-  // v9 → v10: PLACEHOLDER (pass-through) for the gear/difficulty branch; the real one replaces it on merge.
-  9: (w) => w,
-  // v10 → v11 (supplies, potions, revive fee — TECH_SPEC §5.13): every supply line full at the building's level with the tier
+  // v9 → v10 (gear tiers per difficulty, reclaim, dismantle; TECH_SPEC §5.8): every existing item (equipped — also by
+  // hunters away on a journey — on sale, being crafted) gets the base tier (first difficulty); empty Town gear storage;
+  // auto difficulty on (like auto-craft; it only ever steps up); new stats = 0.
+  9: (w, config) => {
+    const base = config.difficulties[0]!.id;
+    const town = (w.town ?? {}) as Record<string, any>;
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    const tier = (g: unknown) => (g && typeof g === 'object' ? { ...(g as object), difficultyId: (g as any).difficultyId ?? base } : g);
+    const hunter = (h: Record<string, any>) => {
+      if (!h || typeof h !== 'object' || !h.equipment || typeof h.equipment !== 'object') return h;
+      const eq: Record<string, unknown> = {};
+      for (const k of Object.keys(h.equipment)) eq[k] = tier(h.equipment[k]);
+      return { ...h, equipment: eq };
+    };
+    const hunters = (Array.isArray(w.hunters) ? w.hunters : []) as Record<string, any>[];
+    const journeys = (Array.isArray(w.journeys) ? w.journeys : []) as Record<string, any>[];
+    const crafting: Record<string, unknown> = {};
+    for (const k of Object.keys(town.crafting ?? {})) crafting[k] = tier(town.crafting[k]);
+    return {
+      ...w,
+      hunters: hunters.map(hunter),
+      journeys: journeys.map((j) => (j && Array.isArray(j.hunters) ? { ...j, hunters: j.hunters.map(hunter) } : j)),
+      town: {
+        gearStorage: [],
+        autoDifficulty: true,
+        ...town,
+        shop: (Array.isArray(town.shop) ? town.shop : []).map(tier),
+        crafting,
+      },
+      stats: { gearDismantled: 0, gearReclaimed: 0, gearRelisted: 0, ...stats },
+    };
+  },
+  // v10 → v11 (supplies, potions, revive fee — TECH_SPEC §5.14): every supply line full at the building's level with the tier
   // of the median hunter level (the save keeps playing as before supplies existed), potion lines empty, hunters (also those
   // away on a journey) carry no potions, new stats = 0. Idempotent: existing fields win.
   10: (w, config) => {
