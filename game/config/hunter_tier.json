@@ -1,0 +1,7 @@
+[
+  { "tier": "normal", "minPointsFrac": 0 },
+  { "tier": "rare", "minPointsFrac": 0.3 },
+  { "tier": "superior", "minPointsFrac": 0.5 },
+  { "tier": "heroic", "minPointsFrac": 0.7 },
+  { "tier": "legendary", "minPointsFrac": 0.8 }
+]

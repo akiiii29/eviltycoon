@@ -2,7 +2,7 @@ import { validateTables, type ConfigIssue, type FieldSpec, type TableSpec } from
 import {
   BUILDING_KINDS, GEAR_SLOTS, GEAR_STATS, HUNTER_TIERS, MOD_STATS, NEED_KEYS, PERSONALITY_TARGETS, STAT_KEYS,
   type GearGradeDef, type GearOptionDef, type GearSetDef, type GearSkillDef,
-  type InvitationDef, type PersonalityDef, type BuildingDef, type BuildingPlotDef, type ConsumableDef, type DifficultyDef, type JourneyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
+  type HunterTierDef, type HunterTierId, type InvitationDef, type PersonalityDef, type BuildingDef, type BuildingPlotDef, type ConsumableDef, type DifficultyDef, type JourneyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
   RELIC_EFFECTS, type ExpCurveRow, type GrowthPropertyDef, type MountDef, type RelicDef, type RuneDef,
   type MapEdge, type MapNode, type MaterialDef, type MonsterDef, type ZoneDef,
 } from './types';
@@ -56,6 +56,13 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       gold: { kind: 'int', min: 0, optional: true },
       townHallLevel: { kind: 'int', min: 1, optional: true },
       autoInvite: { kind: 'bool', optional: true },
+    },
+  },
+  hunter_tier: {
+    idField: 'tier',
+    row: {
+      tier: { kind: 'enum', values: HUNTER_TIERS },
+      minPointsFrac: { kind: 'number', min: 0, max: 1 },
     },
   },
   stat_grade: {
@@ -684,6 +691,28 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     const sum = grades.reduce((s: number, g) => s + (typeof g?.rollChance === 'number' ? g.rollChance : 0), 0);
     if (Math.abs(sum - 1) > 1e-6) issues.push({ path: 'stat_grade', message: `rollChance must sum to 1 (got ${sum})` });
   }
+  const tiersRaw = raw.hunter_tier;
+  if (Array.isArray(tiersRaw)) {
+    const fracs = HUNTER_TIERS.map((t) => (tiersRaw as { tier?: string; minPointsFrac?: number }[]).find((r) => r?.tier === t)?.minPointsFrac);
+    HUNTER_TIERS.forEach((t, i) => {
+      const v = fracs[i];
+      if (typeof v !== 'number') issues.push({ path: `hunter_tier.${t}`, message: 'missing row' });
+      else if (i === 0 && v !== 0) issues.push({ path: `hunter_tier.${t}.minPointsFrac`, message: 'the lowest tier must start at 0' });
+      else if (i > 0 && typeof fracs[i - 1] === 'number' && !(v > fracs[i - 1]!)) {
+        issues.push({ path: `hunter_tier.${t}.minPointsFrac`, message: 'must increase with tier' });
+      }
+    });
+    // Every tier must stay reachable: the derived thresholds (ceil(frac × max grade points)) must strictly increase.
+    if (fracs.every((v) => typeof v === 'number') && Array.isArray(grades)) {
+      const maxPoints = STAT_KEYS.length * Math.max(0, ...grades.map((g: { point?: number }) => (typeof g?.point === 'number' ? g.point : 0)));
+      const pts = fracs.map((v) => Math.max(0, Math.ceil(v! * maxPoints - 1e-9)));
+      for (let i = 1; i < pts.length; i++) {
+        if (pts[i]! <= pts[i - 1]! || pts[i]! > maxPoints) {
+          issues.push({ path: `hunter_tier.${HUNTER_TIERS[i]}.minPointsFrac`, message: `unreachable: ${pts[i]} of ${maxPoints} grade points (previous tier ${pts[i - 1]})` });
+        }
+      }
+    }
+  }
 
   const classes = raw.class;
   if (Array.isArray(classes)) {
@@ -992,6 +1021,19 @@ function validateProgressionTables(raw: RawConfig): ConfigIssue[] {
   return issues;
 }
 
+/**
+ * hunter_tier rows in HUNTER_TIERS order with minPoints = ceil(minPointsFrac × maxPoints) (TECH_SPEC §4.1), maxPoints =
+ * number of graded stats (STAT_KEYS) × the highest stat_grade point.
+ */
+function hunterTiers(raw: RawConfig): HunterTierDef[] {
+  const rows = raw.hunter_tier as { tier: HunterTierId; minPointsFrac: number }[];
+  const maxPoints = STAT_KEYS.length * Math.max(0, ...(raw.stat_grade as { point: number }[]).map((g) => g.point));
+  return HUNTER_TIERS.map((t) => {
+    const r = rows.find((x) => x.tier === t)!;
+    return { tier: t, minPointsFrac: r.minPointsFrac, minPoints: Math.max(0, Math.ceil(r.minPointsFrac * maxPoints - 1e-9)) };
+  });
+}
+
 /** Validate and build a typed, indexed config. Throws ConfigError listing every issue. */
 export function loadConfig(raw: RawConfig): GameConfig {
   const issues = validateConfig(raw);
@@ -1035,6 +1077,7 @@ export function loadConfig(raw: RawConfig): GameConfig {
     classes,
     personalities,
     statGrades: raw.stat_grade as GameConfig['statGrades'],
+    hunterTiers: hunterTiers(raw),
     invitations,
     nodes,
     edges: raw.map_edge as MapEdge[],

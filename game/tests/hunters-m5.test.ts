@@ -171,23 +171,26 @@ describe('invitations: tier odds drive grade rolls', () => {
     expect(Array.from({ length: 50 }, () => rollInvitationTier(a, inv))).toEqual(Array.from({ length: 50 }, () => rollInvitationTier(b, inv)));
   });
 
-  it('rollHunterOfTier gives grades whose points match the tier; legendary = every stat at the top grade', () => {
+  it('rollHunterOfTier gives grades whose points match the tier (every tier reachable)', () => {
     const rng = new Rng(3);
     for (const tier of HUNTER_TIERS) {
       for (let i = 0; i < 40; i++) {
         const h = rollHunterOfTier(base, rng, 'x', tier, base.index.squareNode, { x: 0, y: 0 }, 0);
         expect(h.tier).toBe(tier);
-        if (tier === 'legendary') {
-          for (const k of STAT_KEYS) expect(h.statGrades[k]).toBe('highest');
-          const cls = base.index.classes.get(h.classId)!;
-          for (const k of STAT_KEYS) {
-            const [min, max] = cls.statRanges[k][2];
-            expect(h.rollStats[k]).toBeGreaterThanOrEqual(Math.ceil((min + max) / 2));
-          }
-        } else {
-          expect(tierFromPoints(points(h))).toBe(tier);
-        }
+        expect(tierFromPoints(base, points(h))).toBe(tier);
         for (const k of STAT_KEYS) expect(h.stats[k]).toBe(h.rollStats[k]);
+      }
+    }
+    // Fallback when a config leaves a tier unreachable: top-grade combination, stats in the upper half of the range.
+    const strict = { ...base, hunterTiers: base.hunterTiers.map((t) => (t.tier === 'legendary' ? { ...t, minPoints: 99 } : t)) };
+    for (let i = 0; i < 20; i++) {
+      const h = rollHunterOfTier(strict, rng, 'x', 'legendary', base.index.squareNode, { x: 0, y: 0 }, 0);
+      expect(h.tier).toBe('legendary');
+      const cls = base.index.classes.get(h.classId)!;
+      for (const k of STAT_KEYS) {
+        expect(h.statGrades[k]).toBe('highest');
+        const [min, max] = cls.statRanges[k][2];
+        expect(h.rollStats[k]).toBeGreaterThanOrEqual(Math.ceil((min + max) / 2));
       }
     }
     // Same seed → same hunter.
@@ -199,13 +202,36 @@ describe('invitations: tier odds drive grade rolls', () => {
   it('invitation odds beat the natural visitor odds above normal', () => {
     const nat = naturalTierOdds(base);
     expect(HUNTER_TIERS.reduce((a, t) => a + nat[t], 0)).toBeCloseTo(1, 9);
-    expect(nat.legendary).toBe(0); // five stats × 2 points < 14
-    // Every invitation (incl. the free auto-invite) beats a free visitor at superior and above.
+    // Every tier reachable from grade points, rarer with each step (hunter_tier scaled to 5 graded stats).
+    for (let i = 1; i < HUNTER_TIERS.length; i++) {
+      expect(nat[HUNTER_TIERS[i]!]).toBeGreaterThan(0);
+      expect(nat[HUNTER_TIERS[i]!]).toBeLessThan(nat[HUNTER_TIERS[i - 1]!]);
+    }
+    // Every invitation (incl. the free auto-invite) beats a free visitor at every tier from superior up, and
+    // invitations in config order (dearer) are at least as good from superior up.
+    let prevTop = 0;
     for (const inv of base.invitations) {
       const tot = HUNTER_TIERS.reduce((a, t: HunterTierId) => a + inv.tierChances[t], 0);
+      for (const t of ['superior', 'heroic', 'legendary'] as const) expect(inv.tierChances[t] / tot).toBeGreaterThan(nat[t]);
       const top = (inv.tierChances.superior + inv.tierChances.heroic + inv.tierChances.legendary) / tot;
-      expect(top).toBeGreaterThan(nat.superior + nat.heroic);
+      expect(top).toBeGreaterThanOrEqual(prevTop);
+      prevTop = top;
     }
+  });
+
+  it('hunter_tier: thresholds scale with the number of graded stats; config check rejects bad tables', () => {
+    // 5 stats × 2 points = 10; fractions 0 / 0.3 / 0.5 / 0.7 / 0.8.
+    expect(base.hunterTiers.map((t) => t.minPoints)).toEqual([0, 3, 5, 7, 8]);
+    const bad = (mut: (raw: Record<string, any>) => void) => {
+      const raw = readRawConfig() as Record<string, any>;
+      mut(raw);
+      return () => loadConfig(raw as never);
+    };
+    expect(bad((r) => { r.hunter_tier[2].minPointsFrac = 0.2; })).toThrow(ConfigError); // not increasing
+    expect(bad((r) => { r.hunter_tier[0].minPointsFrac = 0.1; })).toThrow(ConfigError); // normal must start at 0
+    expect(bad((r) => { r.hunter_tier.pop(); })).toThrow(ConfigError); // missing tier
+    expect(bad((r) => { r.hunter_tier[3].minPointsFrac = 0.71; r.hunter_tier[4].minPointsFrac = 0.75; })).toThrow(ConfigError); // both 8 points
+    expect(bad((r) => { r.hunter_tier[3].minPointsFrac = 0.61; r.hunter_tier[4].minPointsFrac = 0.75; })).not.toThrow(); // 7 / 8
   });
 
   it('town.invite: pays gold (gold sink) or a ticket first; hunter enters now, or waits at the queue front when full', () => {

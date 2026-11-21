@@ -91,8 +91,9 @@ describe('Simulation', () => {
     expect(s.drainEvents()).toContainEqual(expect.objectContaining({ type: 'commandRejected', reason: 'unknown hunter' }));
   });
 
-  it('tier thresholds follow GDD §4.2', () => {
-    expect([0, 1, 2, 5, 6, 9, 10, 13, 14, 27].map(tierFromPoints)).toEqual(
-      ['normal', 'normal', 'rare', 'rare', 'superior', 'superior', 'heroic', 'heroic', 'legendary', 'legendary']);
+  it('tier thresholds follow hunter_tier (GDD §4.2, scaled to 5 graded stats: 0/3/5/7/8 of 10 points)', () => {
+    const config = testConfig();
+    expect([0, 2, 3, 4, 5, 6, 7, 8, 10].map((p) => tierFromPoints(config, p))).toEqual(
+      ['normal', 'normal', 'rare', 'rare', 'superior', 'superior', 'heroic', 'legendary', 'legendary']);
   });
 });
