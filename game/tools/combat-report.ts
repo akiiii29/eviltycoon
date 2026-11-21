@@ -5,7 +5,8 @@
  *   kills, measured HP lost per kill, the AI's prediction (zoneDanger.dmgPerKill = crowd × duel) and the bare duel,
  *   measured / predicted, kills per full HP bar (measured) vs killsPerLife (predicted);
  * then deaths by zone with the hunter's goal and the reason of its last goal change, and HP lost on trips home
- * (from the returnTown decision to reaching town) vs the predicted trip cost (tripHomeDamage).
+ * (from the returnTown decision to reaching town) vs the predicted trip cost (tripHomeDamage); last line MOOD: mood while
+ * hunting (mean, share under moodPenaltyFrac, mean moodStatMult), Tavern visits and in-field zone switches per hunter-hour.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
