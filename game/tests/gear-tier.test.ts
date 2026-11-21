@@ -125,7 +125,8 @@ describe('tier crafting', () => {
     const it = world.town.shop[0]!;
     expect(it.difficultyId).toBe(NORMAL);
     const q = base.index.qualities.get(it.qualityId)!;
-    expect(it.listPrice).toBe(Math.round(60 * q.priceMult * normal.gearPriceMul!));
+    const grade = base.index.gearGrades.get(it.gradeId ?? base.gearGrades[0]!.id)!; // M5: × grade priceMult
+    expect(it.listPrice).toBe(Math.round(60 * q.priceMult * normal.gearPriceMul! * grade.priceMult));
     expect(ofType(ctx.events.drain(), 'gearCrafted')[0]).toMatchObject({ difficultyId: NORMAL });
   });
 
@@ -167,12 +168,12 @@ describe('reclaim', () => {
     const ctx = makeCtx();
     const h = addHunter(ctx, { level: base.formula.maxLevel });
     equip(h, 'weapon', { gearId: 'gear.w.star', qualityId: 'q.epic', enhance: 6 });
-    equip(h, 'armor', { gearId: 'gear.a.star', qualityId: 'q.rare', enhance: 5, difficultyId: NORMAL });
+    equip(h, 'body', { gearId: 'gear.a.star', qualityId: 'q.rare', enhance: 5, difficultyId: NORMAL });
     expect(reincarnate(ctx, h)).toBeNull();
     expect(h.equipment).toEqual({});
     expect(ctx.world.town.gearStorage).toEqual([
       { uid: 'e-h0-weapon', gearId: 'gear.w.star', qualityId: 'q.epic', enhance: 6, difficultyId: EASY },
-      { uid: 'e-h0-armor', gearId: 'gear.a.star', qualityId: 'q.rare', enhance: 5, difficultyId: NORMAL },
+      { uid: 'e-h0-body', gearId: 'gear.a.star', qualityId: 'q.rare', enhance: 5, difficultyId: NORMAL },
     ]);
     expect(h.needs.hp).toBeCloseTo(hunterStats(base, h).hp, 6);
     expect(ctx.world.stats.gearReclaimed).toBe(2);
@@ -211,7 +212,7 @@ describe('reclaim', () => {
     const run = (): SimEvent[] => { s.enqueue({ type: 'hunter.reclaimGear', hunterId: h.id }); s.step(); return s.drainEvents(); };
     h.equipment = {};
     expect(ofType(run(), 'commandRejected')[0]).toMatchObject({ reason: 'nothing equipped' });
-    equip(h, 'accessory', { gearId: 'gear.r.star', qualityId: 'q.rare', enhance: 0 });
+    equip(h, 'necklace', { gearId: 'gear.r.star', qualityId: 'q.rare', enhance: 0 });
     h.needs.hp = hunterStats(base, h).hp;
     h.nodeId = field.id;
     expect(ofType(run(), 'commandRejected')[0]).toMatchObject({ reason: 'hunter is not in town' });
@@ -220,7 +221,7 @@ describe('reclaim', () => {
     const evs = run();
     expect(ofType(evs, 'commandRejected')).toEqual([]);
     expect(ofType(evs, 'gearReclaimed')[0]).toMatchObject({ hunterId: h.id, reason: 'command' });
-    expect(h.equipment.accessory).toBeUndefined();
+    expect(h.equipment.necklace).toBeUndefined();
     expect(h.needs.hp).toBeLessThanOrEqual(hunterStats(base, h).hp + 1e-9);
     expect(s.world.town.gearStorage.map((g) => g.gearId)).toEqual(['gear.r.star']);
   });
@@ -252,7 +253,7 @@ describe('Town gear storage', () => {
     const ctx = makeCtx(cfg({ gearStorageMax: 1, dismantleReturnFrac: 0.5 }));
     const h = addHunter(ctx, { level: base.formula.maxLevel });
     equip(h, 'weapon', { gearId: 'gear.w.star', qualityId: 'q.rare', enhance: 0, difficultyId: NORMAL });
-    equip(h, 'armor', { gearId: 'gear.a.star', qualityId: 'q.rare', enhance: 0 });
+    equip(h, 'body', { gearId: 'gear.a.star', qualityId: 'q.rare', enhance: 0 });
     reclaimGear(ctx, h);
     expect(ctx.world.town.gearStorage.map((g) => g.gearId)).toEqual(['gear.a.star']);
     const want = dismantleYield(ctx.config, { uid: '', gearId: 'gear.w.star', qualityId: 'q.rare', enhance: 0, difficultyId: NORMAL });
@@ -324,12 +325,12 @@ describe('migration v9 → v10', () => {
     const r = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: 9, configVersion: base.version, savedAt: 0, world: w }), base);
     expect(r.migratedFrom).toBe(9);
     expect(r.world.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
-    expect(WORLD_SCHEMA_VERSION).toBe(12);
+    expect(WORLD_SCHEMA_VERSION).toBe(16);
     expect(r.world.hunters[0]!.equipment.weapon).toEqual({ uid: 'e1', gearId: 'gear.w.club', qualityId: 'q.rare', enhance: 1, difficultyId: EASY });
     expect(r.world.town.shop[0]!.difficultyId).toBe(EASY);
     expect(r.world.town.crafting['bld.smithy']).toEqual({ gearId: 'gear.w.club', remainingMs: 500, difficultyId: EASY });
     expect(r.world.town.crafting['bld.jeweler']).toBeNull();
-    expect((r.world.journeys[0] as any).hunters[0].equipment.armor.difficultyId).toBe(EASY);
+    expect((r.world.journeys[0] as any).hunters[0].equipment.body.difficultyId).toBe(EASY);
     expect(r.world.town.gearStorage).toEqual([]);
     expect(r.world.town.autoDifficulty).toBe(true);
     expect(r.world.stats).toMatchObject({ gearDismantled: 0, gearReclaimed: 0, gearRelisted: 0 });

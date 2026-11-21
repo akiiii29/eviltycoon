@@ -1,6 +1,20 @@
 /** One-way events from simulation to UI/render (VFX, sound, toasts). Never read back by the sim. */
 export type SimEvent =
-  | { type: 'hunterArrived'; tick: number; hunterId: string }
+  /** v14: `source` visitor / invite / auto (auto-invite); `fromQueue` = came out of the waiting queue (TECH_SPEC §4.1). */
+  | { type: 'hunterArrived'; tick: number; hunterId: string; source?: 'visitor' | 'invite' | 'auto'; fromQueue?: boolean }
+  /** v14: a hunter joined the waiting queue (Town full); `position` 1 = front. `tier` set for invitations. */
+  | { type: 'hunterQueued'; tick: number; queueUid: string; source: 'visitor' | 'invite' | 'auto'; tier?: string; position: number }
+  /**
+   * v14 `town.invite` / auto-invite: rolled `tier`; paid with a ticket, `gold` Town gold, or free (auto-invite). The hunter
+   * entered (`hunterId`) or waits at the queue front (`queueUid`).
+   */
+  | { type: 'hunterInvited'; tick: number; invitationId: string; tier: string; paid: 'ticket' | 'gold' | 'free'; gold: number; hunterId?: string; queueUid?: string }
+  /** v14 `hunter.donate`: Town gold moved to the hunter. */
+  | { type: 'hunterDonated'; tick: number; hunterId: string; gold: number }
+  /** v14 `hunter.banish`: the hunter left for good (gear → Town gear storage, see gearReclaimed; gold/bag leave with it). */
+  | { type: 'hunterBanished'; tick: number; hunterId: string; itemUids: string[]; gold: number }
+  /** v14 `hunter.rerollPersonality`: new personalities for `gold` Town gold. */
+  | { type: 'personalityRerolled'; tick: number; hunterId: string; from: string[]; to: string[]; gold: number }
   | { type: 'hunterLeft'; tick: number; hunterId: string }
   | { type: 'needLow'; tick: number; hunterId: string; need: string; value: number }
   | { type: 'goalChanged'; tick: number; hunterId: string; goal: string; reason: string }
@@ -17,12 +31,17 @@ export type SimEvent =
   | { type: 'potionUsed'; tick: number; hunterId: string; consumableId: string; hp: number }
   | { type: 'levelUp'; tick: number; hunterId: string; level: number }
   | { type: 'materialsSold'; tick: number; hunterId: string; units: number; gold: number }
+  /**
+   * Town Storage over its cap (TECH_SPEC §5.7): `materials` were sold for export at surplusPrice (`gold` to the Town) — units
+   * no request needs, or dismantle returns that did not fit.
+   */
+  | { type: 'storageExported'; tick: number; materials: Record<string, number>; units: number; gold: number }
   /** Unrequested materials thrown away at the Trading Post (it only buys requested ones). */
   | { type: 'materialsDiscarded'; tick: number; hunterId: string; units: number }
   /** A shop item left unsold at its floor price for shopFloorHoldSec was removed (no refund). */
   | { type: 'gearScrapped'; tick: number; itemUid: string; gearId: string; qualityId: string; price: number }
   | { type: 'craftStarted'; tick: number; buildingId: string; gearId: string }
-  | { type: 'gearCrafted'; tick: number; buildingId: string; itemUid: string; gearId: string; qualityId: string; difficultyId?: string }
+  | { type: 'gearCrafted'; tick: number; buildingId: string; itemUid: string; gearId: string; qualityId: string; difficultyId?: string; gradeId?: string }
   /**
    * TECH_SPEC §5.8: an item was dismantled — `materials` (floor(count × dismantleReturnFrac) of its recipe incl. tier essence)
    * went to Town Storage. `source`: shop = unsold at scrap age (instead of gearScrapped), storage = gear storage over
@@ -40,9 +59,12 @@ export type SimEvent =
   | { type: 'reincarnated'; tick: number; hunterId: string; count: number }
   /** The hunter entered the Reincarnation Portal (left world.hunters for `durationSec`; TECH_SPEC §5.13). */
   | { type: 'portalEntered'; tick: number; hunterId: string; durationSec: number }
-  | { type: 'learned'; tick: number; hunterId: string; kind: 'skill' | 'trait'; id: string; level: number; cost: number }
+  | { type: 'learned'; tick: number; hunterId: string; kind: 'skill' | 'trait' | 'growth'; id: string; level: number; cost: number }
   | { type: 'difficultyUnlocked'; tick: number; difficultyId: string }
-  | { type: 'difficultyChanged'; tick: number; difficultyId: string }
+  /** `stepDown`: auto-difficulty dropped one level because a hunter could not hunt anywhere (gearTier.autoStepDownDifficulty). */
+  | { type: 'difficultyChanged'; tick: number; difficultyId: string; stepDown?: boolean }
+  /** A hunter got a free starter kit (lowest-level gear of each empty slot at the Town's difficulty tier; TECH_SPEC §5.8). */
+  | { type: 'starterKitGiven'; tick: number; hunterId: string; itemUids: string[]; difficultyId: string }
   /** Bounties (TECH_SPEC §5.9). `reward` was moved from Town gold into escrow. */
   | { type: 'bountyPosted'; tick: number; bountyId: string; targetKind: 'monster' | 'zone'; targetId: string; kills: number; reward: number; auto: boolean }
   /** A target kill: `gold` paid from escrow to the killer. */
@@ -65,7 +87,15 @@ export type SimEvent =
   | { type: 'journeyCompleted'; tick: number; journeyUid: string; journeyId: string; hunterIds: string[]; success: boolean; successChance: number; rewards: JourneyRewards; offline: boolean }
   /** Recalled by the player: members return now with no reward (cost is not refunded). */
   | { type: 'journeyRecalled'; tick: number; journeyUid: string; journeyId: string; hunterIds: string[] }
-  | { type: 'commandRejected'; tick: number; command: string; reason: string };
+  /** Training Ground session started (TECH_SPEC §5.15): EXP granted, gold paid (Town got `townGold` of it), level after. */
+  | { type: 'trained'; tick: number; hunterId: string; exp: number; price: number; townGold: number; level: number }
+  | { type: 'commandRejected'; tick: number; command: string; reason: string }
+  /** M5 progression depth (TECH_SPEC §5.16). */
+  | { type: 'runeDropped'; tick: number; hunterId: string; runeId: string; grade: number }
+  | { type: 'runeSocketed'; tick: number; hunterId: string; slot: number; runeId: string; grade: number }
+  | { type: 'mountBought'; tick: number; hunterId: string; mountId: string; price: number }
+  | { type: 'materialsComposed'; tick: number; from: string; to: string; used: number; made: number; auto: boolean }
+  | { type: 'relicUpgraded'; tick: number; relicId: string; level: number; gold: number; auto: boolean };
 
 /** What a finished journey paid out (TECH_SPEC §5.11). */
 export interface JourneyRewards {

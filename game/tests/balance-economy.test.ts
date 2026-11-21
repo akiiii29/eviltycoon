@@ -61,14 +61,18 @@ const tierReserve = (cap: number) =>
 describe('craft gold cost', () => {
   it('startCraft charges round(basePrice × craftGoldFrac) from town gold, else rejects', () => {
     const ctx = makeCtx(cfg({ craftGoldFrac: 0.25 }));
-    expect(craftGoldCost(ctx.config, gear('gear.a.padded'))).toBe(15); // 60 × 0.25
-    expect(craftGoldCost(ctx.config, gear('gear.r.charm'))).toBe(18); // 70 × 0.25 = 17.5 → 18
-    ctx.world.town.storage = { 'mat.gel': 5 };
-    ctx.world.town.gold = 17;
+    expect(craftGoldCost(ctx.config, gear('gear.a.padded'))).toBe(Math.round(gear('gear.a.padded').basePrice * 0.25));
+    const charm = gear('gear.r.charm');
+    const cost = Math.round(charm.basePrice * 0.25);
+    expect(craftGoldCost(ctx.config, charm)).toBe(cost);
+    expect(charm.materials).toEqual([{ materialId: 'mat.gel', count: charm.materials[0]!.count }]);
+    const gel = charm.materials[0]!.count;
+    ctx.world.town.storage = { 'mat.gel': gel };
+    ctx.world.town.gold = cost - 1;
     expect(startCraft(ctx, 'bld.jeweler', 'gear.r.charm')).toBe('not enough town gold');
-    expect(ctx.world.town.storage).toEqual({ 'mat.gel': 5 });
+    expect(ctx.world.town.storage).toEqual({ 'mat.gel': gel });
     expect(ctx.world.town.crafting['bld.jeweler']).toBeNull();
-    ctx.world.town.gold = 18;
+    ctx.world.town.gold = cost;
     expect(startCraft(ctx, 'bld.jeweler', 'gear.r.charm')).toBeNull();
     expect(ctx.world.town.gold).toBe(0);
     expect(ctx.world.town.storage).toEqual({});
@@ -77,7 +81,8 @@ describe('craft gold cost', () => {
   it('auto-craft keeps a reserve of 3 × the priciest current-tier material', () => {
     const ctx = makeCtx();
     ctx.world.town.autoCraft = true;
-    addHunter(ctx, { level: 1 }); // empty slots; tier cap = 1 + 2 → club/padded/charm (gel 4, hide 8)
+    // Empty necklace (the other jeweler slots worn); tier cap = 1 + 2 → the level-1 pieces (gel 4, hide 8).
+    addHunter(ctx, { level: 1 }, { ring: 'gear.ring.charm', belt: 'gear.belt.charm' });
     const reserve = autoCraftReserve(ctx.config, ctx.world);
     expect(reserve).toBe(tierReserve(3));
     ctx.world.town.storage = { 'mat.gel': 5 };
@@ -213,7 +218,7 @@ describe('smarter auto-craft', () => {
     craftingSystem.update(ctx); // no hunters at all
     expect(ctx.world.town.crafting['bld.smithy']).toBeNull();
     expect(ctx.world.town.crafting['bld.jeweler']).toBeNull();
-    addHunter(ctx, { level: 1 }, { weapon: 'gear.w.club', armor: 'gear.a.padded', accessory: 'gear.r.charm' });
+    addHunter(ctx, { level: 1 }, Object.fromEntries(base.gear.filter((g) => g.level === 1).map((g) => [g.slot, g.id])));
     craftingSystem.update(ctx); // already wearing every level-1 item at Rare
     expect(ctx.world.town.crafting['bld.smithy']).toBeNull();
     expect(ctx.world.town.crafting['bld.jeweler']).toBeNull();
@@ -225,11 +230,11 @@ describe('smarter auto-craft', () => {
     ctx.world.town.storage = { 'mat.gel': 50, 'mat.hide': 50, 'mat.tusk': 50 };
     addHunter(ctx, { level: 1 }, { weapon: 'gear.w.club' }); // needs armor
     addHunter(ctx, { level: 1 }, { weapon: 'gear.w.club' }); // needs armor
-    addHunter(ctx, { level: 1 }, { armor: 'gear.a.padded' }); // needs a weapon
+    addHunter(ctx, { level: 1 }, { head: 'gear.head.padded', body: 'gear.a.padded', gloves: 'gear.glove.padded', shoes: 'gear.shoe.padded' }); // needs a weapon
     expect(recipeBeneficiaries(ctx, gear('gear.a.padded'))).toBe(2);
     expect(recipeBeneficiaries(ctx, gear('gear.w.club'))).toBe(1);
     expect(recipeBeneficiaries(ctx, gear('gear.w.tusk'))).toBe(0); // level 4 > 1 + craftLevelAhead
-    expect(pickRecipe(ctx, 'bld.smithy')!.id).toBe('gear.a.padded');
+    expect(pickRecipe(ctx, 'bld.smithy')!.id).toBe('gear.a.padded'); // tie with the other armor pieces → gearId
 
     ctx.world.hunters.forEach((h) => (h.level = 2)); // now level-4 gear is within reach for all three
     expect(recipeBeneficiaries(ctx, gear('gear.a.hide'))).toBe(3); // 9 vs 4 or 0
@@ -279,20 +284,20 @@ describe('smarter auto-craft', () => {
     // Late tier: star armor (114 at Rare) over a Rare void armor (98). Common 91.2 and Uncommon 102.6 are no
     // upgrade (< +12 %); Rare/Epic/Mythic are (chance 0.2 + 0.1 + 0.05 = 0.35).
     const strict = makeCtx(cfg({ craftMinSellChance: 0.65 }));
-    addHunter(strict, { level: 80, gold: 1e9 }, { armor: 'gear.a.void' });
+    addHunter(strict, { level: 80, gold: 1e9 }, { body: 'gear.a.void' });
     expect(recipeBeneficiaries(strict, gear('gear.a.star'))).toBe(0); // 65 % of crafts would never sell
     const loose = makeCtx(cfg({ craftMinSellChance: 0.35 }));
-    addHunter(loose, { level: 80, gold: 1e9 }, { armor: 'gear.a.void' });
+    addHunter(loose, { level: 80, gold: 1e9 }, { body: 'gear.a.void' });
     expect(recipeBeneficiaries(loose, gear('gear.a.star'))).toBe(1);
     // Well below the recipe every roll is an upgrade, so even the strict rule counts the hunter.
-    strict.world.hunters[0]!.equipment.armor = { uid: 'x', gearId: 'gear.a.frost', qualityId: 'q.rare', enhance: 0 }; // 58 vs void Common 78.4
+    strict.world.hunters[0]!.equipment.body = { uid: 'x', gearId: 'gear.a.frost', qualityId: 'q.rare', enhance: 0 }; // 58 vs void Common 78.4
     strict.world.hunters[0]!.level = 80;
     expect(recipeBeneficiaries(strict, gear('gear.a.void'))).toBe(1);
   });
 
   it('craftAffordFrac is checked per quality roll (its list price), not only at Rare', () => {
     const ctx = makeCtx(cfg({ craftAffordFrac: 1, craftMinSellChance: 0.35 }));
-    const h = addHunter(ctx, { level: 80 }, { armor: 'gear.a.void' });
+    const h = addHunter(ctx, { level: 80 }, { body: 'gear.a.void' });
     const spend = ctx.config.formula.spendRatio * personalityFactor(ctx.config, h, 'spendRatio');
     const star = gear('gear.a.star');
     h.gold = Math.ceil((star.basePrice * 1.3) / spend) + 1; // pays Rare and Epic, not Mythic (×1.6): 0.3 < 0.35
@@ -304,11 +309,13 @@ describe('smarter auto-craft', () => {
   it('an unaffordable top pick does not block a cheaper useful one', () => {
     const ctx = makeCtx();
     ctx.world.town.storage = { 'mat.gel': 50, 'mat.hide': 50, 'mat.tusk': 50 };
-    addHunter(ctx, { level: 2 }); // tusk/hide (lv4, cost 66) and club/padded (lv1, cost 18) all help
+    addHunter(ctx, { level: 2 }); // every level-4 and level-1 Smithy piece helps
     const reserve = autoCraftReserve(ctx.config, ctx.world);
-    ctx.world.town.gold = craftGoldCost(ctx.config, gear('gear.w.club')) + reserve;
+    const costs = (lv: number) => base.gear.filter((g) => g.craftBuilding === 'bld.smithy' && g.level === lv).map((g) => craftGoldCost(ctx.config, g));
+    expect(Math.min(...costs(1))).toBeLessThan(Math.min(...costs(4)));
+    ctx.world.town.gold = Math.min(...costs(1)) + reserve; // only the cheapest level-1 piece is affordable
     expect(pickRecipe(ctx, 'bld.smithy')!.level).toBe(1);
-    ctx.world.town.gold = craftGoldCost(ctx.config, gear('gear.w.tusk')) + reserve;
+    ctx.world.town.gold = Math.max(...costs(4)) + reserve;
     expect(pickRecipe(ctx, 'bld.smithy')!.level).toBe(4);
   });
 });

@@ -1,6 +1,8 @@
 import { critChance, critMultiplier, dodgeChance, hunterStats, mitigated, monsterStats } from '../formulas';
+import { gearBonus, gearPctMul, hunterGearSkills, needDrainMul } from '../gear';
 import { personalityFactor } from '../hunterFactory';
 import { gainExp } from '../progress';
+import { dropRune } from './runes';
 import { SpatialHash } from '../spatial';
 import type { System, SystemContext } from '../system';
 import { bagCount, dist, findHunter, findMonster, isAlive, newAiState, type Hunter, type Monster } from '../world';
@@ -8,7 +10,9 @@ import { bountyOnKill } from './bounty';
 import { payReviveFee, reviveDelayMs } from './consumables';
 import { dropEssence } from './gearTier';
 import { stepTowards } from './movement';
+import { procGearSkills } from './skills';
 import { grantKillGold } from './tax';
+import { libraryExpMul } from './town';
 
 /**
  * Per-tick aggro index (TECH_SPEC §10), derived data rebuilt in combatSystem.update after revives: every
@@ -59,11 +63,14 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
   const def = config.index.monsters.get(m.defId)!;
   const ms = monsterStats(config, m);
   h.kills += 1;
-  grantKillGold(ctx, h, ms.gold); // minus Town tax (tax.ts)
+  // Personality gain.gold / gain.exp (TECH_SPEC §5.5) × M5 gear goldPct / expPct (§4.2) on kill rewards
+  // (factor 1 = unchanged, bit for bit).
+  const goldK = personalityFactor(config, h, 'gain.gold') * gearPctMul(config, h, 'goldPct');
+  grantKillGold(ctx, h, goldK === 1 ? ms.gold : Math.max(0, Math.round(ms.gold * goldK))); // minus Town tax (tax.ts)
   world.stats.kills += 1;
   ctx.events.emit(world.tick, { type: 'monsterKilled', hunterId: h.id, monsterId: m.id, defId: m.defId });
   // Bounty payout; a bounty target killed under Torment drops more (one RNG draw per drop either way).
-  const dropMul = bountyOnKill(ctx, h, m);
+  const dropMul = bountyOnKill(ctx, h, m) * gearPctMul(config, h, 'dropPct');
   // M2: material drops go into the hunter's bag while there is room.
   for (const d of def.drops) {
     if (!ctx.rng.chance(dropMul === 1 ? d.chance : Math.min(1, d.chance * dropMul))) continue;
@@ -71,7 +78,14 @@ function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {
     h.bag[d.materialId] = (h.bag[d.materialId] ?? 0) + 1;
   }
   dropEssence(ctx, h, m); // gear-tier essence of the monster's difficulty (TECH_SPEC §5.8); no RNG draw on Easy
-  gainExp(ctx, h, ms.exp);
+  dropRune(ctx, h, m); // runes into the Town stash (TECH_SPEC §5.16); no RNG draw below the lowest minMonsterLevel
+  // Personality gain.exp × M5 gear expPct (§4.2), then the Library (TECH_SPEC §5.15): × (1 + killExpPct / 100); exactly
+  // ms.exp without any.
+  const expK = personalityFactor(config, h, 'gain.exp') * gearPctMul(config, h, 'expPct');
+  const base = expK === 1 ? ms.exp : Math.max(0, ms.exp * expK);
+  const expMul = libraryExpMul(config, world);
+  if (expMul !== 1) world.stats.libraryExp = (world.stats.libraryExp ?? 0) + base * (expMul - 1);
+  gainExp(ctx, h, expMul === 1 ? base : base * expMul);
 }
 
 /**
@@ -87,7 +101,11 @@ export function damageMonster(ctx: SystemContext, h: Hunter, m: Monster, rawAtk:
   const crit = critAllowed && rng.chance(critChance(critStat, f));
   const ms = monsterStats(config, m);
   const dmg = mitigated(rawAtk, ms.def, h.level, ms.level, f) * (crit ? critMultiplier(critStat, f.critMultiplier, f) : 1);
+  const before = m.hp;
   m.hp -= dmg;
+  // M5 lifesteal (gear option / set, TECH_SPEC §4.2): heal a % of the damage that landed (overkill excluded).
+  const steal = gearBonus(config, h, 'lifesteal');
+  if (steal > 0) h.needs.hp = Math.min(hunterStats(config, h).hp, h.needs.hp + (Math.min(dmg, before) * steal) / 100);
   if (!m.targetHunterId) m.targetHunterId = h.id;
   ctx.events.emit(world.tick, { type: 'hit', attackerId: h.id, targetId: m.id, damage: dmg, crit, evaded: false });
   if (m.hp <= 0) grantKill(ctx, h, m);
@@ -108,9 +126,14 @@ function hunterAttacks(ctx: SystemContext, h: Hunter): void {
   h.attackCdMs += s.atkSpeed * 1000;
   if (h.attackCdMs < 0) h.attackCdMs = 0;
 
-  // GDD §4.2: satiety drops each time the hunter attacks.
-  h.needs.satiety = Math.max(0, h.needs.satiety - f.satietyPerAttack * personalityFactor(config, h, 'decay.satiety'));
+  // GDD §4.2: satiety drops each time the hunter attacks (× gear needSavePct, M5).
+  h.needs.satiety = Math.max(0, h.needs.satiety - f.satietyPerAttack * personalityFactor(config, h, 'decay.satiety') * needDrainMul(config, h));
   damageMonster(ctx, h, m, s.atk, true);
+  // M5 gear skills: proc after the auto-attack (no RNG draw without gear skills).
+  if (config.gearSkills.length > 0) {
+    const gs = hunterGearSkills(config, h);
+    if (gs.length > 0) procGearSkills(ctx, h, m, gs);
+  }
 }
 
 function monsterActs(ctx: SystemContext, m: Monster): void {

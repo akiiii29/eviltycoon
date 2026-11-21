@@ -690,6 +690,31 @@
   "en": "Storehouse"
  },
  {
+  "key": "bld.training.name",
+  "vi": "Sân Luyện Võ",
+  "en": "Drill Yard"
+ },
+ {
+  "key": "bld.bank.name",
+  "vi": "Quỹ Tín Dụng",
+  "en": "Strongroom"
+ },
+ {
+  "key": "bld.fountain.name",
+  "vi": "Giếng Hồi Sức",
+  "en": "Wellspring"
+ },
+ {
+  "key": "bld.monument.name",
+  "vi": "Bia Dũng Khí",
+  "en": "Valor Stele"
+ },
+ {
+  "key": "bld.library.name",
+  "vi": "Tàng Thư Các",
+  "en": "Lore Archive"
+ },
+ {
   "key": "journey.mossway.name",
   "vi": "Lối Rêu Cũ",
   "en": "Old Mossway"
@@ -813,5 +838,765 @@
   "key": "pot.hp.7.name",
   "vi": "Thuốc hồi máu hư không",
   "en": "Void healing draught"
+ },
+ {
+  "key": "inv.common.name",
+  "vi": "Thư mời thường",
+  "en": "Common invitation"
+ },
+ {
+  "key": "inv.silver.name",
+  "vi": "Thư mời bạc",
+  "en": "Silver invitation"
+ },
+ {
+  "key": "inv.gold.name",
+  "vi": "Thư mời vàng",
+  "en": "Gold invitation"
+ },
+ {
+  "key": "inv.royal.name",
+  "vi": "Chiếu thư hoàng gia",
+  "en": "Royal summons"
+ },
+ {
+  "key": "pers.lucky.name",
+  "vi": "Tay hên",
+  "en": "Lucky"
+ },
+ {
+  "key": "pers.studious.name",
+  "vi": "Ham học",
+  "en": "Studious"
+ },
+ {
+  "key": "pers.steady.name",
+  "vi": "Tay vững",
+  "en": "Steady hands"
+ },
+ {
+  "key": "pers.lighteater.name",
+  "vi": "Ăn ít",
+  "en": "Light eater"
+ },
+ {
+  "key": "pers.tireless.name",
+  "vi": "Bền bỉ",
+  "en": "Tireless"
+ },
+ {
+  "key": "pers.eager.name",
+  "vi": "Hăng hái",
+  "en": "Eager"
+ },
+ {
+  "key": "pers.skittish.name",
+  "vi": "Hay hoảng",
+  "en": "Skittish"
+ },
+ {
+  "key": "pers.jinxed.name",
+  "vi": "Xui xẻo",
+  "en": "Jinxed"
+ },
+ {
+  "key": "pers.dreamy.name",
+  "vi": "Lơ đãng",
+  "en": "Dreamy"
+ },
+ {
+  "key": "pers.clumsy.name",
+  "vi": "Vụng về",
+  "en": "Clumsy"
+ },
+ {
+  "key": "pers.gloomy.name",
+  "vi": "U sầu",
+  "en": "Gloomy"
+ },
+ {
+  "key": "pers.lavish.name",
+  "vi": "Hào phóng",
+  "en": "Lavish"
+ },
+ {
+  "key": "pers.homebody.name",
+  "vi": "Ham nhà",
+  "en": "Homebody"
+ },
+ {
+  "key": "job.vanguard.3a.name",
+  "vi": "Hiệp Sĩ Thành Lũy",
+  "en": "Bulwark Knight"
+ },
+ {
+  "key": "job.vanguard.4a.name",
+  "vi": "Chúa Tể Khiên Thần",
+  "en": "Aegis Lord"
+ },
+ {
+  "key": "job.vanguard.3b.name",
+  "vi": "Kẻ Tàn Phá",
+  "en": "Ravager"
+ },
+ {
+  "key": "job.vanguard.4b.name",
+  "vi": "Sứ Giả Chiến Tranh",
+  "en": "Warbringer"
+ },
+ {
+  "key": "job.vanguard.3c.name",
+  "vi": "Đấu Kiếm Sư",
+  "en": "Duelist"
+ },
+ {
+  "key": "job.vanguard.4c.name",
+  "vi": "Kiếm Thánh",
+  "en": "Sword Saint"
+ },
+ {
+  "key": "job.warden.3a.name",
+  "vi": "Tường Sắt",
+  "en": "Ironwall"
+ },
+ {
+  "key": "job.warden.4a.name",
+  "vi": "Bất Hoại",
+  "en": "Unbroken"
+ },
+ {
+  "key": "job.warden.3b.name",
+  "vi": "Kẻ Báo Thù",
+  "en": "Avenger"
+ },
+ {
+  "key": "job.warden.4b.name",
+  "vi": "Phán Quan",
+  "en": "Judicator"
+ },
+ {
+  "key": "job.warden.3c.name",
+  "vi": "Lính Canh",
+  "en": "Sentinel"
+ },
+ {
+  "key": "job.warden.4c.name",
+  "vi": "Vọng Gác Vĩnh Hằng",
+  "en": "Eternal Watch"
+ },
+ {
+  "key": "job.strider.3a.name",
+  "vi": "Kiểm Lâm",
+  "en": "Ranger"
+ },
+ {
+  "key": "job.strider.4a.name",
+  "vi": "Hộ Vệ Hoang Dã",
+  "en": "Wildwarden"
+ },
+ {
+  "key": "job.strider.3b.name",
+  "vi": "Thiện Xạ",
+  "en": "Sharpshooter"
+ },
+ {
+  "key": "job.strider.4b.name",
+  "vi": "Mắt Tử Thần",
+  "en": "Deadeye"
+ },
+ {
+  "key": "job.strider.3c.name",
+  "vi": "Du Kích",
+  "en": "Skirmisher"
+ },
+ {
+  "key": "job.strider.4c.name",
+  "vi": "Bóng Ma Lữ Hành",
+  "en": "Phantom Strider"
+ },
+ {
+  "key": "job.arcanist.3a.name",
+  "vi": "Hộ Vệ Cổ Ngữ",
+  "en": "Runeguard"
+ },
+ {
+  "key": "job.arcanist.4a.name",
+  "vi": "Pháo Đài Phép",
+  "en": "Spellfortress"
+ },
+ {
+  "key": "job.arcanist.3b.name",
+  "vi": "Hỏa Thuật Sư",
+  "en": "Pyromancer"
+ },
+ {
+  "key": "job.arcanist.4b.name",
+  "vi": "Hiền Giả Tro Tàn",
+  "en": "Cinder Sage"
+ },
+ {
+  "key": "job.arcanist.3c.name",
+  "vi": "Thời Thuật Sư",
+  "en": "Chronomancer"
+ },
+ {
+  "key": "job.arcanist.4c.name",
+  "vi": "Kẻ Dệt Thời Gian",
+  "en": "Timeweaver"
+ },
+ {
+  "key": "job.reaver.3a.name",
+  "vi": "Canh Mộ",
+  "en": "Gravewarden"
+ },
+ {
+  "key": "job.reaver.4a.name",
+  "vi": "Hiệp Sĩ Vong Linh",
+  "en": "Lich Knight"
+ },
+ {
+  "key": "job.reaver.3b.name",
+  "vi": "Đồ Tể",
+  "en": "Butcher"
+ },
+ {
+  "key": "job.reaver.4b.name",
+  "vi": "Vua Tàn Sát",
+  "en": "Carnage King"
+ },
+ {
+  "key": "job.reaver.3c.name",
+  "vi": "Dạ Kiếm",
+  "en": "Nightblade"
+ },
+ {
+  "key": "job.reaver.4c.name",
+  "vi": "Thần Chết Bóng Tối",
+  "en": "Shadow Reaper"
+ },
+ {
+  "key": "rune.might.name",
+  "vi": "Ngữ Lực",
+  "en": "Rune of Might"
+ },
+ {
+  "key": "rune.ward.name",
+  "vi": "Ngữ Giáp",
+  "en": "Rune of Warding"
+ },
+ {
+  "key": "rune.vigor.name",
+  "vi": "Ngữ Sinh",
+  "en": "Rune of Vigor"
+ },
+ {
+  "key": "rune.edge.name",
+  "vi": "Ngữ Bén",
+  "en": "Rune of the Edge"
+ },
+ {
+  "key": "rune.veil.name",
+  "vi": "Ngữ Ảnh",
+  "en": "Rune of the Veil"
+ },
+ {
+  "key": "rune.haste.name",
+  "vi": "Ngữ Tốc",
+  "en": "Rune of Haste"
+ },
+ {
+  "key": "relic.wisdom.name",
+  "vi": "Thánh Tích Minh Triết",
+  "en": "Relic of Wisdom"
+ },
+ {
+  "key": "relic.fortune.name",
+  "vi": "Thánh Tích Vận May",
+  "en": "Relic of Fortune"
+ },
+ {
+  "key": "relic.patron.name",
+  "vi": "Thánh Tích Bảo Trợ",
+  "en": "Relic of Patronage"
+ },
+ {
+  "key": "mount.pony.name",
+  "vi": "Ngựa Lùn",
+  "en": "Pony"
+ },
+ {
+  "key": "mount.stag.name",
+  "vi": "Hươu Chiến",
+  "en": "War Stag"
+ },
+ {
+  "key": "mount.drake.name",
+  "vi": "Rồng Đất",
+  "en": "Ground Drake"
+ },
+ {
+  "key": "growth.hp.name",
+  "vi": "Rèn Thể",
+  "en": "Toughness"
+ },
+ {
+  "key": "growth.atk.name",
+  "vi": "Rèn Lực",
+  "en": "Strength"
+ },
+ {
+  "key": "growth.def.name",
+  "vi": "Rèn Giáp",
+  "en": "Hardiness"
+ },
+ {
+  "key": "gear.head.padded.name",
+  "vi": "Mũ Độn",
+  "en": "Padded Helm"
+ },
+ {
+  "key": "gear.glove.padded.name",
+  "vi": "Găng Độn",
+  "en": "Padded Gauntlets"
+ },
+ {
+  "key": "gear.shoe.padded.name",
+  "vi": "Giày Độn",
+  "en": "Padded Boots"
+ },
+ {
+  "key": "gear.head.hide.name",
+  "vi": "Mũ Da",
+  "en": "Hide Helm"
+ },
+ {
+  "key": "gear.glove.hide.name",
+  "vi": "Găng Da",
+  "en": "Hide Gauntlets"
+ },
+ {
+  "key": "gear.shoe.hide.name",
+  "vi": "Giày Da",
+  "en": "Hide Boots"
+ },
+ {
+  "key": "gear.head.plate.name",
+  "vi": "Mũ Thép Tấm",
+  "en": "Plate Helm"
+ },
+ {
+  "key": "gear.glove.plate.name",
+  "vi": "Găng Thép Tấm",
+  "en": "Plate Gauntlets"
+ },
+ {
+  "key": "gear.shoe.plate.name",
+  "vi": "Giày Thép Tấm",
+  "en": "Plate Boots"
+ },
+ {
+  "key": "gear.ring.charm.name",
+  "vi": "Nhẫn Gel",
+  "en": "Gel Ring"
+ },
+ {
+  "key": "gear.belt.charm.name",
+  "vi": "Đai Gel",
+  "en": "Gel Belt"
+ },
+ {
+  "key": "gear.ring.fang.name",
+  "vi": "Nhẫn Nanh",
+  "en": "Fang Ring"
+ },
+ {
+  "key": "gear.belt.fang.name",
+  "vi": "Đai Nanh",
+  "en": "Fang Belt"
+ },
+ {
+  "key": "gear.ring.core.name",
+  "vi": "Nhẫn Lõi Đá",
+  "en": "Corestone Ring"
+ },
+ {
+  "key": "gear.belt.core.name",
+  "vi": "Đai Lõi Đá",
+  "en": "Corestone Belt"
+ },
+ {
+  "key": "gear.head.reed.name",
+  "vi": "Mũ Đan Lau",
+  "en": "Reedweave Helm"
+ },
+ {
+  "key": "gear.glove.reed.name",
+  "vi": "Găng Đan Lau",
+  "en": "Reedweave Gauntlets"
+ },
+ {
+  "key": "gear.shoe.reed.name",
+  "vi": "Giày Đan Lau",
+  "en": "Reedweave Boots"
+ },
+ {
+  "key": "gear.head.cinder.name",
+  "vi": "Mũ Vảy Tro",
+  "en": "Cinderscale Helm"
+ },
+ {
+  "key": "gear.glove.cinder.name",
+  "vi": "Găng Vảy Tro",
+  "en": "Cinderscale Gauntlets"
+ },
+ {
+  "key": "gear.shoe.cinder.name",
+  "vi": "Giày Vảy Tro",
+  "en": "Cinderscale Boots"
+ },
+ {
+  "key": "gear.head.drake.name",
+  "vi": "Mũ Tim Hồng",
+  "en": "Emberheart Helm"
+ },
+ {
+  "key": "gear.glove.drake.name",
+  "vi": "Găng Tim Hồng",
+  "en": "Emberheart Gauntlets"
+ },
+ {
+  "key": "gear.shoe.drake.name",
+  "vi": "Giày Tim Hồng",
+  "en": "Emberheart Boots"
+ },
+ {
+  "key": "gear.head.frost.name",
+  "vi": "Mũ Sương Giá",
+  "en": "Rimeguard Helm"
+ },
+ {
+  "key": "gear.glove.frost.name",
+  "vi": "Găng Sương Giá",
+  "en": "Rimeguard Gauntlets"
+ },
+ {
+  "key": "gear.shoe.frost.name",
+  "vi": "Giày Sương Giá",
+  "en": "Rimeguard Boots"
+ },
+ {
+  "key": "gear.head.brine.name",
+  "vi": "Mũ Thép Muối",
+  "en": "Brinesteel Helm"
+ },
+ {
+  "key": "gear.glove.brine.name",
+  "vi": "Găng Thép Muối",
+  "en": "Brinesteel Gauntlets"
+ },
+ {
+  "key": "gear.shoe.brine.name",
+  "vi": "Giày Thép Muối",
+  "en": "Brinesteel Boots"
+ },
+ {
+  "key": "gear.head.tide.name",
+  "vi": "Mũ Triều Cường",
+  "en": "Tidewall Helm"
+ },
+ {
+  "key": "gear.glove.tide.name",
+  "vi": "Găng Triều Cường",
+  "en": "Tidewall Gauntlets"
+ },
+ {
+  "key": "gear.shoe.tide.name",
+  "vi": "Giày Triều Cường",
+  "en": "Tidewall Boots"
+ },
+ {
+  "key": "gear.head.void.name",
+  "vi": "Mũ Hư Không",
+  "en": "Voidshroud Helm"
+ },
+ {
+  "key": "gear.glove.void.name",
+  "vi": "Găng Hư Không",
+  "en": "Voidshroud Gauntlets"
+ },
+ {
+  "key": "gear.shoe.void.name",
+  "vi": "Giày Hư Không",
+  "en": "Voidshroud Boots"
+ },
+ {
+  "key": "gear.head.star.name",
+  "vi": "Mũ Vô Tinh",
+  "en": "Starless Helm"
+ },
+ {
+  "key": "gear.glove.star.name",
+  "vi": "Găng Vô Tinh",
+  "en": "Starless Gauntlets"
+ },
+ {
+  "key": "gear.shoe.star.name",
+  "vi": "Giày Vô Tinh",
+  "en": "Starless Boots"
+ },
+ {
+  "key": "gear.ring.venom.name",
+  "vi": "Nhẫn Độc Đầm",
+  "en": "Fenvenom Ring"
+ },
+ {
+  "key": "gear.belt.venom.name",
+  "vi": "Đai Độc Đầm",
+  "en": "Fenvenom Belt"
+ },
+ {
+  "key": "gear.ring.scale.name",
+  "vi": "Nhẫn Vảy Rồng",
+  "en": "Drakescale Ring"
+ },
+ {
+  "key": "gear.belt.scale.name",
+  "vi": "Đai Vảy Rồng",
+  "en": "Drakescale Belt"
+ },
+ {
+  "key": "gear.ring.ember.name",
+  "vi": "Nhẫn Than Hồng",
+  "en": "Ember Ring"
+ },
+ {
+  "key": "gear.belt.ember.name",
+  "vi": "Đai Than Hồng",
+  "en": "Ember Belt"
+ },
+ {
+  "key": "gear.ring.frost.name",
+  "vi": "Nhẫn Tinh Băng",
+  "en": "Frostcrystal Ring"
+ },
+ {
+  "key": "gear.belt.frost.name",
+  "vi": "Đai Tinh Băng",
+  "en": "Frostcrystal Belt"
+ },
+ {
+  "key": "gear.ring.pearl.name",
+  "vi": "Nhẫn Ngọc Chìm",
+  "en": "Drowned Pearl Ring"
+ },
+ {
+  "key": "gear.belt.pearl.name",
+  "vi": "Đai Ngọc Chìm",
+  "en": "Drowned Pearl Belt"
+ },
+ {
+  "key": "gear.ring.sigil.name",
+  "vi": "Nhẫn Ấn Triều",
+  "en": "Tidesigil Ring"
+ },
+ {
+  "key": "gear.belt.sigil.name",
+  "vi": "Đai Ấn Triều",
+  "en": "Tidesigil Belt"
+ },
+ {
+  "key": "gear.ring.shade.name",
+  "vi": "Nhẫn Tơ Bóng",
+  "en": "Shadesilk Ring"
+ },
+ {
+  "key": "gear.belt.shade.name",
+  "vi": "Đai Tơ Bóng",
+  "en": "Shadesilk Belt"
+ },
+ {
+  "key": "gear.ring.star.name",
+  "vi": "Nhẫn Vô Tinh",
+  "en": "Starless Ring"
+ },
+ {
+  "key": "gear.belt.star.name",
+  "vi": "Đai Vô Tinh",
+  "en": "Starless Belt"
+ },
+ {
+  "key": "gr.c.name",
+  "vi": "Thô",
+  "en": "Rough"
+ },
+ {
+  "key": "gr.b.name",
+  "vi": "Khá",
+  "en": "Fine"
+ },
+ {
+  "key": "gr.a.name",
+  "vi": "Tinh",
+  "en": "Superb"
+ },
+ {
+  "key": "gr.s.name",
+  "vi": "Quý",
+  "en": "Prime"
+ },
+ {
+  "key": "gr.ss.name",
+  "vi": "Huyền",
+  "en": "Exalted"
+ },
+ {
+  "key": "gr.sss.name",
+  "vi": "Tuyệt",
+  "en": "Peerless"
+ },
+ {
+  "key": "opt.atk.name",
+  "vi": "Tấn công +{v}%",
+  "en": "Attack +{v}%"
+ },
+ {
+  "key": "opt.def.name",
+  "vi": "Phòng thủ +{v}%",
+  "en": "Defense +{v}%"
+ },
+ {
+  "key": "opt.hp.name",
+  "vi": "Máu +{v}%",
+  "en": "HP +{v}%"
+ },
+ {
+  "key": "opt.speed.name",
+  "vi": "Tốc đánh +{v}%",
+  "en": "Attack speed +{v}%"
+ },
+ {
+  "key": "opt.crit.name",
+  "vi": "Chí mạng +{v}",
+  "en": "Crit +{v}"
+ },
+ {
+  "key": "opt.eva.name",
+  "vi": "Né +{v}",
+  "en": "Evasion +{v}"
+ },
+ {
+  "key": "opt.leech.name",
+  "vi": "Hút máu {v}%",
+  "en": "Lifesteal {v}%"
+ },
+ {
+  "key": "opt.gold.name",
+  "vi": "Vàng nhặt +{v}%",
+  "en": "Gold found +{v}%"
+ },
+ {
+  "key": "opt.exp.name",
+  "vi": "Kinh nghiệm +{v}%",
+  "en": "EXP +{v}%"
+ },
+ {
+  "key": "opt.loot.name",
+  "vi": "Tỉ lệ rơi NL +{v}%",
+  "en": "Material drop +{v}%"
+ },
+ {
+  "key": "opt.thrift.name",
+  "vi": "Tiết kiệm nhu cầu +{v}%",
+  "en": "Need saving +{v}%"
+ },
+ {
+  "key": "opt.n.atk.name",
+  "vi": "Tấn công {v}%",
+  "en": "Attack {v}%"
+ },
+ {
+  "key": "opt.n.def.name",
+  "vi": "Phòng thủ {v}%",
+  "en": "Defense {v}%"
+ },
+ {
+  "key": "opt.n.hp.name",
+  "vi": "Máu {v}%",
+  "en": "HP {v}%"
+ },
+ {
+  "key": "opt.n.speed.name",
+  "vi": "Tốc đánh {v}%",
+  "en": "Attack speed {v}%"
+ },
+ {
+  "key": "opt.n.gold.name",
+  "vi": "Vàng nhặt {v}%",
+  "en": "Gold found {v}%"
+ },
+ {
+  "key": "opt.n.thrift.name",
+  "vi": "Tiết kiệm nhu cầu {v}%",
+  "en": "Need saving {v}%"
+ },
+ {
+  "key": "opt.u.fury.name",
+  "vi": "Cuồng Nộ: tấn công +{v}%",
+  "en": "Fury: attack +{v}%"
+ },
+ {
+  "key": "opt.u.bastion.name",
+  "vi": "Thành Lũy: máu +{v}%",
+  "en": "Bastion: HP +{v}%"
+ },
+ {
+  "key": "opt.u.keen.name",
+  "vi": "Sắc Bén: chí mạng +{v}",
+  "en": "Keen: crit +{v}"
+ },
+ {
+  "key": "opt.u.thirst.name",
+  "vi": "Khát Máu: hút máu {v}%",
+  "en": "Thirst: lifesteal {v}%"
+ },
+ {
+  "key": "opt.u.ember.name",
+  "vi": "Kỹ năng: Bùng Than",
+  "en": "Skill: Ember Burst"
+ },
+ {
+  "key": "opt.u.stone.name",
+  "vi": "Kỹ năng: Da Đá",
+  "en": "Skill: Stoneskin"
+ },
+ {
+  "key": "set.emberheart.name",
+  "vi": "Bộ Tim Hồng",
+  "en": "Emberheart Set"
+ },
+ {
+  "key": "set.tidewall.name",
+  "vi": "Bộ Triều Cường",
+  "en": "Tidewall Set"
+ },
+ {
+  "key": "set.starless.name",
+  "vi": "Bộ Vô Tinh",
+  "en": "Starless Set"
+ },
+ {
+  "key": "gsk.emberburst.name",
+  "vi": "Bùng Than",
+  "en": "Ember Burst"
+ },
+ {
+  "key": "gsk.stoneskin.name",
+  "vi": "Da Đá",
+  "en": "Stoneskin"
+ },
+ {
+  "key": "gsk.starfall.name",
+  "vi": "Sao Rơi",
+  "en": "Starfall"
  }
 ]

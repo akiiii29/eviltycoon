@@ -23,7 +23,7 @@ import { isAlive, type Hunter, type World } from '../world';
 import { feeTownCut } from './economy';
 import { servicePrice } from './services';
 import { getLine, hunterTier, lineCap, lineKey, lineRecipes } from './supplies';
-import { buildingLevel } from './town';
+import { buildingLevel, fountainReviveMul } from './town';
 
 /** Potions carried in total. */
 export function potionsCarried(h: Hunter): number {
@@ -181,11 +181,11 @@ export function revivePayment(config: GameConfig, world: World, h: Hunter): { fe
   return { fee, pay, broke: pay < fee };
 }
 
-/** Death timer: reviveSec, × reviveBrokeDelayMul when the hunter cannot pay the full fee. */
+/** Death timer: reviveSec × the fountain's reviveSecMul (TECH_SPEC §5.15), × reviveBrokeDelayMul when the hunter cannot pay the full fee. */
 export function reviveDelayMs(config: GameConfig, world: World, h: Hunter): number {
   const f = config.formula;
   const mul = revivePayment(config, world, h).broke ? Math.max(1, f.reviveBrokeDelayMul ?? 1) : 1;
-  return f.reviveSec * 1000 * mul;
+  return f.reviveSec * 1000 * mul * fountainReviveMul(config, world);
 }
 
 /** Pay the revive fee (Town gets feeTownCut of it, the rest leaves the economy). Returns the amounts for the event. */

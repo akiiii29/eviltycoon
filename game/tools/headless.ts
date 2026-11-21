@@ -12,10 +12,15 @@
  * units served / produced, turned-away arrivals; `potion` = bought / drunk, gold hunters paid (Town cut), HP retreats started
  * while carrying a potion; `revive` = fees paid (Town cut), revives that could not pay. Potion and revive gold are explicit
  * ledger terms (not in `fees`).
+ * M5 special buildings (TECH_SPEC §5.15): `train` = Training Ground sessions, EXP, gold hunters paid (Town cut; explicit
+ * ledger terms, not in `fees`), lowest hunter level; `libExp` = extra kill EXP from the library.
  * Env HEADLESS_FP="key=value,..." overrides formula_params for the run (no file is changed), like tools/pacing.ts.
  * Env HEADLESS_JOURNEY="journeyId@minute[xN],..." sends the journeyTeamMax strongest Town hunters (bestJourneyTeam) on
  * that journey from that game minute on, N times in a row (retried each minute until accepted); journey events and
  * active journeys are printed (TECH_SPEC §5.11). Without it no journey is started (output as before journeys existed).
+ * M5 hunter systems (TECH_SPEC §4.1): the end prints the waiting queue (size/max, front entries, timers), invitation
+ * tickets and every invite / queue / banish / donate event (`hunters` log); each hunter line shows tier and personalities.
+ * Env HEADLESS_INVITE="invitationId@minute,..." uses that invitation (town.invite) at that game minute.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
@@ -54,7 +59,8 @@ function snapshot(w: World, min: number): string {
   if (req) for (const k in req) reqUnits += req[k]!;
   return `t=${String(min).padStart(4)}m townGold ${String(w.town.gold).padStart(6)} shop ${String(w.town.shop.length).padStart(2)} ` +
     `storage ${String(storage).padStart(4)} bags ${String(bags).padStart(4)} requests ${String(reqUnits).padStart(3)} ` +
-    `hunterGold avg ${String(avg).padStart(6)} max ${String(Math.max(0, ...gold)).padStart(6)} avgLv ${lv} diff ${w.town.difficulty.replace(/^diff\./, '')} gearStore ${(w.town.gearStorage ?? []).length}`;
+    `hunterGold avg ${String(avg).padStart(6)} max ${String(Math.max(0, ...gold)).padStart(6)} avgLv ${lv} diff ${w.town.difficulty.replace(/^diff\./, '')} gearStore ${(w.town.gearStorage ?? []).length} ` +
+    `kills ${w.stats.kills} reinc ${w.stats.reincarnations} R [${hs.map((h) => h.reincarnation).join('')}]`;
 }
 
 /** Planned journeys: destination, first minute, launches left; `waiting` = a start command is in flight. */
@@ -69,7 +75,10 @@ const fmtMin = (tick: number) => `${(tick / 600).toFixed(1)}m`;
 const counts: Record<string, number> = {};
 const reasons: Record<string, number> = {};
 const timeline: string[] = [];
-const ledger = { svc: 0, shop: 0, fees: 0, mats: 0, craft: 0 };
+const ledger = { svc: 0, shop: 0, fees: 0, mats: 0, craft: 0, export: 0 };
+/** Auto-difficulty changes (step-ups and step-downs) and starter kits (TECH_SPEC §5.8). */
+const diffLog: string[] = [];
+let kits = 0;
 /** Bounties (TECH_SPEC §5.9): escrowed when posted, refunds of cancelled/expired ones, kingdom completion gold, paid to hunters. */
 const bl = { escrow: 0, refund: 0, kingdom: 0, paid: 0, posted: 0, done: 0 };
 const escrowNow = (w: World): number => (w.town.bounties ?? []).reduce((a, b) => a + b.escrow, 0);
@@ -85,6 +94,9 @@ const sp = { potGold: 0, potTown: 0, potBought: 0, potUsed: 0, revFee: 0, revTow
 const svcIds = config.buildings.filter((b) => b.supplyCap).map((b) => b.id);
 const stockoutMs = (w: World) => svcIds.map((id) => w.town.supply?.[`supply:${id}`]?.stockoutMs ?? 0);
 let stockout0 = stockoutMs(sim.world);
+/** Training Ground (TECH_SPEC §5.15), per window; library EXP is read from stats. */
+const tr = { n: 0, exp: 0, gold: 0, town: 0 };
+let libExp0 = 0;
 /** Town tax taken from kill gold (taxCollected events). */
 let tax = 0;
 const hunterGold = (w: World): number => w.hunters.reduce((a, h) => a + h.gold, 0);
@@ -95,8 +107,16 @@ let prevStorage: Record<string, number> = { ...sim.world.town.storage };
 let townGold0 = sim.world.town.gold;
 let townGoldMin = Infinity;
 const ticks = minutes * 600;
+/** HEADLESS_INVITE plan (TECH_SPEC §4.1): invitation id → game minute. */
+const invitePlan = (process.env.HEADLESS_INVITE ?? '').split(',').filter(Boolean).map((p) => {
+  const m = /^([^@]+)@(\d+)$/.exec(p.trim());
+  if (!m || !config.index.invitations.has(m[1]!)) throw new Error(`HEADLESS_INVITE: bad entry "${p}"`);
+  return { id: m[1]!, at: Number(m[2]) };
+});
+const hunterLog: string[] = [];
 for (let t = 0; t < ticks; t++) {
   if (t % 600 === 0) {
+    for (const p of invitePlan) if (p.at === t / 600) sim.enqueue({ type: 'town.invite', invitationId: p.id });
     for (const p of plans) {
       if (p.left <= 0 || p.waiting || t / 600 < p.at) continue;
       const def = config.index.journeys.get(p.id)!;
@@ -113,6 +133,12 @@ for (let t = 0; t < ticks; t++) {
   if (t % 600 === 0) townGoldMin = Math.min(townGoldMin, sim.world.town.gold); // sampled once per game-minute
   for (const e of sim.drainEvents()) {
     counts[e.type] = (counts[e.type] ?? 0) + 1;
+    if (e.type === 'hunterInvited') hunterLog.push(`${fmtMin(e.tick)} invite ${e.invitationId} ${e.tier} paid ${e.paid}${e.gold ? ` ${e.gold}g` : ''} → ${e.hunterId ?? `queue ${e.queueUid}`}`);
+    else if (e.type === 'hunterQueued' && e.source !== 'visitor') hunterLog.push(`${fmtMin(e.tick)} queued ${e.queueUid} ${e.source} pos ${e.position}`);
+    else if (e.type === 'hunterArrived' && e.fromQueue) hunterLog.push(`${fmtMin(e.tick)} ${e.hunterId} entered from queue (${e.source})`);
+    else if (e.type === 'hunterBanished') hunterLog.push(`${fmtMin(e.tick)} banished ${e.hunterId} items ${e.itemUids.length} gold ${e.gold}`);
+    else if (e.type === 'hunterDonated') hunterLog.push(`${fmtMin(e.tick)} donated ${e.gold}g → ${e.hunterId}`);
+    else if (e.type === 'commandRejected' && (e.command === 'town.invite' || e.command.startsWith('hunter.'))) hunterLog.push(`${fmtMin(e.tick)} rejected ${e.command}: ${e.reason}`);
     if (e.type === 'journeyStarted' || (e.type === 'commandRejected' && e.command === 'journey.start')) {
       const p = plans.find((x) => x.waiting && (e.type === 'commandRejected' || x.id === e.journeyId));
       if (p) { p.waiting = false; if (e.type === 'journeyStarted') p.left -= 1; }
@@ -132,6 +158,9 @@ for (let t = 0; t < ticks; t++) {
       else hl.skill += e.cost;
     }
     else if (e.type === 'materialsSold') ledger.mats += e.gold;
+    else if (e.type === 'storageExported') ledger.export += e.gold;
+    else if (e.type === 'starterKitGiven') kits += 1;
+    else if (e.type === 'difficultyChanged') diffLog.push(`${fmtMin(e.tick)} ${e.stepDown ? 'step down' : 'step up'} → ${e.difficultyId} (R ${sim.world.hunters.map((h) => h.reincarnation).join('/')})`);
     else if (e.type === 'bountyPosted') { bl.escrow += e.reward; bl.posted += 1; }
     else if (e.type === 'bountyCancelled') bl.refund += e.refund;
     else if (e.type === 'bountyCompleted') { bl.kingdom += e.kingdomGold; bl.done += 1; }
@@ -151,6 +180,7 @@ for (let t = 0; t < ticks; t++) {
     else if (e.type === 'serviceUsed') sp.served += 1;
     else if (e.type === 'supplyProduced' && config.index.buildings.get(e.buildingId)?.supplyCap && e.consumableId.startsWith('sup.')) sp.made += e.units;
     else if (e.type === 'serviceStockout') sp.denied += 1;
+    if (e.type === 'trained') { tr.n += 1; tr.exp += e.exp; tr.gold += e.price; tr.town += e.townGold; }
     if (e.type === 'goalChanged' && e.goal === 'returnTown' && /^(retreat hp|urgent hp)/.test(e.reason)) {
       const hh = sim.world.hunters.find((x) => x.id === e.hunterId);
       if (hh && Object.values(hh.potions ?? {}).some((n) => n > 0)) sp.potRetreat += 1;
@@ -159,17 +189,18 @@ for (let t = 0; t < ticks; t++) {
   }
   if (snapEvery > 0 && (t + 1) % (snapEvery * 600) === 0) {
     // Fee cut = residual of the town window (the share depends on town gold, see trading.townFeeShare).
-    ledger.fees = sim.world.town.gold - townGold0 - ledger.svc - ledger.shop + ledger.mats + ledger.craft + bl.escrow - bl.refund - bl.kingdom + inv.gold - inv.refund - tax - sp.potTown - sp.revTown;
+    ledger.fees = sim.world.town.gold - townGold0 - ledger.svc - ledger.shop - ledger.export + ledger.mats + ledger.craft + bl.escrow - bl.refund - bl.kingdom + inv.gold - inv.refund - tax - sp.potTown - sp.revTown - tr.town;
     townGold0 = sim.world.town.gold;
-    const kill = hunterGold(sim.world) - hunterGold0 + ledger.svc + ledger.shop + hl.enh + hl.skill - ledger.mats - bl.paid + tax + sp.potGold + sp.revFee;
+    const kill = hunterGold(sim.world) - hunterGold0 + ledger.svc + ledger.shop + hl.enh + hl.skill - ledger.mats - bl.paid + tax + sp.potGold + sp.revFee + tr.gold;
     const so = stockoutMs(sim.world).map((x, i) => Math.round((x - stockout0[i]!) / 60000));
     stockout0 = stockoutMs(sim.world);
     timeline.push(snapshot(sim.world, (t + 1) / 600) +
-      ` | in svc ${ledger.svc} shop ${ledger.shop} fees ${ledger.fees} tax ${tax} out mats ${ledger.mats} (req ${reqMats}) craft ${ledger.craft}` +
-      ` | hunter kill ${kill} enh ${hl.enh} skill ${hl.skill} | burned ${hl.enh + hl.skill - ledger.fees + ledger.craft + sp.potGold - sp.potTown + sp.revFee - sp.revTown}` +
+      ` | in svc ${ledger.svc} shop ${ledger.shop} fees ${ledger.fees} tax ${tax} export ${ledger.export} kits ${kits} out mats ${ledger.mats} (req ${reqMats}) craft ${ledger.craft}` +
+      ` | hunter kill ${kill} enh ${hl.enh} skill ${hl.skill} | burned ${hl.enh + hl.skill - ledger.fees + ledger.craft + sp.potGold - sp.potTown + sp.revFee - sp.revTown + tr.gold - tr.town}` +
       ` | supply stockoutMin [${so.join(' ')}] served ${sp.served} made ${sp.made} denied ${sp.denied}` +
       ` | potion bought ${sp.potBought} used ${sp.potUsed} gold ${sp.potGold} (town ${sp.potTown}) hpRetreatWithPotion ${sp.potRetreat}` +
       ` | revive fees ${sp.revFee} (town ${sp.revTown})` +
+      ` | train ${tr.n} exp ${tr.exp} gold ${tr.gold} (town ${tr.town}) minLv ${Math.min(...sim.world.hunters.map((h) => h.level))} libExp ${Math.round((sim.world.stats.libraryExp ?? 0) - libExp0)}` +
       ` total ${sim.world.town.gold + hunterGold(sim.world) + escrowNow(sim.world)} townMin ${townGoldMin}` +
       ` | bounty posted ${bl.posted} done ${bl.done} escrow ${bl.escrow} refund ${bl.refund} paid ${bl.paid} kingdom ${bl.kingdom} held ${escrowNow(sim.world)}` +
       ` | build invest ${inv.gold - inv.refund} (import ${inv.imp}) mats ${inv.mats} done ${inv.done} [${levels(sim.world)}]`);
@@ -177,11 +208,14 @@ for (let t = 0; t < ticks; t++) {
     bl.escrow = bl.refund = bl.kingdom = bl.paid = bl.posted = bl.done = 0;
     townGoldMin = Infinity;
     hunterGold0 = hunterGold(sim.world);
-    ledger.svc = ledger.shop = ledger.fees = ledger.mats = ledger.craft = 0;
+    ledger.svc = ledger.shop = ledger.fees = ledger.mats = ledger.craft = ledger.export = 0;
+    kits = 0;
     hl.enh = hl.skill = 0;
     tax = 0;
     reqMats = 0;
     for (const k of Object.keys(sp) as (keyof typeof sp)[]) sp[k] = 0;
+    tr.n = tr.exp = tr.gold = tr.town = 0;
+    libExp0 = sim.world.stats.libraryExp ?? 0;
   }
 }
 const w = sim.world;
@@ -192,6 +226,8 @@ console.log('events', counts);
 console.log('goal changes', reasons);
 console.log('stats', w.stats, 'town gold', w.town.gold, 'shop items', w.town.shop.length, 'monsters', w.monsters.length);
 console.log('storage', w.town.storage);
+console.log('difficulty changes');
+for (const l of diffLog) console.log('  ' + l);
 for (const [k, l] of Object.entries(w.town.supply ?? {})) {
   console.log(`  stock ${k} ${JSON.stringify(l.stock)} job ${l.job ? `${l.job.consumableId} ${Math.ceil(l.job.remainingMs / 1000)}s` : '-'} stockout ${Math.round(l.stockoutMs / 60000)}m`);
 }
@@ -210,8 +246,15 @@ console.log(`buildings [${levels(w)}] autoInvest ${w.town.autoInvest} plan ${w.t
 for (const s of w.town.buildings ?? []) {
   if (s.upgrade) console.log(`  building ${s.id} ${s.buildingId} Lv${s.level} → ${s.upgrade.toLevel} ${Math.ceil(s.upgrade.remainingMs / 1000)}s left`);
 }
+{
+  const q = w.town.queue ?? [];
+  const f = config.formula;
+  console.log(`queue ${q.length}/${f.queueMax} front [${q.slice(0, 5).map((e) => `${e.uid}:${e.source}${e.tier ? '/' + e.tier : ''}`).join(', ')}] queueTimer ${Math.round((w.town.queueTimerMs ?? 0) / 1000)}s autoInviteTimer ${Math.round((w.town.autoInviteTimerMs ?? 0) / 1000)}s tickets ${JSON.stringify(w.town.tickets ?? {})}`);
+  console.log(`invites ${w.stats.invites ?? 0} (gold ${w.stats.inviteGold ?? 0}) auto ${w.stats.autoInvites ?? 0} queue joined ${w.stats.queueJoined ?? 0} entered ${w.stats.queueEntered ?? 0} banished ${w.stats.banished ?? 0} donated ${w.stats.donatedGold ?? 0}g`);
+  if (hunterLog.length) { console.log('hunters'); for (const l of hunterLog) console.log('  ' + l); }
+}
 for (const h of w.hunters) {
   const n = h.needs;
   const eq = Object.entries(h.equipment).map(([s, g]) => `${s}:${g!.gearId.split('.').pop()}/${g!.qualityId.slice(2)}+${g!.enhance}${g!.difficultyId && g!.difficultyId !== config.difficulties[0]!.id ? '@' + g!.difficultyId.replace(/^diff\./, '') : ''}`).join(' ');
-  console.log(`${h.id} Lv${h.level} gold ${h.gold} kills ${h.kills} [${eq}] potions ${JSON.stringify(h.potions ?? {})} goal ${h.ai.goal ? JSON.stringify(h.ai.goal) : '-'} ${h.ai.phase} hp ${(n.hp / h.stats.hp * 100).toFixed(0)}% sat ${n.satiety.toFixed(0)} mood ${n.mood.toFixed(0)} sta ${n.stamina.toFixed(0)}`);
+  console.log(`${h.id} R${h.reincarnation} ${h.tier} [${h.personalities.map((p) => p.replace(/^pers\./, '')).join(',')}] Lv${h.level} gold ${h.gold} kills ${h.kills} [${eq}] potions ${JSON.stringify(h.potions ?? {})} goal ${h.ai.goal ? JSON.stringify(h.ai.goal) : '-'} ${h.ai.phase} hp ${(n.hp / h.stats.hp * 100).toFixed(0)}% sat ${n.satiety.toFixed(0)} mood ${n.mood.toFixed(0)} sta ${n.stamina.toFixed(0)}`);
 }

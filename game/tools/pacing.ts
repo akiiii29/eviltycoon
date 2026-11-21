@@ -38,6 +38,8 @@ const reinc = new Set<string>();
 const reached100 = new Set<string>();
 const firsts: Record<string, number | undefined> = { lv20: undefined, lv50: undefined, lv100: undefined, reinc: undefined };
 let killsWindow = 0;
+/** Game minute of every reincarnation per hunter (life durations, TECH_SPEC §5.8). */
+const reincAt: Record<string, number[]> = {};
 let deathsWindow = 0;
 /** Deaths by zone (where the hunter stood when it died), over the whole run. */
 const deathsByZone: Record<string, number> = {};
@@ -121,6 +123,7 @@ for (let min = 1; min <= minutes; min++) {
         if (e.level >= config.formula.maxLevel && !reached100.has(e.hunterId)) { reached100.add(e.hunterId); firsts.lv100 ??= min; }
       } else if (e.type === 'reincarnated') {
         if (!reinc.has(e.hunterId)) { reinc.add(e.hunterId); firsts.reinc ??= min; }
+        (reincAt[e.hunterId] ??= []).push(min);
       }
     }
   }
@@ -139,3 +142,14 @@ console.log(`seed ${seed}: buildings built ${st.buildingsBuilt ?? 0}, upgrades $
 deathGaps.sort((a, b) => a - b);
 const q = (p: number) => (deathGaps.length ? deathGaps[Math.floor(p * (deathGaps.length - 1))] : 0);
 console.log(`seed ${seed}: deaths by goal ${JSON.stringify(deathsByGoal)}; hunter level − zone top monster level at death: p10 ${q(0.1)} p50 ${q(0.5)} p90 ${q(0.9)}`);
+// Life durations: life 1 = start → 1st reincarnation, life k = (k−1)th → kth (hours); the current life is open.
+for (let k = 1; k <= 4; k++) {
+  const d: number[] = [];
+  for (const id in reincAt) {
+    const a = reincAt[id]!;
+    if (a.length >= k) d.push((a[k - 1]! - (k === 1 ? 0 : a[k - 2]!)) / 60);
+  }
+  if (!d.length) break;
+  d.sort((x, y) => x - y);
+  console.log(`seed ${seed}: life ${k} done by ${d.length}/${n} hunters, hours min ${d[0]!.toFixed(2)} med ${d[Math.floor((d.length - 1) / 2)]!.toFixed(2)} max ${d[d.length - 1]!.toFixed(2)}`);
+}

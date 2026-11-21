@@ -1,0 +1,8 @@
+[
+ {"id":"rune.might","nameKey":"rune.might.name","stat":"atkPct","minMonsterLevel":10,"valueByGrade":[1,2,3,5,8],"dropChance":[0.0005,0.0002,0.00006,0.00002,0.000005]},
+ {"id":"rune.ward","nameKey":"rune.ward.name","stat":"defPct","minMonsterLevel":10,"valueByGrade":[1,2,3,5,8],"dropChance":[0.0005,0.0002,0.00006,0.00002,0.000005]},
+ {"id":"rune.vigor","nameKey":"rune.vigor.name","stat":"hpPct","minMonsterLevel":10,"valueByGrade":[1,2,3,5,8],"dropChance":[0.0005,0.0002,0.00006,0.00002,0.000005]},
+ {"id":"rune.edge","nameKey":"rune.edge.name","stat":"crit","minMonsterLevel":10,"valueByGrade":[1,2,3,4,6],"dropChance":[0.0005,0.0002,0.00006,0.00002,0.000005]},
+ {"id":"rune.veil","nameKey":"rune.veil.name","stat":"eva","minMonsterLevel":10,"valueByGrade":[1,2,3,4,6],"dropChance":[0.0005,0.0002,0.00006,0.00002,0.000005]},
+ {"id":"rune.haste","nameKey":"rune.haste.name","stat":"atkSpeedPct","minMonsterLevel":10,"valueByGrade":[1,2,3,4,6],"dropChance":[0.0005,0.0002,0.00006,0.00002,0.000005]}
+]

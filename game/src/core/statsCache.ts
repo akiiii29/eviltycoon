@@ -3,7 +3,9 @@
  *
  * Each hunter object keeps one entry per mode (steady / live) holding a snapshot of every input hunterStats reads:
  * config + formula identity, every `h.stats` field, classId, jobTier, reincarnation, level, each gear slot's
- * gearId/qualityId/enhance/difficultyId, trait levels, and for live stats also each buff's stat/value and `needs.mood`.
+ * gearId/qualityId/enhance/difficultyId/option lines (id + value; set bonuses follow from the gearIds), trait levels, the town
+ * aura (`h.aura`), M5 jobId / growth levels / socketed runes (progressionStats.ts), and for live stats also each buff's
+ * stat/value and `needs.mood`.
  * A call compares the snapshot with the hunter's current values (by value, so in-place mutation is caught) and
  * recomputes on any difference. No tick/id key: state that changes mid-tick (level-up, a new buff, mood decay,
  * equipping) simply misses, so results are identical to computing every time.
@@ -28,13 +30,23 @@ interface Entry {
   jobTier: number;
   reincarnation: number;
   level: number;
-  /** Per GEAR_SLOTS slot: gearId, qualityId, enhance, difficultyId (gear tier; null gearId = empty slot). */
+  /**
+   * Per GEAR_SLOTS slot: gearId, qualityId, enhance, difficultyId (gear tier), option-line count, then id/value per line
+   * (v13; set bonuses derive from the gearIds). An empty slot is 5 nulls.
+   */
   gear: (string | number | null)[];
   traitKeys: string[];
   traitVals: number[];
+  /** Town aura (monument): stat, value pairs in key order (empty = no aura). */
+  aura: (string | number)[];
   /** Live only: stat, value pairs in buff order. */
   buffs: (string | number)[];
   mood: number;
+  /** M5 (progressionStats.ts): jobId, growth property levels, rune sockets as runeId/grade pairs (null, 0 = empty). */
+  jobId: string | null;
+  growthKeys: string[];
+  growthVals: number[];
+  runes: (string | number | null)[];
 }
 
 interface Slots {
@@ -77,15 +89,35 @@ function matches(e: Entry, config: GameConfig, h: Hunter, steady: boolean): bool
     const g = h.equipment[slot];
     if (!g) {
       if (e.gear[j] !== null) return false;
-    } else if (e.gear[j] !== g.gearId || e.gear[j + 1] !== g.qualityId || e.gear[j + 2] !== g.enhance || e.gear[j + 3] !== (g.difficultyId ?? null)) return false;
-    j += 4;
+      j += 5;
+      continue;
+    }
+    if (e.gear[j] !== g.gearId || e.gear[j + 1] !== g.qualityId || e.gear[j + 2] !== g.enhance || e.gear[j + 3] !== (g.difficultyId ?? null)) return false;
+    // v13 option lines (TECH_SPEC §4.2): count, then id/value pairs.
+    const opts = g.options;
+    const n = opts ? opts.length : 0;
+    if (e.gear[j + 4] !== n) return false;
+    j += 5;
+    for (let k = 0; k < n; k++) {
+      if (e.gear[j] !== opts![k]!.id || !Object.is(e.gear[j + 1], opts![k]!.value)) return false;
+      j += 2;
+    }
   }
+  if (j !== e.gear.length) return false;
   i = 0;
   for (const k in h.traits) {
     if (e.traitKeys[i] !== k || !Object.is(e.traitVals[i], h.traits[k])) return false;
     i++;
   }
   if (i !== e.traitKeys.length) return false;
+  i = 0;
+  const aura = h.aura as Record<string, number> | undefined;
+  for (const k in aura) {
+    if (e.aura[i] !== k || !Object.is(e.aura[i + 1], aura[k])) return false;
+    i += 2;
+  }
+  if (i !== e.aura.length) return false;
+  if (!matchesM5(e, h)) return false;
   if (!steady) {
     if (!Object.is(e.mood, h.needs.mood)) return false;
     const b = h.buffs;
@@ -97,6 +129,36 @@ function matches(e: Entry, config: GameConfig, h: Hunter, steady: boolean): bool
   return true;
 }
 
+/** M5 inputs (jobId, growth, runes) of the snapshot vs the hunter. */
+function matchesM5(e: Entry, h: Hunter): boolean {
+  if (e.jobId !== (h.jobId ?? null)) return false;
+  let i = 0;
+  const g = h.growth;
+  if (g) {
+    for (const k in g) {
+      if (e.growthKeys[i] !== k || !Object.is(e.growthVals[i], g[k])) return false;
+      i++;
+    }
+  }
+  if (i !== e.growthKeys.length) return false;
+  const r = h.runes ?? [];
+  if (r.length * 2 !== e.runes.length) return false;
+  for (let n = 0; n < r.length; n++) {
+    const it = r[n];
+    if (e.runes[2 * n] !== (it ? it.runeId : null) || e.runes[2 * n + 1] !== (it ? it.grade : 0)) return false;
+  }
+  return true;
+}
+
+function captureM5(h: Hunter): Pick<Entry, 'jobId' | 'growthKeys' | 'growthVals' | 'runes'> {
+  const growthKeys: string[] = [];
+  const growthVals: number[] = [];
+  if (h.growth) for (const k in h.growth) { growthKeys.push(k); growthVals.push(h.growth[k]!); }
+  const runes: (string | number | null)[] = [];
+  for (const it of h.runes ?? []) runes.push(it ? it.runeId : null, it ? it.grade : 0);
+  return { jobId: h.jobId ?? null, growthKeys, growthVals, runes };
+}
+
 function capture(config: GameConfig, h: Hunter, steady: boolean, out: Readonly<Stats>): Entry {
   const s = h.stats as unknown as Stats;
   const statKeys: string[] = [];
@@ -105,17 +167,24 @@ function capture(config: GameConfig, h: Hunter, steady: boolean, out: Readonly<S
   const gear: (string | number | null)[] = [];
   for (const slot of GEAR_SLOTS) {
     const g = h.equipment[slot];
-    if (g) gear.push(g.gearId, g.qualityId, g.enhance, g.difficultyId ?? null);
-    else gear.push(null, null, null, null);
+    if (g) {
+      const opts = g.options ?? [];
+      gear.push(g.gearId, g.qualityId, g.enhance, g.difficultyId ?? null, opts.length);
+      for (const o of opts) gear.push(o.id, o.value);
+    } else gear.push(null, null, null, null, null);
   }
   const traitKeys: string[] = [];
   const traitVals: number[] = [];
   for (const k in h.traits) { traitKeys.push(k); traitVals.push(h.traits[k]!); }
+  const aura: (string | number)[] = [];
+  const a = h.aura as Record<string, number> | undefined;
+  for (const k in a) aura.push(k, a[k]!);
   const buffs: (string | number)[] = [];
   if (!steady) for (const b of h.buffs) buffs.push(b.stat, b.value);
   return {
     config, formula: config.formula, out, statKeys, statVals, classId: h.classId, jobTier: h.jobTier,
-    reincarnation: h.reincarnation, level: h.level, gear, traitKeys, traitVals, buffs, mood: steady ? 0 : h.needs.mood,
+    reincarnation: h.reincarnation, level: h.level, gear, traitKeys, traitVals, aura, buffs, mood: steady ? 0 : h.needs.mood,
+    ...captureM5(h),
   };
 }
 

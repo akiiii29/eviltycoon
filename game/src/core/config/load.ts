@@ -1,7 +1,9 @@
 import { validateTables, type ConfigIssue, type FieldSpec, type TableSpec } from './schema';
 import {
-  BUILDING_KINDS, GEAR_SLOTS, MOD_STATS, NEED_KEYS, STAT_KEYS,
-  type BuildingDef, type BuildingPlotDef, type ConsumableDef, type DifficultyDef, type JourneyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
+  BUILDING_KINDS, GEAR_SLOTS, GEAR_STATS, HUNTER_TIERS, MOD_STATS, NEED_KEYS, PERSONALITY_TARGETS, STAT_KEYS,
+  type GearGradeDef, type GearOptionDef, type GearSetDef, type GearSkillDef,
+  type HunterTierDef, type HunterTierId, type InvitationDef, type PersonalityDef, type BuildingDef, type BuildingPlotDef, type ConsumableDef, type DifficultyDef, type JourneyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
+  RELIC_EFFECTS, type ExpCurveRow, type GrowthPropertyDef, type MountDef, type RelicDef, type RuneDef,
   type MapEdge, type MapNode, type MaterialDef, type MonsterDef, type ZoneDef,
 } from './types';
 
@@ -31,6 +33,7 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       id: { kind: 'string', nonEmpty: true },
       nameKey: { kind: 'ref', table: 'loc' },
       weight: { kind: 'number', min: 0 },
+      kind: { kind: 'enum', values: ['positive', 'negative', 'neutral'], optional: true },
       modifiers: {
         kind: 'array',
         of: {
@@ -42,6 +45,24 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
           },
         },
       },
+    },
+  },
+  invitation: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      tierChances: { kind: 'record', keys: HUNTER_TIERS, of: { kind: 'number', min: 0 } },
+      gold: { kind: 'int', min: 0, optional: true },
+      townHallLevel: { kind: 'int', min: 1, optional: true },
+      autoInvite: { kind: 'bool', optional: true },
+    },
+  },
+  hunter_tier: {
+    idField: 'tier',
+    row: {
+      tier: { kind: 'enum', values: HUNTER_TIERS },
+      minPointsFrac: { kind: 'number', min: 0, max: 1 },
     },
   },
   stat_grade: {
@@ -116,8 +137,17 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       studyGoldMul: perLevel({ kind: 'number', min: 0 }),
       surplusPriceMul: perLevel({ kind: 'number', min: 0 }),
       requestCopies: perLevel({ kind: 'int', min: 0 }),
+      storageCap: perLevel({ kind: 'int', min: 0 }),
       supplyCap: perLevel({ kind: 'int', min: 0 }),
       potionCap: perLevel({ kind: 'int', min: 0 }),
+      trainExpFrac: perLevel({ kind: 'number', min: 0, max: 1 }),
+      trainLevelGap: perLevel({ kind: 'int', min: 0 }),
+      investFloorMul: perLevel({ kind: 'number', min: 0, max: 1 }),
+      auraAtkPct: perLevel({ kind: 'number', min: 0, max: 100 }),
+      auraDefPct: perLevel({ kind: 'number', min: 0, max: 100 }),
+      townRegenMul: perLevel({ kind: 'number', min: 0 }),
+      reviveSecMul: perLevel({ kind: 'number', min: 0, max: 1 }),
+      killExpPct: perLevel({ kind: 'number', min: 0, max: 100 }),
     },
   },
   building_plot: {
@@ -161,6 +191,8 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       id: { kind: 'string', nonEmpty: true },
       nameKey: { kind: 'ref', table: 'loc' },
       price: { kind: 'int', min: 0 },
+      // M5 (TECH_SPEC §8): `count` units compose into one unit of `materialId` (systems/compose.ts).
+      composeTo: { kind: 'object', optional: true, fields: { materialId: { kind: 'ref', table: 'material' }, count: { kind: 'int', min: 2 } } },
     },
   },
   gear: {
@@ -180,6 +212,68 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
         of: { kind: 'object', fields: { materialId: { kind: 'ref', table: 'material' }, count: { kind: 'int', min: 1 } } },
       },
       basePrice: { kind: 'int', min: 0 },
+      essenceMul: { kind: 'number', min: 0.01, max: 10, optional: true },
+      setId: { kind: 'ref', table: 'gear_set', optional: true },
+    },
+  },
+  // M5 gear depth (TECH_SPEC §4.2): grades → option lines, sets, gear skills.
+  gear_grade: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      chance: { kind: 'number', min: 0, max: 1 },
+      options: { kind: 'int', min: 0, max: 8 },
+      uniques: { kind: 'int', min: 0, max: 8 },
+      negChance: { kind: 'number', min: 0, max: 1 },
+      valueMul: { kind: 'number', min: 0 },
+      priceMult: { kind: 'number', min: 0 },
+    },
+  },
+  gear_option: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      kind: { kind: 'enum', values: ['positive', 'negative', 'unique'] },
+      stat: { kind: 'enum', values: GEAR_STATS, optional: true },
+      gearSkillId: { kind: 'ref', table: 'gear_skill', optional: true },
+      min: { kind: 'number' },
+      max: { kind: 'number' },
+      weight: { kind: 'number', min: 0 },
+      slots: { kind: 'array', of: { kind: 'enum', values: GEAR_SLOTS }, optional: true, minLength: 1 },
+    },
+  },
+  gear_set: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      bonuses: {
+        kind: 'array',
+        minLength: 1,
+        of: {
+          kind: 'object',
+          fields: {
+            pieces: { kind: 'int', min: 1, max: 8 },
+            stat: { kind: 'enum', values: GEAR_STATS, optional: true },
+            value: { kind: 'number', optional: true },
+            gearSkillId: { kind: 'ref', table: 'gear_skill', optional: true },
+          },
+        },
+      },
+    },
+  },
+  gear_skill: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      trigger: { kind: 'enum', values: ['attack'] },
+      chance: { kind: 'number', min: 0, max: 1 },
+      cooldownSec: { kind: 'number', min: 0 },
+      skillId: { kind: 'ref', table: 'skill' },
+      skillLevel: { kind: 'int', min: 1 },
     },
   },
   gear_quality: {
@@ -209,6 +303,17 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       nameKey: { kind: 'ref', table: 'loc' },
       unlockLevel: { kind: 'int', min: 1 },
       statMult: { kind: 'number', min: 0.1 },
+      // M5 job tree (TECH_SPEC §4.1): see JobDef.
+      branch: { kind: 'string', nonEmpty: true, optional: true },
+      parentId: { kind: 'ref', table: 'job', optional: true },
+      unlockReincarnation: { kind: 'int', min: 0, optional: true },
+      statBias: {
+        kind: 'object',
+        optional: true,
+        fields: { hp: { kind: 'number', min: 0.1, optional: true }, atk: { kind: 'number', min: 0.1, optional: true }, def: { kind: 'number', min: 0.1, optional: true } },
+      },
+      crit: { kind: 'number', min: 0, optional: true },
+      eva: { kind: 'number', min: 0, optional: true },
     },
   },
   skill: {
@@ -310,6 +415,66 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       price: { kind: 'int', min: 0, optional: true },
     },
   },
+  // M5 progression depth (TECH_SPEC §8, §5.16). Row counts / array lengths tied to formula_params are checked in validateConfig.
+  exp_curve: {
+    row: { level: { kind: 'int', min: 1 }, exp: { kind: 'array', minLength: 1, of: { kind: 'int', min: 1 } } },
+  },
+  rune: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      stat: { kind: 'enum', values: MOD_STATS },
+      minMonsterLevel: { kind: 'int', min: 1 },
+      valueByGrade: { kind: 'array', minLength: 1, of: { kind: 'number', min: 0 } },
+      dropChance: { kind: 'array', minLength: 1, of: { kind: 'number', min: 0, max: 1 } },
+    },
+  },
+  relic: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      effect: { kind: 'enum', values: RELIC_EFFECTS },
+      maxLevel: { kind: 'int', min: 1 },
+      value: { kind: 'array', lengthFrom: 'maxLevel', of: { kind: 'number', min: 0 } },
+      upgradeCost: {
+        kind: 'array',
+        lengthFrom: 'maxLevel',
+        of: {
+          kind: 'object',
+          fields: {
+            gold: { kind: 'int', min: 0 },
+            materials: {
+              kind: 'array',
+              of: { kind: 'object', fields: { materialId: { kind: 'ref', table: 'material' }, count: { kind: 'int', min: 1 } } },
+            },
+          },
+        },
+      },
+    },
+  },
+  mount: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      moveSpeedMul: { kind: 'number', min: 1 },
+      price: { kind: 'int', min: 0 },
+      minLevel: { kind: 'int', min: 1 },
+    },
+  },
+  growth_property: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc' },
+      stat: { kind: 'enum', values: ['atk', 'def', 'hp'] },
+      valuePerLevel: { kind: 'number', min: 0 },
+      maxLevel: { kind: 'int', min: 1 },
+      cost: { kind: 'array', lengthFrom: 'maxLevel', of: { kind: 'int', min: 0 } },
+    },
+  },
 };
 
 /** Formula keys that must exist (other numeric keys are allowed for tuning). */
@@ -348,9 +513,22 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'enhanceMinNetFrac', 'upgradeSavingsConcreteFrac', 'enhanceVsUpgradeMul', 'investTownHallLeadLevels', 'investUrgentImportSec', 'investValueService', 'investValueShop', 'investValueForge', 'investValueAcademy', 'investValueTradingPost', 'investValueStorehouse', 'investValueTownHall', 'investValueCraft', 'investReadyMul',
   // Gear tiers per difficulty, reclaim, dismantle (TECH_SPEC §5.8).
   'dismantleReturnFrac', 'gearStorageMax', 'craftEssencePerLevel', 'diffAutoAdvanceFrac',
+  // Long-run balance (TECH_SPEC §5.7, §5.8): Town Storage cap, auto-difficulty survival gate.
+  'storageCapBase', 'diffAutoMinRatio',
   // Supplies, potions, revive fee (TECH_SPEC §5.14).
   'supplyRequestBatches', 'potionTownHallLevel', 'potionCarryMax', 'potionPriceLevelPct', 'potionSpendFrac', 'potionBuyScore',
   'potionUseHpFrac', 'potionCooldownSec', 'reviveFeeBase', 'reviveFeePerLevel', 'reviveBrokeDelayMul',
+  // M5 hunter systems: waiting queue, auto-invite, personality reroll (TECH_SPEC §4.1, §5.5).
+  'queueMax', 'queueArrivalIntervalSec', 'autoInviteMaxHunters', 'autoInviteIntervalSec', 'personalityRerollGold',
+  // M5 special buildings (TECH_SPEC §5.15).
+  'investValueTraining', 'investValueBank', 'investValueMonument', 'investValueFountain', 'investValueLibrary',
+  'trainSessionSec', 'trainGoldPerExp', 'trainGoldReserveMul', 'trainScore',
+  // M5 progression depth (TECH_SPEC §5.16).
+  'runeSlots', 'runeStashMax', 'growthReserveMul', 'learnGrowthScore', 'mountReserveMul', 'mountBuyScore', 'composeIntervalSec',
+  'relicAutoGoldMul',
+  // M5 gear options / sets / gear skills (TECH_SPEC §4.2).
+  'gearPctCap', 'gearPctFloor', 'gearNeedSaveCap', 'gearWorthLifesteal', 'gearWorthGoldPct', 'gearWorthExpPct', 'gearWorthDropPct',
+  'gearWorthNeedSavePct', 'gearExtraMaxFrac',
 ];
 
 export class ConfigError extends Error {
@@ -407,6 +585,12 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('gearStorageMax', 0, 1000);
     range('craftEssencePerLevel', 0, 100);
     range('diffAutoAdvanceFrac', 0, 1e6);
+    range('storageCapBase', 0, 1e7);
+    range('diffAutoMinRatio', 0, 100);
+    // The auto-difficulty gate must sit above the step-down line (gearTier.autoStepDownDifficulty), or it can flap.
+    if (typeof o.diffAutoMinRatio === 'number' && o.diffAutoMinRatio > 0 && typeof o.zoneFitMin === 'number' && o.diffAutoMinRatio <= o.zoneFitMin) {
+      issues.push({ path: 'formula_params.diffAutoMinRatio', message: 'must be > zoneFitMin (or 0 = no gate)' });
+    }
     // Shop markdown schedule: the floor must be reachable (and offered) before an item is scrapped.
     // The scrap age is derived from it (crafting.shopScrapAgeSec), so only the inputs need checking.
     range('shopStaleSec', 1, 1e6);
@@ -486,6 +670,11 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('investValueTownHall', 0, 1000);
     range('investValueCraft', 0, 1000);
     range('investReadyMul', 0, 1000);
+    range('trainSessionSec', 0.1, 3600);
+    range('trainGoldPerExp', 0, 1000);
+    range('trainGoldReserveMul', 0, 1000);
+    range('trainScore', 0, 100);
+    for (const k of ['investValueTraining', 'investValueBank', 'investValueMonument', 'investValueFountain', 'investValueLibrary']) range(k, 0, 1000);
     // Supplies, potions, revive fee (TECH_SPEC §5.14).
     range('supplyRequestBatches', 0, 100);
     range('potionTownHallLevel', 1, 100);
@@ -498,12 +687,40 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('reviveFeeBase', 0, 1e6);
     range('reviveFeePerLevel', 0, 1e6);
     range('reviveBrokeDelayMul', 1, 100);
+    // M5 waiting queue / auto-invite / personality reroll (TECH_SPEC §4.1).
+    range('queueMax', 0, 1000);
+    range('queueArrivalIntervalSec', 1, 1e7);
+    range('autoInviteMaxHunters', 0, 1000);
+    range('autoInviteIntervalSec', 1, 1e7);
+    range('personalityRerollGold', 0, 1e9);
   }
 
   const grades = raw.stat_grade;
   if (Array.isArray(grades)) {
     const sum = grades.reduce((s: number, g) => s + (typeof g?.rollChance === 'number' ? g.rollChance : 0), 0);
     if (Math.abs(sum - 1) > 1e-6) issues.push({ path: 'stat_grade', message: `rollChance must sum to 1 (got ${sum})` });
+  }
+  const tiersRaw = raw.hunter_tier;
+  if (Array.isArray(tiersRaw)) {
+    const fracs = HUNTER_TIERS.map((t) => (tiersRaw as { tier?: string; minPointsFrac?: number }[]).find((r) => r?.tier === t)?.minPointsFrac);
+    HUNTER_TIERS.forEach((t, i) => {
+      const v = fracs[i];
+      if (typeof v !== 'number') issues.push({ path: `hunter_tier.${t}`, message: 'missing row' });
+      else if (i === 0 && v !== 0) issues.push({ path: `hunter_tier.${t}.minPointsFrac`, message: 'the lowest tier must start at 0' });
+      else if (i > 0 && typeof fracs[i - 1] === 'number' && !(v > fracs[i - 1]!)) {
+        issues.push({ path: `hunter_tier.${t}.minPointsFrac`, message: 'must increase with tier' });
+      }
+    });
+    // Every tier must stay reachable: the derived thresholds (ceil(frac × max grade points)) must strictly increase.
+    if (fracs.every((v) => typeof v === 'number') && Array.isArray(grades)) {
+      const maxPoints = STAT_KEYS.length * Math.max(0, ...grades.map((g: { point?: number }) => (typeof g?.point === 'number' ? g.point : 0)));
+      const pts = fracs.map((v) => Math.max(0, Math.ceil(v! * maxPoints - 1e-9)));
+      for (let i = 1; i < pts.length; i++) {
+        if (pts[i]! <= pts[i - 1]! || pts[i]! > maxPoints) {
+          issues.push({ path: `hunter_tier.${HUNTER_TIERS[i]}.minPointsFrac`, message: `unreachable: ${pts[i]} of ${maxPoints} grade points (previous tier ${pts[i - 1]})` });
+        }
+      }
+    }
   }
 
   const classes = raw.class;
@@ -564,6 +781,11 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
     if (b.kind === 'academy') need('studyGoldMul');
     if (b.kind === 'tradingPost') need('surplusPriceMul');
     if (b.kind === 'storehouse') need('requestCopies');
+    if (b.kind === 'training') { need('trainExpFrac'); need('trainLevelGap'); }
+    if (b.kind === 'bank') need('investFloorMul');
+    if (b.kind === 'monument') { need('auraAtkPct'); need('auraDefPct'); }
+    if (b.kind === 'fountain') { need('townRegenMul'); need('reviveSecMul'); }
+    if (b.kind === 'library') need('killExpPct');
     if (th && b.kind !== 'townHall' && Math.max(b.requires.townHallLevel, b.maxLevel) > th.maxLevel) {
       issues.push({ path: `building[${i}]`, message: `needs a Town Hall level above its max level ${th.maxLevel}` });
     }
@@ -593,6 +815,11 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
   for (const kind of ['tradingPost', 'shop', 'forge', 'academy', 'townHall'] as const) {
     const n = buildings.filter((b) => b.kind === kind).length;
     if (n !== 1) issues.push({ path: 'building', message: `need exactly one "${kind}" building, got ${n}` });
+  }
+  // M5 special buildings (TECH_SPEC §5.15) are optional, at most one of each kind.
+  for (const kind of ['training', 'bank', 'monument', 'fountain', 'library'] as const) {
+    const n = buildings.filter((b) => b.kind === kind).length;
+    if (n > 1) issues.push({ path: 'building', message: `at most one "${kind}" building, got ${n}` });
   }
   // Plots: doors are door nodes used by exactly one plot; a building type starts on at most one plot; the Town Hall starts built.
   const plots = raw.building_plot as BuildingPlotDef[];
@@ -631,13 +858,11 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
   const q = raw.gear_quality as GearQualityDef[];
   const qs = q.reduce((s, x) => s + x.craftChance, 0);
   if (Math.abs(qs - 1) > 1e-6) issues.push({ path: 'gear_quality', message: `craftChance must sum to 1 (got ${qs})` });
+  issues.push(...validateGearDepth(raw));
   const classIds = (raw.class as { id: string }[]).map((c) => c.id);
   const jobs = raw.job as JobDef[];
-  for (const c of classIds) {
-    const tiers = jobs.filter((j) => j.classId === c).map((j) => j.tier).sort((a, b) => a - b);
-    if (tiers[0] !== 0) issues.push({ path: 'job', message: `class "${c}" needs a tier-0 job` });
-    tiers.forEach((t, k) => { if (t !== k) issues.push({ path: 'job', message: `class "${c}" job tiers must be 0..n without gaps` }); });
-  }
+  issues.push(...validateJobTree(classIds, jobs));
+  issues.push(...validateProgressionTables(raw));
   (raw.skill as SkillDef[]).forEach((sk, i) => {
     if (sk.kind === 'buff' && (!sk.buffStat || !sk.keepSec)) issues.push({ path: `skill[${i}]`, message: 'buff skills need buffStat and keepSec' });
     if (sk.kind === 'aoe' && sk.radius === undefined) issues.push({ path: `skill[${i}].radius`, message: 'aoe skills need radius' });
@@ -658,6 +883,19 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
       issues.push({ path: `difficulty.${d.id}.essenceDropChance`, message: 'needed (> 0) with essenceId' });
     }
   });
+  // M5 invitations / personalities (TECH_SPEC §4.1, §5.5).
+  const invs = raw.invitation as InvitationDef[];
+  invs.forEach((inv, i) => {
+    if (!(HUNTER_TIERS.reduce((a, t) => a + (inv.tierChances?.[t] ?? 0), 0) > 0)) {
+      issues.push({ path: `invitation[${i}].tierChances`, message: 'needs a positive total' });
+    }
+  });
+  if (invs.filter((inv) => inv.autoInvite).length > 1) issues.push({ path: 'invitation', message: 'at most one row with autoInvite' });
+  (raw.personality as PersonalityDef[]).forEach((p, i) => {
+    p.modifiers.forEach((m, j) => {
+      if (!PERSONALITY_TARGETS.includes(m.target)) issues.push({ path: `personality[${i}].modifiers[${j}].target`, message: `unknown target "${m.target}"` });
+    });
+  });
   (raw.enhance as EnhanceDef[]).forEach((e, i) => {
     if (e.level !== i + 1) issues.push({ path: `enhance[${i}].level`, message: `expected ${i + 1} (rows must be +1, +2, … in order)` });
   });
@@ -675,6 +913,134 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
     for (const n of nodes) if (!seen.has(n.id)) issues.push({ path: `map_node.${n.id}`, message: 'unreachable from the square' });
   }
   return issues;
+}
+
+/**
+ * M5 gear depth cross-checks (TECH_SPEC §4.2, §8): grade chances sum to 1, grade 0 has no options (old gear migrates to
+ * it), uniques ≤ options and every grade's lines can be filled for every slot; each option has exactly one of stat /
+ * gearSkillId and min ≤ max; positive/unique values ≥ 0, negative ≤ 0; set bonuses have stat+value or a gear skill,
+ * piece counts within the set's slots; every slot has at least one recipe.
+ */
+function validateGearDepth(raw: RawConfig): ConfigIssue[] {
+  const issues: ConfigIssue[] = [];
+  const grades = raw.gear_grade as GearGradeDef[];
+  const options = raw.gear_option as GearOptionDef[];
+  const sets = raw.gear_set as GearSetDef[];
+  const gear = raw.gear as GearDef[];
+  if (!Array.isArray(grades) || !Array.isArray(options) || !Array.isArray(sets) || !Array.isArray(gear)) return issues;
+  const gs = grades.reduce((s, x) => s + x.chance, 0);
+  if (Math.abs(gs - 1) > 1e-6) issues.push({ path: 'gear_grade', message: `chance must sum to 1 (got ${gs})` });
+  if (grades[0] && grades[0].options !== 0) issues.push({ path: 'gear_grade[0].options', message: 'the first grade is the no-option grade (old gear): 0' });
+  const pool = (slot: string, kind: string) => options.filter((o) => o.kind === kind && (!o.slots || o.slots.includes(slot as GearDef['slot']))).length;
+  grades.forEach((g, i) => {
+    if (g.uniques > g.options) issues.push({ path: `gear_grade[${i}].uniques`, message: 'must be ≤ options' });
+    for (const slot of GEAR_SLOTS) {
+      if (g.uniques > 0 && pool(slot, 'unique') < g.uniques) issues.push({ path: `gear_grade[${i}]`, message: `not enough unique options for slot ${slot}` });
+      const rest = g.options - g.uniques;
+      if (rest > 0 && pool(slot, 'positive') < rest) issues.push({ path: `gear_grade[${i}]`, message: `not enough positive options for slot ${slot}` });
+      if (rest > 0 && g.negChance > 0 && pool(slot, 'negative') < rest) issues.push({ path: `gear_grade[${i}]`, message: `not enough negative options for slot ${slot}` });
+    }
+  });
+  options.forEach((o, i) => {
+    if ((o.stat === undefined) === (o.gearSkillId === undefined)) issues.push({ path: `gear_option[${i}]`, message: 'needs exactly one of stat / gearSkillId' });
+    if (o.min > o.max) issues.push({ path: `gear_option[${i}]`, message: 'min > max' });
+    if (o.kind === 'negative' ? o.max > 0 : o.min < 0) issues.push({ path: `gear_option[${i}]`, message: `${o.kind} option values must be ${o.kind === 'negative' ? '≤' : '≥'} 0` });
+    if (o.gearSkillId && o.kind !== 'unique') issues.push({ path: `gear_option[${i}].gearSkillId`, message: 'only unique options grant gear skills' });
+  });
+  sets.forEach((s, i) => {
+    const slots = new Set(gear.filter((g) => g.setId === s.id).map((g) => g.slot));
+    s.bonuses.forEach((b, k) => {
+      const statOk = b.stat !== undefined && b.value !== undefined;
+      if (statOk === (b.gearSkillId !== undefined)) issues.push({ path: `gear_set[${i}].bonuses[${k}]`, message: 'needs stat + value or gearSkillId' });
+      if (b.pieces > slots.size) issues.push({ path: `gear_set[${i}].bonuses[${k}].pieces`, message: `set has pieces in only ${slots.size} slots` });
+    });
+  });
+  for (const slot of GEAR_SLOTS) if (!gear.some((g) => g.slot === slot)) issues.push({ path: 'gear', message: `no recipe for slot ${slot}` });
+  return issues;
+}
+
+/**
+ * Job tree (TECH_SPEC §4.1): per class exactly one tier-0 job, tiers 0..n without gaps; a job's parent (parentId, or the
+ * only job of tier − 1 when absent) is a job of the same class one tier down; jobs sharing a parent are branches (each
+ * needs a distinct `branch`), a single child needs none.
+ */
+function validateJobTree(classIds: string[], jobs: JobDef[]): ConfigIssue[] {
+  const issues: ConfigIssue[] = [];
+  const byId = new Map(jobs.map((j) => [j.id, j]));
+  for (const c of classIds) {
+    const own = jobs.filter((j) => j.classId === c);
+    const tiers = [...new Set(own.map((j) => j.tier))].sort((a, b) => a - b);
+    if (tiers[0] !== 0) issues.push({ path: 'job', message: `class "${c}" needs a tier-0 job` });
+    tiers.forEach((t, k) => { if (t !== k) issues.push({ path: 'job', message: `class "${c}" job tiers must be 0..n without gaps` }); });
+    if (own.filter((j) => j.tier === 0).length > 1) issues.push({ path: 'job', message: `class "${c}" has more than one tier-0 job` });
+    const children = new Map<string, JobDef[]>();
+    for (const j of own) {
+      if (j.tier === 0) {
+        if (j.parentId) issues.push({ path: `job.${j.id}.parentId`, message: 'a tier-0 job has no parent' });
+        continue;
+      }
+      const down = own.filter((x) => x.tier === j.tier - 1);
+      const parent = j.parentId ? byId.get(j.parentId) : down.length === 1 ? down[0] : undefined;
+      if (!parent) { issues.push({ path: `job.${j.id}.parentId`, message: 'needed when tier − 1 has several jobs' }); continue; }
+      if (parent.classId !== c || parent.tier !== j.tier - 1) issues.push({ path: `job.${j.id}.parentId`, message: 'must be a job of the same class one tier down' });
+      const list = children.get(parent.id) ?? [];
+      list.push(j);
+      children.set(parent.id, list);
+    }
+    for (const [pid, list] of children) {
+      if (list.length < 2) continue;
+      const keys = list.map((j) => j.branch);
+      if (keys.some((k) => !k) || new Set(keys).size !== keys.length) issues.push({ path: 'job', message: `children of "${pid}" need distinct branch keys` });
+    }
+  }
+  return issues;
+}
+
+/** M5 tables (TECH_SPEC §8): exp_curve shape vs maxLevel/maxReincarnation, rune grade arrays, composeTo chains. */
+function validateProgressionTables(raw: RawConfig): ConfigIssue[] {
+  const issues: ConfigIssue[] = [];
+  const f = raw.formula_params as Record<string, number>;
+  const curve = raw.exp_curve as ExpCurveRow[];
+  const maxLevel = f.maxLevel ?? 0;
+  const cols = (f.maxReincarnation ?? 0) + 1;
+  // At least levels 1..maxLevel − 1 and reincarnation 0..maxReincarnation (extra rows/columns are unused, so a test may lower the caps).
+  if (curve.length < maxLevel - 1) issues.push({ path: 'exp_curve', message: `expected ≥ ${maxLevel - 1} rows (levels 1..maxLevel − 1), got ${curve.length}` });
+  curve.forEach((r, i) => {
+    if (r.level !== i + 1) issues.push({ path: `exp_curve[${i}].level`, message: `expected ${i + 1}` });
+    if (r.exp.length < cols) issues.push({ path: `exp_curve[${i}].exp`, message: `expected ≥ ${cols} values (reincarnation 0..maxReincarnation)` });
+  });
+  (raw.rune as RuneDef[]).forEach((r, i) => {
+    if (r.dropChance.length !== r.valueByGrade.length) issues.push({ path: `rune[${i}].dropChance`, message: 'needs one chance per grade (length of valueByGrade)' });
+  });
+  const mats = raw.material as MaterialDef[];
+  const byId = new Map(mats.map((m) => [m.id, m]));
+  const essences = new Set((raw.difficulty as DifficultyDef[]).map((d) => d.essenceId).filter(Boolean));
+  mats.forEach((m, i) => {
+    const to = m.composeTo;
+    if (!to) return;
+    if (to.materialId === m.id) issues.push({ path: `material[${i}].composeTo`, message: 'cannot compose into itself' });
+    // Tier essences only drop at their difficulty (TECH_SPEC §5.8): composing would bypass that gate.
+    if (essences.has(m.id) || essences.has(to.materialId)) issues.push({ path: `material[${i}].composeTo`, message: 'tier essences do not compose' });
+    const seen = new Set([m.id]);
+    for (let cur = byId.get(to.materialId); cur?.composeTo; cur = byId.get(cur.composeTo.materialId)) {
+      if (seen.has(cur.id)) { issues.push({ path: `material[${i}].composeTo`, message: 'composition cycle' }); break; }
+      seen.add(cur.id);
+    }
+  });
+  return issues;
+}
+
+/**
+ * hunter_tier rows in HUNTER_TIERS order with minPoints = ceil(minPointsFrac × maxPoints) (TECH_SPEC §4.1), maxPoints =
+ * number of graded stats (STAT_KEYS) × the highest stat_grade point.
+ */
+function hunterTiers(raw: RawConfig): HunterTierDef[] {
+  const rows = raw.hunter_tier as { tier: HunterTierId; minPointsFrac: number }[];
+  const maxPoints = STAT_KEYS.length * Math.max(0, ...(raw.stat_grade as { point: number }[]).map((g) => g.point));
+  return HUNTER_TIERS.map((t) => {
+    const r = rows.find((x) => x.tier === t)!;
+    return { tier: t, minPointsFrac: r.minPointsFrac, minPoints: Math.max(0, Math.ceil(r.minPointsFrac * maxPoints - 1e-9)) };
+  });
 }
 
 /** Validate and build a typed, indexed config. Throws ConfigError listing every issue. */
@@ -703,13 +1069,25 @@ export function loadConfig(raw: RawConfig): GameConfig {
   const difficulties = [...(raw.difficulty as DifficultyDef[])].sort((a, b) => a.order - b.order);
   const journeys = raw.journey as JourneyDef[];
   const consumables = raw.consumable as ConsumableDef[];
+  const gearGrades = raw.gear_grade as GearGradeDef[];
+  const gearOptions = raw.gear_option as GearOptionDef[];
+  const gearSets = raw.gear_set as GearSetDef[];
+  const gearSkills = raw.gear_skill as GearSkillDef[];
+  const invitations = raw.invitation as InvitationDef[];
+  // Stable sort: jobs of one tier keep config order (the first is the default branch, progressionStats.jobOf).
   const jobsByClass = new Map<string, JobDef[]>(classes.map((c) => [c.id, jobs.filter((j) => j.classId === c.id).sort((a, b) => a.tier - b.tier)]));
+  const runes = raw.rune as RuneDef[];
+  const relics = raw.relic as RelicDef[];
+  const mounts = [...(raw.mount as MountDef[])].sort((a, b) => a.moveSpeedMul - b.moveSpeedMul);
+  const growthProperties = raw.growth_property as GrowthPropertyDef[];
   return {
     version: (raw.meta as { version: string }).version,
     formula: raw.formula_params as FormulaParams,
     classes,
     personalities,
     statGrades: raw.stat_grade as GameConfig['statGrades'],
+    hunterTiers: hunterTiers(raw),
+    invitations,
     nodes,
     edges: raw.map_edge as MapEdge[],
     buildings,
@@ -726,7 +1104,16 @@ export function loadConfig(raw: RawConfig): GameConfig {
     difficulties,
     journeys,
     consumables,
+    gearGrades,
+    gearOptions,
+    gearSets,
+    gearSkills,
     loc,
+    expCurve: raw.exp_curve as ExpCurveRow[],
+    runes,
+    relics,
+    mounts,
+    growthProperties,
     index: {
       classes: new Map(classes.map((c) => [c.id, c])),
       personalities: new Map(personalities.map((p) => [p.id, p])),
@@ -751,10 +1138,20 @@ export function loadConfig(raw: RawConfig): GameConfig {
       difficulties: new Map(difficulties.map((d) => [d.id, d])),
       journeys: new Map(journeys.map((j) => [j.id, j])),
       consumables: new Map(consumables.map((c) => [c.id, c])),
+      gearGrades: new Map(gearGrades.map((x) => [x.id, x])),
+      gearOptions: new Map(gearOptions.map((x) => [x.id, x])),
+      gearSets: new Map(gearSets.map((x) => [x.id, x])),
+      gearSkills: new Map(gearSkills.map((x) => [x.id, x])),
+      invitations: new Map(invitations.map((x) => [x.id, x])),
+      autoInvitation: invitations.find((x) => x.autoInvite)?.id ?? null,
       potionSeller: buildings.find((b) => b.potionCap)?.id ?? null,
       squareNode: nodes.find((n) => n.kind === 'square')!.id,
       portalNode: (nodes.find((n) => n.kind === 'portal') ?? nodes.find((n) => n.kind === 'square')!).id,
       zoneNodes,
+      runes: new Map(runes.map((r) => [r.id, r])),
+      relics: new Map(relics.map((r) => [r.id, r])),
+      mounts: new Map(mounts.map((m) => [m.id, m])),
+      growthProperties: new Map(growthProperties.map((g) => [g.id, g])),
     },
   };
 }

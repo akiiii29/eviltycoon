@@ -1,0 +1,5 @@
+[
+ {"id":"growth.hp","nameKey":"growth.hp.name","stat":"hp","valuePerLevel":30,"maxLevel":10,"cost":[800,1200,1800,2700,4000,6000,9000,13500,20000,30000]},
+ {"id":"growth.atk","nameKey":"growth.atk.name","stat":"atk","valuePerLevel":2,"maxLevel":10,"cost":[960,1440,2160,3240,4800,7200,10800,16200,24000,36000]},
+ {"id":"growth.def","nameKey":"growth.def.name","stat":"def","valuePerLevel":2,"maxLevel":10,"cost":[960,1440,2160,3240,4800,7200,10800,16200,24000,36000]}
+]

@@ -1,6 +1,7 @@
 import {
   bestEnhance, enhanceReserveMul, needsOk, scoreGoals, upgradeSavings, urgentNeed,
 } from '../src/core/ai/utility';
+import { GEAR_SLOTS, type GearSlot } from '../src/core/config/types';
 import { rollHunter } from '../src/core/hunterFactory';
 import { NavGraph } from '../src/core/pathfinding';
 import { Rng } from '../src/core/rng';
@@ -31,6 +32,9 @@ function hunter(patch: Partial<Hunter> = {}): Hunter {
 const gear = (gearId: string, enhance: number, qualityId = 'q.rare'): GearInstance => ({ uid: `g-${gearId}`, gearId, qualityId, enhance });
 /** Maxed level-1 gear: not enhanceable and no upgrade to save for at level 1 (keeps gear savings, §5.4, out of a test). */
 const maxed = (gearId: string): GearInstance => gear(gearId, config.enhance.length);
+/** Maxed level-1 gear in every slot. */
+const allMaxed = (): Partial<Record<GearSlot, GearInstance>> =>
+  Object.fromEntries(GEAR_SLOTS.map((s) => [s, maxed(config.gear.find((g) => g.slot === s && g.level === 1)!.id)]));
 const rowAt = (enhance: number) => config.enhance[enhance]!; // step from +enhance to +enhance+1
 const cost = (basePrice: number, enhance: number) => Math.round(basePrice * rowAt(enhance).costFrac);
 
@@ -42,7 +46,7 @@ describe('balance AI: enhance risk budget', () => {
   });
 
   it('a risky step needs more spare gold than a safe one of the same cost', () => {
-    const h = hunter({ equipment: { weapon: gear('gear.w.club', 4), armor: maxed('gear.a.padded'), accessory: maxed('gear.r.charm') } }); // +4 → +5
+    const h = hunter({ equipment: { ...allMaxed(), weapon: gear('gear.w.club', 4) } }); // +4 → +5
     const c = cost(60, 4);
     const need = Math.ceil(c * enhanceReserveMul(config, rowAt(4).successRate));
     expect(need).toBeGreaterThan(c * f.enhanceGoldReserveMul);
@@ -53,9 +57,9 @@ describe('balance AI: enhance risk budget', () => {
   });
 
   it('when the risky slot is not affordable, a safe slot is still enhanced', () => {
-    const h = hunter({ equipment: { weapon: gear('gear.w.club', 5), armor: gear('gear.a.padded', 0), accessory: maxed('gear.r.charm') } });
-    h.gold = Math.ceil(cost(60, 0) * enhanceReserveMul(config, rowAt(0).successRate)); // enough for padded +0 → +1 only
-    expect(bestEnhance(config, h)?.slot).toBe('armor');
+    const h = hunter({ equipment: { ...allMaxed(), weapon: gear('gear.w.club', 5), body: gear('gear.a.padded', 0) } });
+    h.gold = Math.ceil(cost(config.index.gear.get('gear.a.padded')!.basePrice, 0) * enhanceReserveMul(config, rowAt(0).successRate)); // enough for padded +0 → +1 only
+    expect(bestEnhance(config, h)?.slot).toBe('body');
   });
 
   it(`never gambles below ${ENHANCE_MIN_SUCCESS} success`, () => {

@@ -24,7 +24,7 @@
   "gearPriceMul": 1.6,
   "gearPrefixKey": "tier.normal.prefix",
   "essenceId": "mat.ess.normal",
-  "essenceDropChance": 0.03
+  "essenceDropChance": 0.05
  },
  {
   "id": "diff.hard",
@@ -40,7 +40,7 @@
   "gearPriceMul": 2.5,
   "gearPrefixKey": "tier.hard.prefix",
   "essenceId": "mat.ess.hard",
-  "essenceDropChance": 0.03
+  "essenceDropChance": 0.05
  },
  {
   "id": "diff.expert",
@@ -56,7 +56,7 @@
   "gearPriceMul": 4,
   "gearPrefixKey": "tier.expert.prefix",
   "essenceId": "mat.ess.expert",
-  "essenceDropChance": 0.03
+  "essenceDropChance": 0.05
  },
  {
   "id": "diff.nightmare",
@@ -72,7 +72,7 @@
   "gearPriceMul": 6.5,
   "gearPrefixKey": "tier.nightmare.prefix",
   "essenceId": "mat.ess.nightmare",
-  "essenceDropChance": 0.03
+  "essenceDropChance": 0.05
  },
  {
   "id": "diff.torment1",
@@ -88,7 +88,7 @@
   "gearPriceMul": 10,
   "gearPrefixKey": "tier.torment1.prefix",
   "essenceId": "mat.ess.torment1",
-  "essenceDropChance": 0.03
+  "essenceDropChance": 0.05
  },
  {
   "id": "diff.torment2",
@@ -104,7 +104,7 @@
   "gearPriceMul": 15,
   "gearPrefixKey": "tier.torment2.prefix",
   "essenceId": "mat.ess.torment2",
-  "essenceDropChance": 0.03
+  "essenceDropChance": 0.05
  },
  {
   "id": "diff.torment3",
@@ -120,6 +120,6 @@
   "gearPriceMul": 22,
   "gearPrefixKey": "tier.torment3.prefix",
   "essenceId": "mat.ess.torment3",
-  "essenceDropChance": 0.03
+  "essenceDropChance": 0.05
  }
 ]

@@ -3,6 +3,7 @@ import type { System, SystemContext } from '../system';
 import { dist, findMonster, isAlive, type Goal, type Hunter } from '../world';
 import { enterPortal } from './progression';
 import { buildingDoor } from './town';
+import { trainingBuilding } from './training';
 
 /** Destination node for a goal. */
 function destination(ctx: SystemContext, h: Hunter, goal: Goal): string | null {
@@ -18,7 +19,12 @@ function destination(ctx: SystemContext, h: Hunter, goal: Goal): string | null {
     case 'enhance': return buildingDoor(config, world, config.index.forge);
     case 'learn': return buildingDoor(config, world, config.index.academy);
     case 'buyPotion': return config.index.potionSeller ? buildingDoor(config, world, config.index.potionSeller) : null;
+    case 'buyMount': return buildingDoor(config, world, config.index.shop);
     case 'reincarnate': return config.index.portalNode;
+    case 'train': {
+      const b = trainingBuilding(config);
+      return b ? buildingDoor(config, world, b.id) : null;
+    }
     case 'dead': return null;
   }
 }
@@ -32,6 +38,7 @@ function goalLabel(g: Goal): string {
     case 'enhance': return `enhance:${g.slot}`;
     case 'learn': return `learn:${g.kind}:${g.id}`;
     case 'buyPotion': return `buyPotion:${g.consumableId}`;
+    case 'buyMount': return `buyMount:${g.mountId}`;
     default: return g.type;
   }
 }
@@ -193,6 +200,10 @@ export const aiSystem: System = {
             continue; // performed by the economy system at the door, which clears the goal
           case 'learn':
             continue; // performed by the academy system at the door, which clears the goal
+          case 'train':
+            continue; // performed by the training system at the door (TECH_SPEC §5.15), which clears the goal
+          case 'buyMount':
+            continue; // performed by the mounts system at the Shop door, which clears the goal
           case 'reincarnate':
             enterPortal(ctx, h); // leaves world.hunters (or clears the goal if it no longer qualifies)
             continue;

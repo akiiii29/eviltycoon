@@ -14,11 +14,12 @@
  *  - otherwise the hunter discards them at the post.
  */
 import type { GameConfig, ZoneDef } from '../config/types';
+import type { SystemContext } from '../system';
 import type { World } from '../world';
-import { autoCraftReserve, demandTier } from './crafting';
+import { autoCraftReserve, demandTiers } from './crafting';
 import { recipeMaterials } from './gearTier';
 import { supplyMaterialNeed } from './supplies';
-import { extraRequestCopies, gearCraftable, investMaterialNeed, surplusPriceMul } from './town';
+import { extraRequestCopies, investMaterialNeed, storageCapacity, surplusPriceMul } from './town';
 
 export type Demand = Record<string, number>;
 
@@ -32,10 +33,12 @@ export function baseMaterialNeed(config: GameConfig, world: World): Demand {
   const need: Demand = {};
   const copies = Math.max(0, Math.floor(config.formula.requestMaxCopies)) + (copiesBonus(config, world));
   if (world.town.autoCraft && copies > 0) {
-    for (const g of config.gear) {
-      if (!gearCraftable(config, world, g)) continue;
-      // Gear tiers (TECH_SPEC §5.8): materials (incl. essence) of the highest craftable tier someone wants.
-      const t = demandTier(config, world, g);
+    // Gear tiers (TECH_SPEC §5.8): materials (incl. essence) of the highest craftable tier someone wants, per craftable
+    // recipe (crafting.demandTiers = gearCraftable + demandTier per recipe, memoised: TECH_SPEC §10).
+    const tiers = demandTiers(config, world);
+    for (let i = 0; i < config.gear.length; i++) {
+      const g = config.gear[i]!;
+      const t = tiers[i];
       if (!t) continue;
       const n = Math.min(t.wanters, copies);
       for (const m of recipeMaterials(config, g, t.difficultyId)) need[m.materialId] = (need[m.materialId] ?? 0) + m.count * n;
@@ -187,4 +190,97 @@ export function bagUnrequested(bag: Record<string, number>, demand: Demand): num
   let n = 0;
   for (const id in bag) n += Math.max(0, (bag[id] ?? 0) - (demand[id] ?? 0));
   return n;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Town Storage cap (TECH_SPEC §5.7): storageCapBase + Storehouse storageCap[level] material units.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Material units in Town Storage. */
+export function storageUnits(world: World): number {
+  let n = 0;
+  for (const k in world.town.storage) n += world.town.storage[k]!;
+  return n;
+}
+
+/** Units Town Storage can still take (Infinity without a cap). */
+export function storageRoom(config: GameConfig, world: World): number {
+  return Math.max(0, storageCapacity(config, world) - storageUnits(world));
+}
+
+/**
+ * Put materials into Town Storage up to its room (id order); the rest is sold for export at surplusPrice into Town gold
+ * (dismantle returns: "surplus to gold"). Stats `storageExported` / `storageExportGold`, event `storageExported`
+ * (only when something was exported). Returns the gold.
+ */
+export function storeOrExport(ctx: SystemContext, mats: Record<string, number>): number {
+  const { world, config } = ctx;
+  let room = storageRoom(config, world);
+  const out: Record<string, number> = {};
+  for (const id of Object.keys(mats).sort()) {
+    const n = mats[id]!;
+    const keep = Math.min(n, room);
+    if (keep > 0) { world.town.storage[id] = (world.town.storage[id] ?? 0) + keep; room -= keep; }
+    if (n > keep) out[id] = n - keep;
+  }
+  return exportUnits(ctx, out);
+}
+
+function exportUnits(ctx: SystemContext, out: Record<string, number>): number {
+  const { world, config } = ctx;
+  let units = 0;
+  let gold = 0;
+  for (const id in out) { units += out[id]!; gold += out[id]! * surplusPrice(config, id, world); }
+  if (units <= 0) return 0;
+  world.town.gold += gold;
+  world.stats.storageExported = (world.stats.storageExported ?? 0) + units;
+  world.stats.storageExportGold = (world.stats.storageExportGold ?? 0) + gold;
+  ctx.events.emit(world.tick, { type: 'storageExported', materials: out, units, gold });
+  return gold;
+}
+
+/**
+ * Export up to `units` Town Storage units no request needs (storage − (baseMaterialNeed + supplies + player requests)),
+ * the material with the most spare units first (ties: id), at surplusPrice into Town gold. Needed units are never
+ * exported. Returns the units exported.
+ */
+export function exportSpare(ctx: SystemContext, units: number): number {
+  const { world, config } = ctx;
+  if (!(units > 0)) return 0;
+  const need = baseMaterialNeed(config, world);
+  const supply = supplyMaterialNeed(config, world);
+  const player = world.town.requests ?? {};
+  const st = world.town.storage;
+  const spare = Object.keys(st).map((id) => ({ id, n: st[id]! - (need[id] ?? 0) - (supply[id] ?? 0) - (player[id] ?? 0) }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => b.n - a.n || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const out: Record<string, number> = {};
+  let left = units;
+  for (const x of spare) {
+    if (left <= 0) break;
+    const k = Math.min(x.n, left);
+    const rest = st[x.id]! - k;
+    if (rest > 0) st[x.id] = rest;
+    else delete st[x.id];
+    out[x.id] = k;
+    left -= k;
+  }
+  exportUnits(ctx, out);
+  return units - left;
+}
+
+/**
+ * Room for `units` requested units: when storage is short of room, spare units are exported first (exportSpare), so a
+ * storage filled with dismantle returns never turns requested materials away. Returns the room afterwards.
+ */
+export function ensureStorageRoom(ctx: SystemContext, units: number): number {
+  const room = storageRoom(ctx.config, ctx.world);
+  if (room >= units) return room;
+  exportSpare(ctx, units - room);
+  return storageRoom(ctx.config, ctx.world);
+}
+
+/** Over the cap (old saves with a pile, a cap lowered by config): exportSpare down to the cap. Returns units exported. */
+export function exportStorageOverflow(ctx: SystemContext): number {
+  return exportSpare(ctx, storageUnits(ctx.world) - storageCapacity(ctx.config, ctx.world));
 }

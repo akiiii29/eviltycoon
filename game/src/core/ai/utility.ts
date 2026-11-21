@@ -1,19 +1,22 @@
 /** Goal scoring (TECH_SPEC §5). Pure functions: given state, return scored candidates. */
 import { GEAR_SLOTS, NEED_KEYS, type GameConfig, type GearSlot, type ModStat, type NeedKey } from '../config/types';
 import {
-  duel, expectedHit, gearMainValue, type EffectiveStats, planStats, liveCrowd, monsterStats, monsterTypeStats, moveSpeed, needFrac, needMax,
-  slotValue, urgentFrac, zoneCrowd, zoneOccupancy, type ZoneOccupancy, zoneScores, type ZoneScore,
+  expectedGearScore, expectedHit, gearMainValue, gearScore, type EffectiveStats, type PlanParts, planStatsParts, liveCrowd, monsterStats, moveSpeed,
+  needFrac, needMax, slotValue, urgentFrac, zoneCrowd, zoneDuelSums, zoneOccupancy, type ZoneOccupancy, zoneScores, type ZoneScore,
 } from '../formulas';
 import { personalityFactor } from '../hunterFactory';
 import type { NavGraph } from '../pathfinding';
-import { canLearnTrait, nextSkillStudy } from '../systems/academy';
+import { canLearnTrait, nextGrowth, nextSkillStudy, readyStudy } from '../systems/academy';
+import { bestMount } from '../systems/mounts';
 import { bestPotionPurchase } from '../systems/consumables';
 import { servicePrice } from '../systems/services';
 import { serviceInStock } from '../systems/supplies';
+import { enhanceStepCost } from '../systems/gearTier';
 import { buildingLevel, enhanceBonus, gearCraftable } from '../systems/town';
+import { trainOffer, type TrainOffer } from '../systems/training';
 import { bountyZoneMul } from '../systems/bounty';
 import { bagHasSellable, bagUnrequested, materialDemand, requestZoneMul, type Demand } from '../systems/trading';
-import { bagCount, type Goal, type Hunter, type ShopItem, type World } from '../world';
+import { bagCount, type Goal, type Hunter, type LearnKind, type ShopItem, type World } from '../world';
 
 export interface Candidate {
   goal: Goal;
@@ -84,6 +87,8 @@ export interface ZoneDanger {
  */
 export interface DangerCache {
   stats: EffectiveStats;
+  /** stats split into the key of the cross-call duel memo (formulas.zoneDuelSums). */
+  plan: PlanParts;
   maxHp: number;
   zones: Map<string, ZoneDanger>;
   world?: World;
@@ -91,7 +96,8 @@ export interface DangerCache {
 }
 
 export function dangerCache(config: GameConfig, h: Hunter, world?: World): DangerCache {
-  return { stats: planStats(config, h), maxHp: Math.max(needMax(config, h, 'hp'), 1), zones: new Map(), world };
+  const plan = planStatsParts(config, h);
+  return { stats: plan.stats, plan, maxHp: Math.max(needMax(config, h, 'hp'), 1), zones: new Map(), world };
 }
 
 function cacheCrowd(config: GameConfig, h: Hunter, zoneId: string, c: DangerCache): number {
@@ -106,13 +112,8 @@ export function zoneDanger(config: GameConfig, h: Hunter, zoneId: string, diffic
   const hit = c.zones.get(zoneId);
   if (hit) return hit;
   const zone = config.index.zones.get(zoneId)!;
-  let w = 0, dps = 0, dmg = 0;
-  for (const e of zone.monsters) {
-    const d = duel(config, h, c.stats, monsterTypeStats(config, e.monsterId, difficultyId));
-    w += e.weight;
-    dps += e.weight * d.monsterDps;
-    dmg += e.weight * d.dmgPerKill;
-  }
+  // Duel sums are memoised across calls and ticks (formulas.zoneDuelSums, TECH_SPEC §10); the crowd factor is live.
+  const { w, dps, dmg } = zoneDuelSums(config, h, zone, difficultyId, c.plan);
   const crowd = cacheCrowd(config, h, zoneId, c);
   const out = w > 0 ? { dps: (crowd * dps) / w, dmgPerKill: (crowd * dmg) / w } : { dps: 0, dmgPerKill: 0 };
   c.zones.set(zoneId, out);
@@ -281,6 +282,7 @@ export function sameGoal(a: Goal | null, b: Goal | null): boolean {
   if (a.type === 'enhance' && b.type === 'enhance') return a.slot === b.slot;
   if (a.type === 'learn' && b.type === 'learn') return a.kind === b.kind && a.id === b.id;
   if (a.type === 'buyPotion' && b.type === 'buyPotion') return a.consumableId === b.consumableId;
+  if (a.type === 'buyMount' && b.type === 'buyMount') return a.mountId === b.mountId;
   return true;
 }
 
@@ -303,7 +305,7 @@ export function bestShopPurchase(config: GameConfig, world: World, h: Hunter): {
     const def = config.index.gear.get(item.gearId);
     if (!def || h.level < def.level || item.price > budget) continue;
     const cur = slotValue(config, h, def.slot);
-    const gain = (gearMainValue(config, item) - cur) / Math.max(cur, 1);
+    const gain = (gearScore(config, h, item, def.slot) - cur) / Math.max(cur, 1); // M5: options/sets in main-stat units
     if (gain < f.minUpgradeGain) continue;
     if (!best) { best = { item, gain }; continue; }
     const a = Math.min(gain, 1);
@@ -317,7 +319,7 @@ export function bestShopPurchase(config: GameConfig, world: World, h: Hunter): {
 
 /**
  * Expected cost and success rate of enhancing a slot's gear to its next level (AI estimate):
- * round(basePrice × enhance[next-1].costFrac); null if empty/maxed. The forge's own price is
+ * gearTier.enhanceStepCost (basePrice × enhance[next-1].costFrac × tier gearPriceMul); null if empty/maxed. The forge's own price is
  * systems/economy.enhanceCost (per gear instance). With `world` the success rate includes the Forge level's enhanceBonus.
  */
 export function expectedEnhanceCost(config: GameConfig, h: Hunter, slot: GearSlot, world?: World): { cost: number; successRate: number } | null {
@@ -327,7 +329,8 @@ export function expectedEnhanceCost(config: GameConfig, h: Hunter, slot: GearSlo
   const row = config.enhance[g.enhance]; // next = g.enhance + 1 → enhance[next - 1]
   if (!def || !row) return null;
   const bonus = world ? enhanceBonus(config, world) : 0;
-  return { cost: Math.round(def.basePrice * row.costFrac), successRate: Math.min(1, row.successRate + bonus) };
+  const k = personalityFactor(config, h, 'enhance.success'); // TECH_SPEC §5.5, same rate as economy.doEnhance
+  return { cost: enhanceStepCost(config, def, row.costFrac, g.difficultyId), successRate: Math.min(1, (row.successRate + bonus) * k) };
 }
 
 /**
@@ -368,15 +371,17 @@ export function savingsTarget(config: GameConfig, h: Hunter, slot: GearSlot, wor
   if (world) {
     for (const it of world.town.shop) {
       const def = config.index.gear.get(it.gearId);
-      const v = def ? gearMainValue(config, it) : 0;
+      const v = def ? gearScore(config, h, it, def.slot) : 0;
       if (!def || def.slot !== slot || def.level > h.level || v < line) continue;
       consider(it.price, v);
     }
     for (const k in world.town.crafting) {
       const job = world.town.crafting[k];
       const def = job ? config.index.gear.get(job.gearId) : undefined;
-      if (!def || def.slot !== slot || def.level > h.level || def.mainValue < line) continue;
-      consider(def.basePrice * f.aiTypicalQualityMult, def.mainValue);
+      if (!def || def.slot !== slot || def.level > h.level) continue;
+      const v = expectedGearScore(config, h, def, def.mainValue); // M5: + expected option lines / set bonus
+      if (v < line) continue;
+      consider(def.basePrice * f.aiTypicalQualityMult, v);
     }
   }
   let frac = f.upgradeSavingsConcreteFrac;
@@ -385,7 +390,7 @@ export function savingsTarget(config: GameConfig, h: Hunter, slot: GearSlot, wor
     for (const def of config.gear) {
       if (def.slot !== slot || def.level > h.level) continue;
       if (world && !gearCraftable(config, world, def)) continue;
-      const v = def.mainValue * f.aiTypicalQualityMult;
+      const v = expectedGearScore(config, h, def, def.mainValue * f.aiTypicalQualityMult);
       if (v < line) continue;
       consider(def.basePrice * f.aiTypicalQualityMult, v);
     }
@@ -452,10 +457,12 @@ export function bestEnhance(config: GameConfig, h: Hunter, world?: World): Enhan
     const c = expectedEnhanceCost(config, h, slot, world);
     const g = h.equipment[slot];
     if (!c || !g || c.successRate < minSuccess) continue;
-    const cur = gearMainValue(config, g);
-    const step = gearMainValue(config, { ...g, enhance: g.enhance + 1 }) - cur;
+    const main = gearMainValue(config, g);
+    // M5: the relative gain is over the slot's full value (options/sets included); enhance only scales the main value.
+    const cur = slotValue(config, h, slot);
+    const step = gearMainValue(config, { ...g, enhance: g.enhance + 1 }) - main;
     const row = config.enhance[g.enhance]!;
-    const loss = row.dropOnFail && g.enhance > 0 ? cur - gearMainValue(config, { ...g, enhance: g.enhance - 1 }) : 0;
+    const loss = row.dropOnFail && g.enhance > 0 ? main - gearMainValue(config, { ...g, enhance: g.enhance - 1 }) : 0;
     const expectedGain = c.successRate * step - (1 - c.successRate) * loss;
     if (expectedGain < minNet * c.successRate * step - 1e-9) continue;
     const reserve = c.cost * enhanceReserveMul(config, c.successRate);
@@ -480,13 +487,25 @@ const TRAIT_PRIORITY: readonly ModStat[] = ['atkPct', 'hpPct', 'defPct', 'atkSpe
  * Skills first: cheapest learnable next level (ties → skill id), only if gold ≥ cost × enhanceGoldReserveMul
  * (at level 1 the starting gold is kept back, so a fresh hunter hunts before studying).
  * Otherwise a learnable trait (enough points, not maxed), by TRAIT_PRIORITY then trait id; cost = point cost.
+ * Otherwise (M5, TECH_SPEC §5.16) the cheapest next growth property level (ties → id) when the gold beyond the gear
+ * savings (enhanceSavingsHold) is ≥ cost × growthReserveMul.
+ * A player study plan (`h.learnPlan`, command hunter.learn) comes first as soon as it can be done (gold ≥ cost, no
+ * reserve); until then the AI spends nothing of that plan's currency: a gold plan (skill / growth) blocks the automatic
+ * skill and growth picks, a trait plan blocks the automatic trait pick.
  */
-export function bestLearn(config: GameConfig, h: Hunter, world?: World): { kind: 'skill' | 'trait'; id: string; cost: number } | null {
+export function bestLearn(config: GameConfig, h: Hunter, world?: World): { kind: LearnKind; id: string; cost: number } | null {
   const f = config.formula;
+  const plan = h.learnPlan;
+  if (plan) {
+    const now = readyStudy(config, h, plan.kind, plan.id, world);
+    if (now) return now;
+  }
+  const goldFree = !plan || plan.kind === 'trait';
+  const pointsFree = !plan || plan.kind !== 'trait';
   // A level-1 hunter hunts first: it only studies with gold to spare beyond its starting purse.
   const spare = h.level >= 2 ? h.gold : h.gold - f.startingGold;
   let skill: { id: string; cost: number } | null = null;
-  for (const def of config.skills) {
+  if (goldFree) for (const def of config.skills) {
     const next = nextSkillStudy(config, h, def.id, world);
     if (!next || spare < next.cost * f.enhanceGoldReserveMul) continue;
     if (!skill || next.cost < skill.cost || (next.cost === skill.cost && def.id < skill.id)) skill = { id: def.id, cost: next.cost };
@@ -494,13 +513,36 @@ export function bestLearn(config: GameConfig, h: Hunter, world?: World): { kind:
   if (skill) return { kind: 'skill', ...skill };
 
   let trait: { id: string; cost: number; rank: number } | null = null;
-  for (const def of config.traits) {
+  if (pointsFree) for (const def of config.traits) {
     if (!canLearnTrait(config, h, def.id)) continue;
     const r = TRAIT_PRIORITY.indexOf(def.stat);
     const rank = r < 0 ? TRAIT_PRIORITY.length : r;
     if (!trait || rank < trait.rank || (rank === trait.rank && def.id < trait.id)) trait = { id: def.id, cost: def.pointCost, rank };
   }
-  return trait ? { kind: 'trait', id: trait.id, cost: trait.cost } : null;
+  if (trait) return { kind: 'trait', id: trait.id, cost: trait.cost };
+
+  if (!goldFree || config.growthProperties.length === 0) return null;
+  let growth: { id: string; cost: number } | null = null;
+  for (const def of config.growthProperties) {
+    const next = nextGrowth(config, h, def.id, world);
+    if (next && (!growth || next.cost < growth.cost)) growth = { id: def.id, cost: next.cost };
+  }
+  if (!growth || spare < growth.cost * f.growthReserveMul) return null;
+  if (spare - enhanceSavingsHold(config, h, world) < growth.cost * f.growthReserveMul) return null;
+  return { kind: 'growth', ...growth };
+}
+
+/**
+ * Training Ground session worth buying (TECH_SPEC §5.15), or null: training.trainOffer (working building, hunter below the
+ * cap, top level − trainLevelGap) and gold ≥ price × trainGoldReserveMul + the gear savings (enhanceSavingsHold), so a
+ * hunter keeps its purse and the gold put aside for its next gear piece; a level-1 hunter keeps its starting gold too.
+ */
+export function bestTraining(config: GameConfig, world: World, h: Hunter): TrainOffer | null {
+  const offer = trainOffer(config, world, h);
+  if (!offer) return null;
+  const f = config.formula;
+  const spare = h.level >= 2 ? h.gold : h.gold - f.startingGold;
+  return spare >= offer.price * f.trainGoldReserveMul + enhanceSavingsHold(config, h, world) ? offer : null;
 }
 
 /**
@@ -597,8 +639,13 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
     }
     const learn = built(config.index.academy) ? bestLearn(config, h, world) : null;
     if (learn) {
-      const s = (learn.kind === 'skill' ? f.learnSkillScore : f.learnTraitScore) * econMul;
+      const s = (learn.kind === 'skill' ? f.learnSkillScore : learn.kind === 'trait' ? f.learnTraitScore : f.learnGrowthScore) * econMul;
       out.push({ goal: { type: 'learn', kind: learn.kind, id: learn.id }, score: s, label: `learn ${learn.kind} ${learn.id}` });
+    }
+    // Mounts (TECH_SPEC §5.16): bought at the Shop with gold beyond the gear savings.
+    const mount = built(config.index.shop) ? bestMount(config, h, world) : null;
+    if (mount) {
+      out.push({ goal: { type: 'buyMount', mountId: mount.id }, score: f.mountBuyScore * econMul, label: `buyMount ${mount.id}` });
     }
 
     // Potions (TECH_SPEC §5.14): restock the pack at the seller, scored like an economy goal.
@@ -606,6 +653,11 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
     if (potion) {
       out.push({ goal: { type: 'buyPotion', consumableId: potion.consumable.id }, score: f.potionBuyScore * econMul, label: `buyPotion ${potion.consumable.id}` });
     }
+
+    // Training Ground (TECH_SPEC §5.15): buy EXP while behind the town's top hunter; only pushed when available, so towns
+    // without a working Training Ground draw exactly the same decision noise as before.
+    const train = bestTraining(config, world, h);
+    if (train) out.push({ goal: { type: 'train' }, score: f.trainScore * econMul, label: `train +${train.exp}exp ${train.price}g` });
 
     // Idling in town also recovers needs slowly for free, so a tired hunter who cannot pay rests instead of hunting.
     out.push({ goal: { type: 'wander', nodeId: '' }, score: Math.max(f.wanderScore, f.restScoreWeight * (1 - ok)), label: 'wander/rest' });

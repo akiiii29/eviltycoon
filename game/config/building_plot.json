@@ -12,5 +12,8 @@
   {"id": "plot.academy", "doorNode": "d.academy", "townHallLevel": 1, "startBuilding": "bld.academy", "x": -21, "y": 10, "w": 6, "h": 6},
   {"id": "plot.ne", "doorNode": "d.plot.ne", "townHallLevel": 2, "x": 6, "y": 5.5, "w": 7, "h": 5},
   {"id": "plot.se", "doorNode": "d.plot.se", "townHallLevel": 4, "x": 6, "y": -5.5, "w": 7, "h": 5},
-  {"id": "plot.sw", "doorNode": "d.plot.sw", "townHallLevel": 6, "x": -6, "y": -5.5, "w": 7, "h": 5}
+  {"id": "plot.sw", "doorNode": "d.plot.sw", "townHallLevel": 6, "x": -6, "y": -5.5, "w": 7, "h": 5},
+  {"id": "plot.e", "doorNode": "d.plot.e", "townHallLevel": 3, "x": 18, "y": -8, "w": 5, "h": 5},
+  {"id": "plot.nw.outer", "doorNode": "d.plot.nw.outer", "townHallLevel": 5, "x": -21, "y": 19, "w": 6, "h": 5},
+  {"id": "plot.se.outer", "doorNode": "d.plot.se.outer", "townHallLevel": 7, "x": 21, "y": -18, "w": 5, "h": 5}
 ]

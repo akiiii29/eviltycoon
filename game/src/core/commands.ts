@@ -1,15 +1,23 @@
 import { hunterStats } from './formulas';
 import type { SystemContext } from './system';
 import { findHunter, isAlive } from './world';
-import { spawnHunter } from './systems/arrivals';
+import { admitInvited, hasFreeSlot, queueHasRoom, removeHunter, spawnHunter } from './systems/arrivals';
+import { rollInvitationTier, rollPersonalities } from './hunterFactory';
 import { setGoal } from './systems/ai';
-import { dismantleStoredGear, listStoredGear, reclaimHunterGear, startCraft } from './systems/crafting';
+import { dismantleStoredGear, listStoredGear, reclaimGear, reclaimHunterGear, startCraft } from './systems/crafting';
 import { servicePrice } from './systems/services';
 import { portalStayOf, reincarnateBlocker, sendToPortal } from './systems/progression';
 import { cancelBounty, postBounty, validateBounty } from './systems/bounty';
 import { buildingLevel, cancelUpgrade, startBuild, startUpgrade } from './systems/town';
 import { setTaxRate, validateTaxRate } from './systems/tax';
 import { journeyOfHunter, recallJourney, startJourney, townHunterCount, validateJourney } from './systems/journey';
+import { chooseJob } from './systems/progression';
+import { learnPlanBlocker, readyStudy } from './systems/academy';
+import { compose } from './systems/compose';
+import { socketRune, unsocketRune } from './systems/runes';
+import { upgradeRelic } from './systems/relics';
+import { mountBlocker } from './systems/mounts';
+import type { LearnKind } from './world';
 
 /** Player/debug commands. Queued by UI, applied at the start of the next tick (TECH_SPEC §3.1). */
 export type Command =
@@ -71,7 +79,52 @@ export type Command =
    */
   | { type: 'journey.start'; journeyId: string; hunterIds: string[] }
   /** Bring a running journey's team home now (no reward, cost not refunded). */
-  | { type: 'journey.recall'; journeyUid: string };
+  | { type: 'journey.recall'; journeyUid: string }
+  /**
+   * M5 (TECH_SPEC §4.1): use an invitation of config/invitation.json — one owned ticket (town.tickets) if any, else its
+   * `gold` Town gold (Town Hall ≥ townHallLevel). Rolls a tier with its tierChances; the hunter enters now when a slot is
+   * free, else waits at the front of the queue. Rejected when Town and queue are both full.
+   */
+  | { type: 'town.invite'; invitationId: string }
+  /** EHT Manage → Donate: move `gold` (positive integer ≤ Town gold) to a hunter. */
+  | { type: 'hunter.donate'; hunterId: string; gold: number }
+  /**
+   * EHT Manage → Banish: the hunter leaves for good. Equipment → Town gear storage (same reclaim as hunter.reclaimGear);
+   * its gold, bag and potions leave with it. Frees a slot (the queue front enters this tick).
+   */
+  | { type: 'hunter.banish'; hunterId: string }
+  /** M5: reroll a hunter's personalities for personalityRerollGold Town gold. */
+  | { type: 'hunter.rerollPersonality'; hunterId: string }
+  /** Debug: add invitation tickets (no gameplay source yet). */
+  | { type: 'debug.grantTicket'; invitationId: string; count: number }
+  // ---- M5 progression depth (TECH_SPEC §4.1, §5.16) ----
+  /**
+   * Choose the hunter's branch of the job tree by naming a job of it (a branch job or a later one of the same branch).
+   * Stored as `jobBranch` (kept across reincarnation); changes job now when that job is next and unlocked. Rejected when
+   * the hunter already advanced into another branch (until it reincarnates).
+   */
+  | { type: 'hunter.chooseJob'; hunterId: string; jobId: string }
+  /**
+   * Study plan: the next level of a skill (gold), trait (trait points) or growth property (gold). Kept on the hunter until
+   * learned; the AI goes to the Academy for it as soon as it can be paid and spends nothing of that currency meanwhile.
+   * Rejected only when it can never happen (unknown, another class, maxed); sends the hunter now when it is in Town and can.
+   */
+  | { type: 'hunter.learn'; hunterId: string; kind: LearnKind; id: string }
+  /** Drop the hunter's study plan (the AI picks what to learn again). */
+  | { type: 'hunter.cancelLearn'; hunterId: string }
+  /** Buy a mount at the Shop (hunter in Town, level, faster than its own, gold ≥ price). */
+  | { type: 'hunter.buyMount'; hunterId: string; mountId: string }
+  /** Socket rune `stashIndex` of the Town rune stash into socket `slot` of the hunter (the old rune goes back). */
+  | { type: 'hunter.socketRune'; hunterId: string; slot: number; stashIndex: number }
+  | { type: 'hunter.unsocketRune'; hunterId: string; slot: number }
+  /** Toggle automatic socketing of stash runes into hunters in Town. */
+  | { type: 'town.setAutoRune'; on: boolean }
+  /** Compose `count` units of `materialId`'s composeTo material from Town Storage (`materialId` = the source). */
+  | { type: 'town.compose'; materialId: string; count: number }
+  /** Buy the next level of a relic with Town gold and storage materials. */
+  | { type: 'town.upgradeRelic'; relicId: string }
+  /** Toggle automatic relic purchases (off by default). */
+  | { type: 'town.setAutoRelic'; on: boolean };
 
 type Handler<C extends Command> = (ctx: SystemContext, cmd: C) => string | null;
 
@@ -121,12 +174,7 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
   'debug.removeHunter': (ctx, cmd) => {
     const away = awayReason(ctx, cmd.hunterId);
     if (away) return away;
-    const i = ctx.world.hunters.findIndex((h) => h.id === cmd.hunterId);
-    if (i < 0) return 'unknown hunter';
-    ctx.world.hunters.splice(i, 1);
-    for (const m of ctx.world.monsters) if (m.targetHunterId === cmd.hunterId) m.targetHunterId = null;
-    ctx.events.emit(ctx.world.tick, { type: 'hunterLeft', hunterId: cmd.hunterId });
-    return null;
+    return removeHunter(ctx, cmd.hunterId) ? null : 'unknown hunter';
   },
   'debug.restoreNeeds': (ctx, cmd) => {
     const away = awayReason(ctx, cmd.hunterId);
@@ -226,6 +274,144 @@ const HANDLERS: { [K in Command['type']]: Handler<Extract<Command, { type: K }>>
     return null;
   },
   'journey.recall': (ctx, cmd) => (recallJourney(ctx, cmd.journeyUid) ? null : 'unknown journey'),
+  'town.invite': (ctx, cmd) => {
+    const { world, config } = ctx;
+    const inv = config.index.invitations.get(cmd.invitationId);
+    if (!inv) return 'unknown invitation';
+    const tickets = world.town.tickets ?? (world.town.tickets = {});
+    const useTicket = (tickets[inv.id] ?? 0) > 0;
+    const gold = useTicket ? 0 : inv.gold;
+    if (gold === undefined) return 'no ticket';
+    if (!useTicket && inv.townHallLevel && buildingLevel(world, config.index.townHall) < inv.townHallLevel) return 'town hall level too low';
+    if (world.town.gold < gold) return 'not enough gold';
+    if (!hasFreeSlot(ctx) && !queueHasRoom(ctx)) return 'town and queue are full';
+    if (useTicket) {
+      tickets[inv.id] = tickets[inv.id]! - 1;
+      if (tickets[inv.id] === 0) delete tickets[inv.id];
+    } else {
+      world.town.gold -= gold; // leaves the economy (gold sink)
+      world.stats.inviteGold = (world.stats.inviteGold ?? 0) + gold;
+    }
+    world.stats.invites = (world.stats.invites ?? 0) + 1;
+    const tier = rollInvitationTier(ctx.rng, inv);
+    const r = admitInvited(ctx, tier, 'invite', inv.id);
+    ctx.events.emit(world.tick, { type: 'hunterInvited', invitationId: inv.id, tier, paid: useTicket ? 'ticket' : 'gold', gold, hunterId: r.hunterId, queueUid: r.queueUid });
+    return null;
+  },
+  'hunter.donate': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    const g = cmd.gold;
+    if (typeof g !== 'number' || !Number.isInteger(g) || g <= 0) return 'invalid gold';
+    if (ctx.world.town.gold < g) return 'not enough gold';
+    ctx.world.town.gold -= g;
+    h.gold += g;
+    ctx.world.stats.donatedGold = (ctx.world.stats.donatedGold ?? 0) + g;
+    ctx.events.emit(ctx.world.tick, { type: 'hunterDonated', hunterId: h.id, gold: g });
+    return null;
+  },
+  'hunter.banish': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    const itemUids = Object.values(h.equipment).filter((g) => !!g).map((g) => g!.uid);
+    reclaimGear(ctx, h, 'command'); // → town.gearStorage (gearReclaimed event); trims storage over gearStorageMax
+    ctx.world.stats.banished = (ctx.world.stats.banished ?? 0) + 1;
+    ctx.events.emit(ctx.world.tick, { type: 'hunterBanished', hunterId: h.id, itemUids, gold: h.gold });
+    removeHunter(ctx, h.id);
+    return null;
+  },
+  'hunter.rerollPersonality': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    const gold = ctx.config.formula.personalityRerollGold ?? 0;
+    if (ctx.world.town.gold < gold) return 'not enough gold';
+    ctx.world.town.gold -= gold; // gold sink
+    const from = h.personalities;
+    h.personalities = rollPersonalities(ctx.config, ctx.rng);
+    ctx.world.stats.personalityRerolls = (ctx.world.stats.personalityRerolls ?? 0) + 1;
+    ctx.events.emit(ctx.world.tick, { type: 'personalityRerolled', hunterId: h.id, from, to: h.personalities, gold });
+    return null;
+  },
+  'debug.grantTicket': (ctx, cmd) => {
+    if (!ctx.config.index.invitations.has(cmd.invitationId)) return 'unknown invitation';
+    const n = cmd.count;
+    if (typeof n !== 'number' || !Number.isInteger(n) || n <= 0 || n > 1000) return 'invalid count';
+    const tickets = ctx.world.town.tickets ?? (ctx.world.town.tickets = {});
+    tickets[cmd.invitationId] = (tickets[cmd.invitationId] ?? 0) + n;
+    return null;
+  },  'hunter.chooseJob': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    return chooseJob(ctx, h, cmd.jobId);
+  },
+  'hunter.learn': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    if (cmd.kind !== 'skill' && cmd.kind !== 'trait' && cmd.kind !== 'growth') return 'unknown study kind';
+    const plan = { kind: cmd.kind, id: cmd.id };
+    const why = learnPlanBlocker(ctx.config, h, plan);
+    if (why) return why;
+    h.learnPlan = plan;
+    // Go now when it can be done now (in Town, Academy built); otherwise the AI goes once it can (ai/utility.bestLearn).
+    const inTown = !ctx.config.index.nodes.get(h.nodeId)?.zoneId;
+    if (controllable(ctx, h.id) === null && inTown && buildingLevel(ctx.world, ctx.config.index.academy) >= 1 && readyStudy(ctx.config, h, plan.kind, plan.id, ctx.world)) {
+      setGoal(ctx, h, { type: 'learn', kind: plan.kind, id: plan.id }, 'order', true);
+    }
+    return null;
+  },
+  'hunter.cancelLearn': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    if (!h.learnPlan) return 'no study plan';
+    delete h.learnPlan;
+    return null;
+  },
+  'hunter.buyMount': (ctx, cmd) => {
+    const bad = controllable(ctx, cmd.hunterId);
+    if (bad) return bad;
+    const h = findHunter(ctx.world, cmd.hunterId)!;
+    if (ctx.config.index.nodes.get(h.nodeId)?.zoneId) return 'hunter is not in town';
+    if (buildingLevel(ctx.world, ctx.config.index.shop) < 1) return 'shop not built';
+    const why = mountBlocker(ctx.config, h, cmd.mountId);
+    if (why) return why;
+    return setGoal(ctx, h, { type: 'buyMount', mountId: cmd.mountId }, 'order', true) ? null : 'no path';
+  },
+  'hunter.socketRune': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    return socketRune(ctx, h, cmd.slot, cmd.stashIndex);
+  },
+  'hunter.unsocketRune': (ctx, cmd) => {
+    const away = awayReason(ctx, cmd.hunterId);
+    if (away) return away;
+    const h = findHunter(ctx.world, cmd.hunterId);
+    if (!h) return 'unknown hunter';
+    return unsocketRune(ctx, h, cmd.slot);
+  },
+  'town.setAutoRune': (ctx, cmd) => {
+    ctx.world.town.autoRune = !!cmd.on;
+    return null;
+  },
+  'town.compose': (ctx, cmd) => compose(ctx, cmd.materialId, cmd.count),
+  'town.upgradeRelic': (ctx, cmd) => upgradeRelic(ctx, cmd.relicId),
+  'town.setAutoRelic': (ctx, cmd) => {
+    ctx.world.town.autoRelic = !!cmd.on;
+    return null;
+  },
 };
 
 export function applyCommand(ctx: SystemContext, cmd: Command): void {

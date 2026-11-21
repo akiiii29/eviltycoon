@@ -373,6 +373,11 @@ function downgrade(src: World, v: number): Record<string, any> {
   const w = JSON.parse(JSON.stringify(src)) as Record<string, any>;
   const del = (o: Record<string, any> | undefined, ...keys: string[]) => { if (o) for (const k of keys) delete o[k]; };
   const hunters = w.hunters as Record<string, any>[];
+  if (v < 14) {
+    del(w.town, 'queue', 'queueTimerMs', 'autoInviteTimerMs', 'tickets');
+    del(w.stats, 'queueJoined', 'queueEntered', 'invites', 'inviteGold', 'autoInvites', 'donatedGold', 'banished', 'personalityRerolls');
+  }
+  if (v < 12) delete w.portal;
   if (v < 11) {
     del(w.town, 'supply');
     for (const h of hunters) del(h, 'potions', 'potionCdMs');

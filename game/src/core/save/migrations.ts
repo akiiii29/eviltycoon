@@ -212,7 +212,102 @@ export const MIGRATIONS: Record<number, Migration> = {
   },
   // v11 → v12 (Reincarnation Portal, TECH_SPEC §5.13): nobody inside the portal (keep the array if already there).
   11: (w) => ({ ...w, portal: Array.isArray(w.portal) ? w.portal : [] }),
+  // v12 → v13 (8 gear slots, grades/options, TECH_SPEC §4.2): equipped `armor` → `body`, `accessory` → `necklace` (the old
+  // gear.a.* / gear.r.* rows are now those slots), also in a pending enhance goal; on hunters, journey teams and the portal.
+  // Items get no grade/options (= the first, no-option grade). Shop/storage/jobs hold gear ids only, which stay valid.
+  12: (w) => {
+    const hunters = (Array.isArray(w.hunters) ? w.hunters : []) as Record<string, any>[];
+    const journeys = (Array.isArray(w.journeys) ? w.journeys : []) as Record<string, any>[];
+    const portal = (Array.isArray(w.portal) ? w.portal : []) as Record<string, any>[];
+    return {
+      ...w,
+      hunters: hunters.map(migrateSlotsV13),
+      journeys: journeys.map((j) => ({ ...j, hunters: (Array.isArray(j.hunters) ? j.hunters : []).map(migrateSlotsV13) })),
+      portal: portal.map((p) => (p && p.hunter ? { ...p, hunter: migrateSlotsV13(p.hunter) } : p)),
+    };
+  },
+  // v13 → v14 (waiting queue, invitations, auto-invite, donate/banish; TECH_SPEC §4.1): empty queue and timers, no tickets,
+  // stats 0. Only fills missing fields, so it is safe whatever v13 ends up being.
+  13: (w) => fillMissingHunterQueue(w),
+  // v14 → v15 (M5 special buildings, TECH_SPEC §5.15): new stats at 0. Hunter.aura / trainMs are optional (absent = no
+  // aura / not training); the aura is re-synced from the building level on the first tick. Only missing fields are filled.
+  14: (w) => {
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    return { ...w, stats: { trainSessions: 0, trainGold: 0, trainExp: 0, libraryExp: 0, ...stats } };
+  },
+  // v15 → v16 (M5 progression depth, TECH_SPEC §4.1, §5.16): every hunter (in town, on a journey, in the portal) gets the
+  // explicit jobId of its tier (the only job of tiers 0..2 before the job tree); Town rune stash empty, no relic, auto-rune
+  // on, auto-relic off; new counters 0. Idempotent: existing fields win.
+  15: (w, config) => {
+    const town = (w.town ?? {}) as Record<string, unknown>;
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    const withJob = (h: Record<string, any>) => {
+      if (typeof h.jobId === 'string') return h;
+      const job = config.index.jobsByClass.get(String(h.classId))?.find((j) => j.tier === (Number(h.jobTier) || 0));
+      return job ? { ...h, jobId: job.id } : h;
+    };
+    const list = (v: unknown) => (Array.isArray(v) ? v : []) as Record<string, any>[];
+    return {
+      ...w,
+      hunters: list(w.hunters).map(withJob),
+      journeys: list(w.journeys).map((j) => ({ ...j, hunters: list(j.hunters).map(withJob) })),
+      portal: list(w.portal).map((p) => (p.hunter ? { ...p, hunter: withJob(p.hunter) } : p)),
+      town: { runes: [], relics: {}, autoRune: true, autoRelic: false, ...town },
+      stats: { runesDropped: 0, runesDiscarded: 0, materialsComposed: 0, relicUpgrades: 0, mountsBought: 0, growthBought: 0, ...stats },
+    };
+  },
 };
+
+/**
+ * Apply the v12 → v13 slot remap when any hunter (field, journey, portal) still has a 3-slot key (`armor`/`accessory`).
+ * Idempotent; used at load for saves written by a build whose v12 → v13 step was a pass-through placeholder.
+ */
+export function fillMissingGearSlots(w: Record<string, unknown>, config: GameConfig): Record<string, unknown> {
+  const old = (h: unknown) => {
+    const eq = (h as { equipment?: Record<string, unknown> } | undefined)?.equipment;
+    return !!eq && Object.keys(eq).some((k) => SLOT_V13[k] !== undefined);
+  };
+  const hunters = (Array.isArray(w.hunters) ? w.hunters : []) as unknown[];
+  const journeys = (Array.isArray(w.journeys) ? w.journeys : []) as { hunters?: unknown[] }[];
+  const portal = (Array.isArray(w.portal) ? w.portal : []) as { hunter?: unknown }[];
+  const any = hunters.some(old) || journeys.some((j) => (j?.hunters ?? []).some(old)) || portal.some((p) => old(p?.hunter));
+  return any ? MIGRATIONS[12]!(w, config) : w;
+}
+
+/** v12 → v13 slot names of the 3-slot gear model. */
+const SLOT_V13: Record<string, string> = { armor: 'body', accessory: 'necklace' };
+
+function migrateSlotsV13(h: Record<string, any>): Record<string, any> {
+  if (!h || typeof h !== 'object') return h;
+  const eq: Record<string, unknown> = {};
+  for (const [slot, g] of Object.entries((h.equipment ?? {}) as Record<string, unknown>)) {
+    const to = SLOT_V13[slot] ?? slot;
+    if (g && eq[to] === undefined) eq[to] = g;
+  }
+  const goal = h.ai?.goal;
+  const ai = goal && goal.type === 'enhance' && SLOT_V13[goal.slot] ? { ...h.ai, goal: { ...goal, slot: SLOT_V13[goal.slot] } } : h.ai;
+  return { ...h, equipment: eq, ...(ai !== undefined ? { ai } : {}) };
+}
+
+/** v13 → v14 fields when absent (idempotent; existing fields win). */
+export function fillMissingHunterQueue(w: Record<string, unknown>): Record<string, unknown> {
+  const town = (w.town ?? {}) as Record<string, any>;
+  const stats = (w.stats ?? {}) as Record<string, unknown>;
+  return {
+    ...w,
+    town: {
+      ...town,
+      queue: Array.isArray(town.queue) ? town.queue : [],
+      queueTimerMs: Number.isFinite(town.queueTimerMs) ? town.queueTimerMs : 0,
+      autoInviteTimerMs: Number.isFinite(town.autoInviteTimerMs) ? town.autoInviteTimerMs : 0,
+      tickets: town.tickets && typeof town.tickets === 'object' && !Array.isArray(town.tickets) ? town.tickets : {},
+    },
+    stats: {
+      queueJoined: 0, queueEntered: 0, invites: 0, inviteGold: 0, autoInvites: 0, donatedGold: 0, banished: 0, personalityRerolls: 0,
+      ...stats,
+    },
+  };
+}
 
 /**
  * Apply the v10 → v11 supply fields when absent (idempotent; existing fields win). Used at load for v12 saves made by a

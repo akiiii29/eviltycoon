@@ -26,7 +26,51 @@ export interface PersonalityDef {
   id: string;
   nameKey: string;
   weight: number;
+  /** M5 (TECH_SPEC §5.5): positive / negative / neutral for the player (display only; absent = neutral). */
+  kind?: 'positive' | 'negative' | 'neutral';
   modifiers: PersonalityModifier[];
+}
+
+/**
+ * Personality modifier targets read by the sim (TECH_SPEC §5.5). `<need>` = hp/satiety/mood/stamina.
+ * goal.hunt, goal.service.<need>: utility × factor; spendRatio: shop/enhance/craft budget × factor;
+ * decay.<need>: need loss × factor; urgent.<need>: urgent threshold × factor (urgent.hp = retreat line);
+ * moveSpeed: × factor; M5: gain.gold (kill gold before tax), gain.exp (kill EXP), enhance.success (success rate).
+ */
+export const PERSONALITY_TARGETS: readonly string[] = [
+  'goal.hunt', 'spendRatio', 'moveSpeed',
+  ...(['hp', 'satiety', 'mood', 'stamina'] as const).flatMap((n) => [`goal.service.${n}`, `decay.${n}`, `urgent.${n}`]),
+  'gain.gold', 'gain.exp', 'enhance.success',
+];
+
+export type HunterTierId = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
+export const HUNTER_TIERS: readonly HunterTierId[] = ['normal', 'rare', 'superior', 'heroic', 'legendary'];
+
+/**
+ * M5 invitation ticket (config/invitation.json, TECH_SPEC §4.1): `town.invite` rolls a tier with `tierChances` (relative
+ * weights), then stat grades conditioned on that tier. Paid with one ticket of this id (town.tickets) when the Town has
+ * one, otherwise `gold` Town gold (absent = ticket only). `townHallLevel`: Town Hall level needed to buy it with gold.
+ * `autoInvite`: the row the free auto-invite (few hunters left) uses (at most one row).
+ */
+export interface InvitationDef {
+  id: string;
+  nameKey: string;
+  tierChances: Record<HunterTierId, number>;
+  gold?: number;
+  townHallLevel?: number;
+  autoInvite?: boolean;
+}
+
+/**
+ * Hunter tier threshold (config/hunter_tier.json, GDD §4.2, TECH_SPEC §4.1): a hunter whose grade points
+ * G = Σ stat_grade.point reach ceil(minPointsFrac × maxPoints) has at least this tier, maxPoints = number of graded stats
+ * (STAT_KEYS) × the highest stat_grade point, so the table scales with the number of graded stats.
+ */
+export interface HunterTierDef {
+  tier: HunterTierId;
+  minPointsFrac: number;
+  /** Derived at load: ceil(minPointsFrac × maxPoints). */
+  minPoints: number;
 }
 
 export interface StatGradeDef {
@@ -52,8 +96,14 @@ export interface MapEdge {
   road: boolean;
 }
 
-export type BuildingKind = 'service' | 'tradingPost' | 'craft' | 'shop' | 'forge' | 'academy' | 'townHall' | 'storehouse';
-export const BUILDING_KINDS: readonly BuildingKind[] = ['service', 'tradingPost', 'craft', 'shop', 'forge', 'academy', 'townHall', 'storehouse'];
+export type BuildingKind =
+  | 'service' | 'tradingPost' | 'craft' | 'shop' | 'forge' | 'academy' | 'townHall' | 'storehouse'
+  // M5 special buildings (TECH_SPEC §5.15), at most one of each:
+  | 'training' | 'bank' | 'monument' | 'fountain' | 'library';
+export const BUILDING_KINDS: readonly BuildingKind[] = [
+  'service', 'tradingPost', 'craft', 'shop', 'forge', 'academy', 'townHall', 'storehouse',
+  'training', 'bank', 'monument', 'fountain', 'library',
+];
 
 /**
  * Stat modifiers shared by traits and skill buffs (M3).
@@ -71,6 +121,17 @@ export interface JobDef {
   unlockLevel: number;
   /** Multiplier on base stats (hp/atk/def) while in this job. */
   statMult: number;
+  /**
+   * M5 job tree (TECH_SPEC §4.1, §8): branch key of a job on a tier with several choices (absent on single-job tiers),
+   * the job it advances from (absent = the only job of tier − 1), reincarnations needed besides unlockLevel (absent = 0),
+   * per-stat multipliers on top of statMult (absent = 1) and flat crit/eva points.
+   */
+  branch?: string;
+  parentId?: string;
+  unlockReincarnation?: number;
+  statBias?: Partial<Record<MainStat, number>>;
+  crit?: number;
+  eva?: number;
 }
 
 export type SkillKind = 'strike' | 'aoe' | 'buff';
@@ -168,6 +229,8 @@ export interface BuildingDef {
   surplusPriceMul?: number[];
   /** storehouse only: extra copies kept by the automatic material requests (per level). */
   requestCopies?: number[];
+  /** storehouse only: Town Storage units added to storageCapBase (per level; TECH_SPEC §5.7). */
+  storageCap?: number[];
   /**
    * service only: max supply units in stock (per level; one unit = one serving, TECH_SPEC §5.14). Missing = the service
    * needs no supplies (unlimited, as before supplies existed).
@@ -175,6 +238,23 @@ export interface BuildingDef {
   supplyCap?: number[];
   /** Potion seller (the Infirmary, TECH_SPEC §5.14): max potions in stock over every tier (per level). */
   potionCap?: number[];
+  // ---- M5 special buildings (TECH_SPEC §5.15), per level ----
+  /**
+   * training only: EXP one session grants, as a fraction of expToNext(hunter level); and how close to the town's top hunter
+   * level training can bring a hunter (it may train while level < top level − trainLevelGap).
+   */
+  trainExpFrac?: number[];
+  trainLevelGap?: number[];
+  /** bank only: multiplier on the non-urgent auto-investment floor (investTargetMul × townGoldTarget); no gold is created. */
+  investFloorMul?: number[];
+  /** monument only: permanent town aura, percent ATK / DEF for every hunter (own category in hunterStats). */
+  auraAtkPct?: number[];
+  auraDefPct?: number[];
+  /** fountain only: multiplier on townIdleRegenPerSec, and on the death timer (reviveSec). */
+  townRegenMul?: number[];
+  reviveSecMul?: number[];
+  /** library only: percent extra EXP from kills (not from training or journeys). */
+  killExpPct?: number[];
 }
 
 export type ConsumableKind = 'supply' | 'potion';
@@ -214,15 +294,83 @@ export interface BuildingPlotDef {
   h: number;
 }
 
-export type GearSlot = 'weapon' | 'armor' | 'accessory';
-export const GEAR_SLOTS: readonly GearSlot[] = ['weapon', 'armor', 'accessory'];
+/**
+ * M5 (world v13, TECH_SPEC §4.2): 8 slots — weapon (ATK), armor group head/body/gloves/shoes (DEF),
+ * accessories necklace/ring/belt (HP). Order matters (tie-breaks, reclaim order): weapon first, then armor, accessories.
+ */
+export type GearSlot = 'weapon' | 'head' | 'body' | 'gloves' | 'shoes' | 'necklace' | 'ring' | 'belt';
+export const GEAR_SLOTS: readonly GearSlot[] = ['weapon', 'head', 'body', 'gloves', 'shoes', 'necklace', 'ring', 'belt'];
 export type MainStat = 'atk' | 'def' | 'hp';
+
+/**
+ * Stats a gear option / set bonus can carry (TECH_SPEC §4.2): the combat ModStats (applied in formulas.hunterStats as
+ * their own "gear" category) plus effects read by the economy hooks:
+ * lifesteal = % of damage dealt healed; goldPct / expPct = kill gold / EXP +%; dropPct = material drop chance +%;
+ * needSavePct = satiety/stamina/mood drain −% (negative = drains faster).
+ */
+export type GearStat = ModStat | 'lifesteal' | 'goldPct' | 'expPct' | 'dropPct' | 'needSavePct';
+export const GEAR_STATS: readonly GearStat[] = [...MOD_STATS, 'lifesteal', 'goldPct', 'expPct', 'dropPct', 'needSavePct'];
+
+/** Gear grade (config/gear_grade.json): rolled at craft, sets how many extra option lines the item gets. */
+export interface GearGradeDef {
+  id: string;
+  nameKey: string;
+  /** Craft roll weight (sum 1). */
+  chance: number;
+  /** Extra option lines (0..5); `uniques` of them come from the unique pool. */
+  options: number;
+  uniques: number;
+  /** Chance that a non-unique line is drawn from the negative pool. */
+  negChance: number;
+  /** Rolled option values × valueMul. */
+  valueMul: number;
+  /** List price × priceMult. */
+  priceMult: number;
+}
+
+export type GearOptionKind = 'positive' | 'negative' | 'unique';
+
+/** One option line (config/gear_option.json). Value rolled uniformly in [min, max] × grade valueMul. */
+export interface GearOptionDef {
+  id: string;
+  nameKey: string;
+  kind: GearOptionKind;
+  /** Stat it adds (absent only on a gear-skill line). */
+  stat?: GearStat;
+  /** The line grants this gear skill instead of a stat. */
+  gearSkillId?: string;
+  min: number;
+  max: number;
+  weight: number;
+  /** Slots it may roll on (absent = all). */
+  slots?: GearSlot[];
+}
+
+/** A gear set (config/gear_set.json); pieces = gear rows with this setId, counted once per slot. Bonuses are cumulative. */
+export interface GearSetDef {
+  id: string;
+  nameKey: string;
+  bonuses: { pieces: number; stat?: GearStat; value?: number; gearSkillId?: string }[];
+}
+
+/** A gear skill (config/gear_skill.json): on each auto-attack, `chance` to cast `skillId` at `skillLevel` (any class). */
+export interface GearSkillDef {
+  id: string;
+  nameKey: string;
+  trigger: 'attack';
+  chance: number;
+  cooldownSec: number;
+  skillId: string;
+  skillLevel: number;
+}
 
 export interface MaterialDef {
   id: string;
   nameKey: string;
   /** Gold the trading post pays per unit. */
   price: number;
+  /** M5 (TECH_SPEC §8 `material.composeTo`): `count` units of this material compose into 1 unit of `materialId`. */
+  composeTo?: { materialId: string; count: number };
 }
 
 export interface GearDef {
@@ -239,6 +387,10 @@ export interface GearDef {
   materials: { materialId: string; count: number }[];
   /** Shop price at Rare quality (×quality.priceMult). */
   basePrice: number;
+  /** M5: tier essence × essenceMul (the piece's share of its slot group; absent = 1). */
+  essenceMul?: number;
+  /** M5: gear set this piece belongs to (config/gear_set.json). */
+  setId?: string;
 }
 
 export interface GearQualityDef {
@@ -595,6 +747,18 @@ export interface FormulaParams {
    */
   diffAutoAdvanceFrac: number;
   /**
+   * Town Storage cap (TECH_SPEC §5.7): total material units ≤ storageCapBase + Storehouse storageCap[level]. Requested
+   * purchases / journey rewards / dismantle returns only fill the room; units over the cap that no request needs are
+   * exported at surplusPrice (Town gold). 0 = no cap.
+   */
+  storageCapBase: number;
+  /**
+   * Auto-difficulty bootstrap gate (gearTier.autoAdvanceDifficulty): the Town steps up only if every hunter, as a level-1
+   * hunter with a starter kit of the new tier, has a zone with power ratio >= diffAutoMinRatio there. 0 = no gate.
+   * Keep it above zoneFitMin (the step-down line) so auto difficulty does not flap.
+   */
+  diffAutoMinRatio: number;
+  /**
    * Supplies and potions (TECH_SPEC §5.14, systems/supplies.ts, systems/consumables.ts). Automatic requests keep at most
    * supplyRequestBatches batches of the essential recipe per stock line.
    */
@@ -617,6 +781,65 @@ export interface FormulaParams {
   reviveFeeBase: number;
   reviveFeePerLevel: number;
   reviveBrokeDelayMul: number;
+  /**
+   * M5 gear options / sets (TECH_SPEC §4.2): the gear category of % modifiers (options + set bonuses) is summed per stat and
+   * clamped to [gearPctFloor, gearPctCap] (it may go negative); needSavePct is clamped to ±gearNeedSaveCap.
+   */
+  gearPctCap: number;
+  gearPctFloor: number;
+  gearNeedSaveCap: number;
+  /**
+   * AI worth of the non-combat gear stats (ai valuation, formulas.gearScore), as Δln(power) per point:
+   * power = √(DPS × effective HP), so e.g. 0.005 = one point is worth +1 % ATK. Combat stats are valued from the hunter's stats.
+   */
+  gearWorthLifesteal: number;
+  gearWorthGoldPct: number;
+  gearWorthExpPct: number;
+  gearWorthDropPct: number;
+  gearWorthNeedSavePct: number;
+  /** AI: option lines + set share count at most ±gearExtraMaxFrac × the item's main value (formulas.gearScore). */
+  gearExtraMaxFrac: number;
+  /**
+   * M5 waiting queue and auto-invite (TECH_SPEC §4.1, systems/arrivals): at most queueMax hunters wait while Town slots are
+   * full, one joins every queueArrivalIntervalSec; when townHunterCount ≤ autoInviteMaxHunters a free hunter of the
+   * `autoInvite` invitation arrives every autoInviteIntervalSec. personalityRerollGold: Town gold per `hunter.rerollPersonality`.
+   */
+  queueMax: number;
+  queueArrivalIntervalSec: number;
+  autoInviteMaxHunters: number;
+  autoInviteIntervalSec: number;
+  personalityRerollGold: number;
+  /**
+   * Training Ground (TECH_SPEC §5.15): a session lasts trainSessionSec inside; price = round(trainGoldPerExp × EXP granted)
+   * (through economy.feeTownCut); the AI trains only with gold ≥ price × trainGoldReserveMul + its gear savings;
+   * score trainScore × econMul.
+   */
+  trainSessionSec: number;
+  trainGoldPerExp: number;
+  trainGoldReserveMul: number;
+  trainScore: number;
+  /** M5 special buildings (TECH_SPEC §5.15); auto-invest weights, same scheme as investValueService, see systems/town.investValue. */
+  investValueTraining: number;
+  investValueBank: number;
+  investValueMonument: number;
+  investValueFountain: number;
+  investValueLibrary: number;
+  /**
+   * M5 progression depth (TECH_SPEC §4.1, §5.16). Runes: sockets per hunter, max runes in the Town rune stash (the lowest
+   * grade beyond it is discarded).
+   */
+  runeSlots: number;
+  runeStashMax: number;
+  /** AI growth property purchase: gold beyond the gear savings ≥ cost × growthReserveMul; score learnGrowthScore × econMul. */
+  growthReserveMul: number;
+  learnGrowthScore: number;
+  /** AI mount purchase: gold beyond the gear savings ≥ price × mountReserveMul; score mountBuyScore × econMul. */
+  mountReserveMul: number;
+  mountBuyScore: number;
+  /** Auto-composition of storage surplus into short requested materials runs every composeIntervalSec (0 = off). */
+  composeIntervalSec: number;
+  /** town.autoRelic: buy the cheapest relic level when Town gold ≥ relicAutoGoldMul × townGoldTarget + its gold cost. */
+  relicAutoGoldMul: number;
   [key: string]: number;
 }
 
@@ -643,6 +866,57 @@ export interface JourneyDef {
   failRewardFrac: number;
 }
 
+/** M5: EXP to go from `level` to level + 1, per reincarnation count (exp[r], length maxReincarnation + 1). */
+export interface ExpCurveRow {
+  level: number;
+  exp: number[];
+}
+
+/**
+ * M5 rune (TECH_SPEC §8): dropped by monsters of level ≥ minMonsterLevel with dropChance[g − 1] per kill for grade g,
+ * socketed into a hunter (formula runeSlots), adding valueByGrade[g − 1] of `stat` (trait category, like traits).
+ */
+export interface RuneDef {
+  id: string;
+  nameKey: string;
+  stat: ModStat;
+  minMonsterLevel: number;
+  valueByGrade: number[];
+  dropChance: number[];
+}
+
+export type RelicEffect = 'expPct' | 'runeDropPct' | 'growthCostPct';
+export const RELIC_EFFECTS: readonly RelicEffect[] = ['expPct', 'runeDropPct', 'growthCostPct'];
+
+/** M5 relic: a Town-wide permanent upgrade with levels (value[level − 1]; upgradeCost[i] = price of level i + 1). */
+export interface RelicDef {
+  id: string;
+  nameKey: string;
+  effect: RelicEffect;
+  maxLevel: number;
+  value: number[];
+  upgradeCost: { gold: number; materials: { materialId: string; count: number }[] }[];
+}
+
+/** M5 mount: bought by a hunter at the Shop, multiplies its move speed; kept for life (also across reincarnation). */
+export interface MountDef {
+  id: string;
+  nameKey: string;
+  moveSpeedMul: number;
+  price: number;
+  minLevel: number;
+}
+
+/** M5 growth property: per-hunter flat base-stat upgrade bought with gold at the Academy (cost[level − 1] for that level). */
+export interface GrowthPropertyDef {
+  id: string;
+  nameKey: string;
+  stat: MainStat;
+  valuePerLevel: number;
+  maxLevel: number;
+  cost: number[];
+}
+
 export interface LocEntry {
   key: string;
   vi: string;
@@ -655,6 +929,10 @@ export interface GameConfig {
   classes: ClassDef[];
   personalities: PersonalityDef[];
   statGrades: StatGradeDef[];
+  /** Hunter tier thresholds in HUNTER_TIERS order (config/hunter_tier.json, minPoints derived). */
+  hunterTiers: HunterTierDef[];
+  /** M5 invitations (config/invitation.json), config order. */
+  invitations: InvitationDef[];
   nodes: MapNode[];
   edges: MapEdge[];
   buildings: BuildingDef[];
@@ -675,7 +953,18 @@ export interface GameConfig {
   journeys: JourneyDef[];
   /** Stock recipes in config order (TECH_SPEC §5.14). */
   consumables: ConsumableDef[];
+  /** M5 gear depth (TECH_SPEC §4.2): grades in config order (index 0 = the no-option grade old gear has), options, sets, gear skills. */
+  gearGrades: GearGradeDef[];
+  gearOptions: GearOptionDef[];
+  gearSets: GearSetDef[];
+  gearSkills: GearSkillDef[];
   loc: LocEntry[];
+  /** M5 (TECH_SPEC §8): expCurve[level − 1].exp[reincarnation]; runes, relics, mounts (by moveSpeedMul), growth properties. */
+  expCurve: ExpCurveRow[];
+  runes: RuneDef[];
+  relics: RelicDef[];
+  mounts: MountDef[];
+  growthProperties: GrowthPropertyDef[];
   /** Lookups built by the loader. */
   index: {
     classes: Map<string, ClassDef>;
@@ -704,6 +993,13 @@ export interface GameConfig {
     difficulties: Map<string, DifficultyDef>;
     journeys: Map<string, JourneyDef>;
     consumables: Map<string, ConsumableDef>;
+    gearGrades: Map<string, GearGradeDef>;
+    gearOptions: Map<string, GearOptionDef>;
+    gearSets: Map<string, GearSetDef>;
+    gearSkills: Map<string, GearSkillDef>;
+    invitations: Map<string, InvitationDef>;
+    /** Id of the invitation with autoInvite (TECH_SPEC §4.1), or null (auto-invite rolls a plain visitor). */
+    autoInvitation: string | null;
     /** The building that sells potions (first building with potionCap), or null. */
     potionSeller: string | null;
     /** The single town square node (spawn / revive / return point). */
@@ -712,5 +1008,9 @@ export interface GameConfig {
     portalNode: string;
     /** Field node ids per zone. */
     zoneNodes: Map<string, string[]>;
+    runes: Map<string, RuneDef>;
+    relics: Map<string, RelicDef>;
+    mounts: Map<string, MountDef>;
+    growthProperties: Map<string, GrowthPropertyDef>;
   };
 }

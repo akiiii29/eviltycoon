@@ -9,6 +9,10 @@ import { arrivalsSystem } from './systems/arrivals';
 import { academySystem } from './systems/academy';
 import { bountySystem } from './systems/bounty';
 import { combatSystem } from './systems/combat';
+import { composeSystem } from './systems/compose';
+import { mountsSystem } from './systems/mounts';
+import { relicsSystem } from './systems/relics';
+import { runesSystem } from './systems/runes';
 import { consumablesSystem, potionUseSystem } from './systems/consumables';
 import { craftingSystem } from './systems/crafting';
 import { journeySystem } from './systems/journey';
@@ -21,6 +25,8 @@ import { skillsSystem } from './systems/skills';
 import { spawnSystem } from './systems/spawn';
 import { initialSupply, suppliesSystem } from './systems/supplies';
 import { initialBuildings, townSystem } from './systems/town';
+import { townAuraSystem } from './systems/monument';
+import { trainingSystem } from './systems/training';
 import { WORLD_SCHEMA_VERSION, type World } from './world';
 
 export const TICK_MS = 100; // 10 ticks per second (TECH_SPEC §3.2)
@@ -33,10 +39,12 @@ const MAX_TICKS_PER_ADVANCE = 600;
  * after crafting and before `bounty`, so investment spends spare Town gold before the auto-bounty looks at it. `potionUse` drinks
  * between skills and the backstop (a potion answers the hit before a retreat fires); `consumables` sells potions at the door;
  * `supplies` produces service/potion stock after the Trading Post and before crafting (essential materials first,
- * TECH_SPEC §5.14). New systems go here and in §3.2.
+ * TECH_SPEC §5.14). `townAura` syncs the monument aura onto hunters right after arrivals, before anything reads their stats;
+ * `training` runs Training Ground sessions next to the academy (TECH_SPEC §5.15). New systems go here and in §3.2.
  */
 export const DEFAULT_SYSTEMS: readonly System[] = [
   arrivalsSystem,
+  townAuraSystem,
   aiSystem,
   movementSystem,
   combatSystem,
@@ -45,15 +53,20 @@ export const DEFAULT_SYSTEMS: readonly System[] = [
   urgentBackstopSystem,
   servicesSystem,
   economySystem,
+  mountsSystem,
+  composeSystem,
   consumablesSystem,
   suppliesSystem,
   academySystem,
+  trainingSystem,
   craftingSystem,
   townSystem,
   bountySystem,
   journeySystem,
   needsSystem,
   progressionSystem,
+  runesSystem,
+  relicsSystem,
   spawnSystem,
 ];
 
@@ -85,13 +98,21 @@ export function createWorld(config: GameConfig, seed: number): World {
       gearStorage: [],
       autoDifficulty: true,
       supply: initialSupply(config),
+      queue: [],
+      queueTimerMs: 0,
+      autoInviteTimerMs: 0,
+      tickets: {},
+      runes: [],
+      relics: {},
+      autoRune: true,
+      autoRelic: false,
     },
     hunters: [],
     monsters: [],
     journeys: [],
     portal: [],
     zones: {},
-    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, gearDismantled: 0, gearReclaimed: 0, gearRelisted: 0, supplyProduced: 0, supplyUsed: 0, serviceStockouts: 0, supplyStockoutMs: 0, potionsProduced: 0, potionsBought: 0, potionsUsed: 0, potionGold: 0, reviveFees: 0, reviveBroke: 0 },
+    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, gearDismantled: 0, gearReclaimed: 0, gearRelisted: 0, supplyProduced: 0, supplyUsed: 0, serviceStockouts: 0, supplyStockoutMs: 0, potionsProduced: 0, potionsBought: 0, potionsUsed: 0, potionGold: 0, reviveFees: 0, reviveBroke: 0, queueJoined: 0, queueEntered: 0, invites: 0, inviteGold: 0, autoInvites: 0, donatedGold: 0, banished: 0, personalityRerolls: 0, trainSessions: 0, trainGold: 0, trainExp: 0, libraryExp: 0, runesDropped: 0, runesDiscarded: 0, materialsComposed: 0, relicUpgrades: 0, mountsBought: 0, growthBought: 0 },
   };
 }
 

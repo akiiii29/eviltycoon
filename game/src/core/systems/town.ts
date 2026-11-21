@@ -18,7 +18,7 @@ import type { System, SystemContext } from '../system';
 import type { BuildingState, InvestPlan, World } from '../world';
 import { autoCraftReserve } from './crafting';
 import { allHunters } from './journey';
-import { townGoldTarget } from './trading';
+import { exportStorageOverflow, townGoldTarget } from './trading';
 
 /** Value of a per-level list at `level` (clamped to the list; undefined below level 1 or for a missing list). */
 export function levelValue<T>(list: readonly T[] | undefined, level: number): T | undefined {
@@ -90,6 +90,53 @@ export function extraRequestCopies(config: GameConfig, world: World): number {
   let n = 0;
   for (const b of config.buildings) if (b.kind === 'storehouse') n += levelValue(b.requestCopies, buildingLevel(world, b.id)) ?? 0;
   return n;
+}
+
+/**
+ * Town Storage cap (TECH_SPEC §5.7, §5.12): storageCapBase + every storehouse's storageCap at its level; Infinity when
+ * storageCapBase ≤ 0 (no cap, the old behaviour). See trading.storageRoom / exportStorageOverflow.
+ */
+export function storageCapacity(config: GameConfig, world: World): number {
+  const base = config.formula.storageCapBase ?? 0;
+  if (!(base > 0)) return Infinity;
+  let n = base;
+  for (const b of config.buildings) if (b.kind === 'storehouse') n += levelValue(b.storageCap, buildingLevel(world, b.id)) ?? 0;
+  return n;
+}
+
+// ---- M5 special buildings (TECH_SPEC §5.15): at most one of each kind; unbuilt = the neutral value. ----
+
+/** The building type of a kind (first in config order), or undefined when the config has none. */
+export function buildingOfKind(config: GameConfig, kind: BuildingDef['kind']): BuildingDef | undefined {
+  return config.buildings.find((b) => b.kind === kind);
+}
+
+type LevelField = 'trainExpFrac' | 'trainLevelGap' | 'investFloorMul' | 'auraAtkPct' | 'auraDefPct' | 'townRegenMul' | 'reviveSecMul' | 'killExpPct';
+
+/** Value of a per-level field of the building of `kind` at its working level, or `off` when not built / no such building. */
+export function kindValue(config: GameConfig, world: World, kind: BuildingDef['kind'], field: LevelField, off: number): number {
+  const b = buildingOfKind(config, kind);
+  return (b && levelValue(b[field], buildingLevel(world, b.id))) ?? off;
+}
+
+/** bank: multiplier on the non-urgent investment floor (1 without a bank). */
+export function bankFloorMul(config: GameConfig, world: World): number {
+  return kindValue(config, world, 'bank', 'investFloorMul', 1);
+}
+
+/** fountain: multiplier on the free idle regen in town (1 without a fountain). */
+export function fountainRegenMul(config: GameConfig, world: World): number {
+  return kindValue(config, world, 'fountain', 'townRegenMul', 1);
+}
+
+/** fountain: multiplier on the death timer (1 without a fountain). */
+export function fountainReviveMul(config: GameConfig, world: World): number {
+  return kindValue(config, world, 'fountain', 'reviveSecMul', 1);
+}
+
+/** library: multiplier on kill EXP, 1 + killExpPct / 100 (exactly 1 without a library). */
+export function libraryExpMul(config: GameConfig, world: World): number {
+  return 1 + kindValue(config, world, 'library', 'killExpPct', 0) / 100;
 }
 
 // ---- Costs and validation ----
@@ -342,7 +389,8 @@ export function otherCandidates(config: GameConfig, world: World): Candidate[] {
 /** Lowest Town gold the step may leave: urgent → investUrgentReserveMul × autoCraftReserve; else investTargetMul × townGoldTarget. */
 export function investFloor(config: GameConfig, world: World, urgent: boolean): number {
   const f = config.formula;
-  return urgent ? f.investUrgentReserveMul * autoCraftReserve(config, world) : f.investTargetMul * townGoldTarget(config, world);
+  // A bank (TECH_SPEC §5.15) lowers only the non-urgent floor: it lets the Town invest more of its own gold, mints none.
+  return urgent ? f.investUrgentReserveMul * autoCraftReserve(config, world) : f.investTargetMul * townGoldTarget(config, world) * bankFloorMul(config, world);
 }
 
 /** Relative change of a per-level value list from level `from` to `to` (|to/from − 1|; absolute change when from is 0). */
@@ -358,6 +406,9 @@ function relStep(list: readonly number[] | undefined, from: number, to: number):
  *   service restorePerSec, shop capacity, tradingPost surplusPriceMul, craft maxGearLevel: relative change;
  *   academy studyGoldMul: 1 − to/from; forge enhanceBonus: added success rate; storehouse requestCopies: added copies /
  *   requestMaxCopies; townHall: 1 / toLevel.
+ * M5 kinds (TECH_SPEC §5.15): training trainExpFrac and fountain townRegenMul: relative change, the first build counting
+ *   as 1 (relStep from level 0 would return the absolute value, which is not comparable); bank investFloorMul: 1 − to/from
+ *   (from 1 when unbuilt); monument (auraAtkPct + auraDefPct) / 2 and library killExpPct: added percent / 100.
  * A building that is not built yet counts from level 0. The weights are formula_params (investValueService, …).
  */
 export function investValue(config: GameConfig, c: Candidate): number {
@@ -379,6 +430,17 @@ export function investValue(config: GameConfig, c: Candidate): number {
     case 'storehouse':
       return (f.investValueStorehouse * Math.max(0, at(b.requestCopies, c.toLevel, 0) - at(b.requestCopies, from, 0))) / Math.max(1, f.requestMaxCopies);
     case 'townHall': return f.investValueTownHall / Math.max(1, c.toLevel);
+    case 'training': return (f.investValueTraining ?? 0) * (from < 1 ? 1 : relStep(b.trainExpFrac, from, c.toLevel));
+    case 'fountain': return (f.investValueFountain ?? 0) * (from < 1 ? 1 : relStep(b.townRegenMul, from, c.toLevel));
+    case 'bank': {
+      const a = at(b.investFloorMul, from, 1);
+      return (f.investValueBank ?? 0) * Math.max(0, a > 0 ? 1 - at(b.investFloorMul, c.toLevel, 1) / a : 0);
+    }
+    case 'monument': {
+      const pct = (lv: number) => (at(b.auraAtkPct, lv, 0) + at(b.auraDefPct, lv, 0)) / 2;
+      return ((f.investValueMonument ?? 0) * Math.max(0, pct(c.toLevel) - pct(from))) / 100;
+    }
+    case 'library': return ((f.investValueLibrary ?? 0) * Math.max(0, at(b.killExpPct, c.toLevel, 0) - at(b.killExpPct, from, 0))) / 100;
     default: return 0;
   }
 }
@@ -497,6 +559,7 @@ export const townSystem: System = {
     }
     const every = Math.max(1, Math.round((config.formula.townInvestIntervalSec * 1000) / dtMs));
     if (world.tick % every !== 0) return;
+    exportStorageOverflow(ctx); // Town Storage cap (trading.ts, TECH_SPEC §5.7)
     if (world.town.autoInvest) autoInvest(ctx);
     else world.town.investPlan = null;
   },
