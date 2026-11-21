@@ -134,6 +134,13 @@ export class Renderer {
       mesh.rotation.z = Math.atan2(b.y - a.y, b.x - a.x);
       this.scene.add(mesh);
     }
+    // Reincarnation Portal (TECH_SPEC §5.13): a violet ring at its node next to the square.
+    const portal = config.nodes.find((n) => n.kind === 'portal');
+    if (portal) {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(1, 1.8, 20), new THREE.MeshBasicMaterial({ color: 0x9a6cff }));
+      ring.position.set(portal.x, portal.y, -0.55);
+      this.scene.add(ring);
+    }
     // Building plots (TECH_SPEC §5.12): an empty lot each; buildings on them are drawn in sync() from the world.
     for (const p of config.plots) {
       const lot = new THREE.Mesh(new THREE.PlaneGeometry(p.w, p.h), new THREE.MeshBasicMaterial({ color: 0x3f5638 }));

@@ -35,7 +35,7 @@ export interface StatGradeDef {
   rollChance: number;
 }
 
-export type MapNodeKind = 'square' | 'road' | 'door' | 'gate' | 'field';
+export type MapNodeKind = 'square' | 'road' | 'door' | 'gate' | 'field' | 'portal';
 
 export interface MapNode {
   id: string;
@@ -447,18 +447,6 @@ export interface FormulaParams {
   /** Extra service price above servicePriceLateLevel: + servicePriceLatePct / 100 × (level − servicePriceLateLevel) × base. */
   servicePriceLatePct: number;
   servicePriceLateLevel: number;
-  /** Offline progress (TECH_SPEC §9, src/core/offline.ts): credited time away is capped at offlineMaxHours. */
-  offlineMaxHours: number;
-  /** Multiplier on the estimated offline gains (1 = the measured rates as-is). */
-  offlineEfficiency: number;
-  /** Game seconds between rate samples taken while playing. */
-  offlineSampleSec: number;
-  /** Rates are averaged over the last offlineWindowMin game minutes of samples. */
-  offlineWindowMin: number;
-  /** Minimum measured game seconds (per hunter / for the town) before a rate is trusted; less gives no gains. */
-  offlineMinWindowSec: number;
-  /** Wall-clock gaps shorter than this are ignored (no estimate, no popup). */
-  offlineMinAwaySec: number;
   /** Bounties (TECH_SPEC §5.9, systems/bounty.ts). Max active bounties (player + auto) and max kills per bounty. */
   bountyMaxActive: number;
   bountyMaxKills: number;
@@ -539,18 +527,10 @@ export interface FormulaParams {
   /** Returning hunters (either outcome) come back with satiety/mood/stamina at most journeyReturnNeedFrac × max. */
   journeyReturnNeedFrac: number;
   /**
-   * Offline growth model (TECH_SPEC §9): 1 = project each hunter in offlineModelStepSec steps with the combat model
-   * (zone choice + EXP/kill rate as level rises, reincarnation), calibrated by the measured rates; 0 = flat rates.
+   * Reincarnation Portal (TECH_SPEC §5.13): game seconds a hunter spends inside the portal before progression.reincarnate
+   * runs (also counts down in wall-clock time while the game is closed, like a journey).
    */
-  offlineGrowthModel: number;
-  offlineModelStepSec: number;
-  /** Clamp of the per-hunter calibration (measured rate / model rate at the moment of leaving). */
-  offlineModelCalMin: number;
-  offlineModelCalMax: number;
-  /** Share of time a hunter spends fighting (walking/town trips excluded) in the offline model's kill speed. */
-  offlineHuntDuty: number;
-  /** Seconds of the offline model's heal trip per HP bar (time per kill += offlineTripSec / killsPerLife). */
-  offlineTripSec: number;
+  reincarnationSec: number;
   /** Live crowd factor on duel damage per kill = zoneCrowdMul × √max(zoneCrowdMinRho, monsters alive / hunters) (formulas.crowdFactor). */
   zoneCrowdMul: number;
   zoneCrowdMinRho: number;
@@ -646,6 +626,8 @@ export interface GameConfig {
     journeys: Map<string, JourneyDef>;
     /** The single town square node (spawn / revive / return point). */
     squareNode: string;
+    /** The Reincarnation Portal node (map kind "portal"; the square when the map has none). */
+    portalNode: string;
     /** Field node ids per zone. */
     zoneNodes: Map<string, string[]>;
   };

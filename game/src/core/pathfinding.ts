@@ -16,9 +16,12 @@ export class NavGraph {
   private nodes: Map<string, MapNode>;
   private cache = new Map<string, string[] | null>();
   private roadMul: number;
+  /** Candidates of `nearest` without `among`: every node except the portal (a destination only, TECH_SPEC §5.13). */
+  private snapIds: string[];
 
   constructor(config: GameConfig) {
     this.nodes = config.index.nodes;
+    this.snapIds = config.nodes.filter((n) => n.kind !== 'portal').map((n) => n.id);
     this.roadMul = config.formula.roadSpeedMul;
     for (const n of config.nodes) this.adj.set(n.id, []);
     for (const e of config.edges) {
@@ -44,10 +47,14 @@ export class NavGraph {
     return this.edge(a, b)?.road ? this.roadMul : 1;
   }
 
-  /** Nearest node to a position, optionally restricted to a set of ids. Ties break by id order for determinism. */
+  /**
+   * Nearest node to a position, optionally restricted to a set of ids. Ties break by id order for determinism.
+   * Without `among` the portal node is never returned (paths start at the square for a hunter leaving the portal),
+   * so adding the portal leaf to the map does not change any other path.
+   */
   nearest(p: Vec2, among?: readonly string[]): string {
     let best = '', bestD = Infinity;
-    const ids = among ?? [...this.nodes.keys()];
+    const ids = among ?? this.snapIds;
     for (const id of ids) {
       const n = this.nodes.get(id)!;
       const d = (n.x - p.x) ** 2 + (n.y - p.y) ** 2;

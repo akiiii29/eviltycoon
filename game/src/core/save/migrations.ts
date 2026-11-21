@@ -152,6 +152,12 @@ export const MIGRATIONS: Record<number, Migration> = {
       stats: { journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, ...stats },
     };
   },
+  // v9 → v10 and v10 → v11: PLACEHOLDERS (pass-through) for migrations that other branches add; the real ones replace
+  // these when the branches are merged (and the portal migration below is renumbered if needed).
+  9: (w) => w,
+  10: (w) => w,
+  // v11 → v12 (Reincarnation Portal, TECH_SPEC §5.13): nobody inside the portal (keep the array if already there).
+  11: (w) => ({ ...w, portal: Array.isArray(w.portal) ? w.portal : [] }),
 };
 
 /** Apply the v7 → v8 building fields when absent (idempotent; existing fields win). Used at load for v9 saves made before buildings. */

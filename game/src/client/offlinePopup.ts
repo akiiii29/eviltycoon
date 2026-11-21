@@ -1,12 +1,12 @@
 import { t } from '../core/config/load';
 import type { GameConfig } from '../core/config/types';
 import type { OfflineReport } from '../core/offline';
-import type { World } from '../core/world';
 
 function duration(ms: number): string {
   const min = Math.floor(ms / 60_000);
   const h = Math.floor(min / 60);
-  return h > 0 ? `${h} giờ ${min % 60} phút` : `${min} phút`;
+  if (h > 0) return `${h} giờ ${min % 60} phút`;
+  return min > 0 ? `${min} phút` : `${Math.floor(ms / 1000)} giây`;
 }
 
 function line(parent: HTMLElement, text: string, cls?: string): HTMLElement {
@@ -17,24 +17,18 @@ function line(parent: HTMLElement, text: string, cls?: string): HTMLElement {
   return el;
 }
 
-/** Summary of offline progress (TECH_SPEC §9). Plain DOM, styled like the debug overlay; closes on click. */
-export function showOfflinePopup(root: HTMLElement, config: GameConfig, world: World, r: OfflineReport): void {
+/**
+ * Summary of what ran on wall-clock time while away (TECH_SPEC §9: no hunting offline, like EHT): time away, hunters that
+ * arrived, journeys completed, reincarnations finished in the portal, buildings finished. Plain DOM; closes on OK.
+ */
+export function showOfflinePopup(root: HTMLElement, config: GameConfig, r: OfflineReport): void {
   root.querySelector('.offline-popup')?.remove();
   const box = document.createElement('div');
   box.className = 'offline-popup';
   line(box, 'Trong lúc bạn vắng mặt', 'debug-head');
-  const away = r.skipped
-    ? `Vắng ${duration(r.awayMs)}`
-    : r.capped
-      ? `Vắng ${duration(r.awayMs)} (tính tối đa ${duration(r.creditedMs)})`
-      : `Vắng ${duration(r.creditedMs)}`;
-  line(box, away, 'debug-status');
+  line(box, `Vắng ${duration(r.awayMs)} · hunter không săn khi game đóng`, 'debug-status');
   const matName = (id: string) => t(config, config.index.materials.get(id)?.nameKey ?? id);
-  if (!r.skipped) {
-    line(box, `Vàng +${r.gold} (Town +${r.townGold}) · Kill +${r.kills}`);
-    const mats = Object.entries(r.materials).map(([id, n]) => `${matName(id)} ×${n}`).join(', ');
-    line(box, `Vật liệu vào kho: ${mats || '—'}`);
-  }
+  if (r.arrivals.length > 0) line(box, `Hunter mới đến: ${r.arrivals.join(', ')}`);
   // Journeys that ended while away (TECH_SPEC §5.11).
   if (r.journeys.length > 0) {
     line(box, 'Hành trình', 'debug-sub');
@@ -51,7 +45,14 @@ export function showOfflinePopup(root: HTMLElement, config: GameConfig, world: W
       line(box, `${dest} (${j.hunterIds.join(', ')}): ${j.success ? 'THÀNH CÔNG' : 'THẤT BẠI'} · ${parts.join(' · ')}`, 'offline-hunter');
     }
   }
-  // Constructions/upgrades finished on wall-clock time (TECH_SPEC §5.12, §9).
+  // Reincarnation Portal (TECH_SPEC §5.13).
+  if (r.reincarnations.length > 0) {
+    line(box, 'Cổng Tái Sinh', 'debug-sub');
+    for (const p of r.reincarnations) {
+      line(box, p.reincarnated ? `${p.hunterId} tái sinh lần ${p.reincarnation} → Lv1` : `${p.hunterId} ra khỏi cổng (không tái sinh được)`, 'offline-hunter');
+    }
+  }
+  // Constructions/upgrades finished on wall-clock time (TECH_SPEC §5.12).
   if (r.buildings.length > 0) {
     line(box, 'Công trình hoàn thành', 'debug-sub');
     for (const b of r.buildings) {
@@ -59,24 +60,12 @@ export function showOfflinePopup(root: HTMLElement, config: GameConfig, world: W
       line(box, `${name} → Lv${b.level}`, 'offline-hunter');
     }
   }
-  if (r.arrivals.length > 0) line(box, `Hunter mới đến: ${r.arrivals.join(', ')}`);
-  if (r.hunters.length > 0) line(box, 'Hunter', 'debug-sub');
-  for (const g of r.hunters) {
-    const h = world.hunters.find((x) => x.id === g.id);
-    const cls = h ? t(config, config.index.classes.get(h.classId)?.nameKey ?? h.classId) : '';
-    const reinc = g.reincarnations ?? 0;
-    const lv = reinc > 0
-      ? `Lv${g.levelBefore} → tái sinh ×${reinc} → Lv${g.levelAfter}`
-      : g.levelAfter > g.levelBefore ? `Lv${g.levelBefore} → Lv${g.levelAfter}` : `Lv${g.levelAfter}`;
-    line(box, `${g.id} ${cls} · ${lv} · vàng +${g.gold} · kill +${g.kills}`, 'offline-hunter');
-  }
   const row = document.createElement('div');
   row.className = 'debug-row';
   const ok = document.createElement('button');
   ok.textContent = 'OK';
   row.appendChild(ok);
   box.appendChild(row);
-  const close = () => box.remove();
-  ok.addEventListener('click', close);
+  ok.addEventListener('click', () => box.remove());
   root.appendChild(box);
 }

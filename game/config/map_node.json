@@ -138,6 +138,12 @@
   "kind": "door"
  },
  {
+  "id": "t.portal",
+  "x": 2,
+  "y": -6,
+  "kind": "portal"
+ },
+ {
   "id": "t.gate",
   "x": 22,
   "y": 0,
