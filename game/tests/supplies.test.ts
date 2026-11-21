@@ -359,7 +359,9 @@ describe('migration v9 → v11 (→ v12)', () => {
 
 describe('integration', () => {
   it('a 3-hour town keeps services stocked from storage and sells/drinks potions', () => {
-    const s = new Simulation(config, createWorld(config, 1));
+    // Potions from Town Hall 2 here so a short run sees them (live config opens them later, potionTownHallLevel).
+    const cfg = makeConfig((raw) => { raw.formula_params.potionTownHallLevel = 2; });
+    const s = new Simulation(cfg, createWorld(cfg, 1));
     for (let i = 0; i < f.hunterSlots; i++) s.enqueue({ type: 'debug.spawnHunter' });
     for (let i = 0; i < 3 * 3600 * 10; i++) s.step();
     const st = s.world.stats;

@@ -85,8 +85,9 @@ Bounty: `systems/bounty` (§5.9). Thuế: `systems/tax` (§5.10) — thuế trê
 
 - Fixed-step simulation: **10 tick/giây** (`dt = 100 ms`). Render nội suy vị trí giữa 2 tick.
 - Thứ tự system mỗi tick (`DEFAULT_SYSTEMS` trong `src/core/simulation.ts`):
-  `commands → arrivals → ai → movement → combat → skills → urgentBackstop → services → economy → academy → crafting → town → bounty → journey → needs → progression → spawn`, rồi `tick += 1`, `timeMs += dt`, lưu RNG state vào world.
+  `commands → arrivals → ai → movement → combat → skills → potionUse → urgentBackstop → services → economy → consumables → supplies → academy → crafting → town → bounty → journey → needs → progression → spawn`, rồi `tick += 1`, `timeMs += dt`, lưu RNG state vào world.
   - `commands`: lệnh enqueue giữa 2 tick được áp dụng đầu `step()`, trước mọi system.
+  - `potionUse` (§5.14) uống thuốc trước `urgentBackstop`, để đòn đánh làm HP tụt được trả lời bằng thuốc trước khi luật rút lui bắn; `consumables` bán thuốc ở cửa; `supplies` sản xuất vật tư/thuốc sau Trạm Thu Mua, trước craft.
   - `urgentBackstop` chạy lại backstop khẩn cấp của AI (§5.2) **sau combat và skills**, để đòn đánh làm nhu cầu tụt dưới ngưỡng được xử lý ngay trong tick đó (không chờ tick sau).
   - Không có pha `cleanup` riêng: combat xóa quái chết cuối pass của nó. Không có pha `emit events`: event được ghi vào buffer khi phát sinh, client lấy bằng `drainEvents()`.
   - EXP/level-up xảy ra trong combat/skills (`gainExp`); `progression` chạy sau đó trong cùng tick (chuyển nghề ngay; tái sinh thì chỉ gửi hunter tới Cổng Tái Sinh, `reincarnated` phát khi hết thời gian trong cổng, §5.13).
@@ -111,7 +112,8 @@ Theo `interface Hunter` trong `src/core/world.ts` (world v6).
 | `needs` | hp, satiety, mood, stamina (0..max) | |
 | `gold` | int | Tiền riêng của hunter; dùng để mua đồ, dịch vụ, cường hóa, học. |
 | `equipment` | slot → GearInstance | 3 slot hiện tại: `weapon`, `armor`, `accessory` (GDD §6 có 7). |
-| `bag` | map materialId → số lượng | Sức chứa = `formula.bagCapacity` (tổng số đơn vị). Chưa có potion. |
+| `bag` | map materialId → số lượng | Sức chứa = `formula.bagCapacity` (tổng số đơn vị). |
+| `potions`, `potionCdMs`, `lastZoneId` | map consumableId → số, ms, zone | v11, optional (§5.14): thuốc đang mang (≤ `potionCarryMax`), hồi uống, vùng của goal hunt cuối (chọn bậc thuốc/vật tư). |
 | `skills`, `skillCdMs`, `buffs` | map skillId → level, map → ms còn lại, list buff | |
 | `traits`, `traitPoints` | map traitId → level, int | |
 | `personalities` | list ref | Số lượng = `formula.personalitiesPerHunter`; hệ số chỉnh hành vi (§5.5). |
@@ -156,7 +158,9 @@ Theo `scoreGoals` trong `src/core/ai/utility.ts`. Điểm không chuẩn hóa v�
 | `reincarnate` | Không chấm điểm: `progression` gán (bắt buộc, như lệnh) cho hunter đủ điều kiện tái sinh ở Town khi `autoReincarnate` bật, hoặc lệnh `hunter.reincarnate` | Đi tới node Cổng Tái Sinh rồi vào cổng (§5.13) |
 | `dead` | Gán khi chết, không chấm điểm | |
 
-Chưa làm: `BuyPotion` (chưa có potion), `Train` (chưa có Training Ground).
+| `buyPotion(consumableId)` | Ở Town, Infirmary bán thuốc (Town Hall ≥ `potionTownHallLevel`), còn chỗ trong túi thuốc, `potionSpendFrac` × vàng mua được ≥ 1 (§5.14) | `potionBuyScore × econMul` |
+
+Dịch vụ hết vật tư (§5.14) không được chấm. Chưa làm: `Train` (chưa có Training Ground).
 
 **Nhu cầu khẩn cấp** (backstop cứng, ép `returnTown`) **[ĐỀ XUẤT]**: nhu cầu < `urgentHpFrac`/`urgentSatietyFrac`/`urgentMoodFrac`/`urgentStaminaFrac` (hiện 25% / 10% / 10% / 10%), mỗi ngưỡng × `personality(urgent.<need>)` (ví dụ liều lĩnh ×0.5 HP); với HP, ngưỡng = max(ngưỡng theo tính cách, sàn rút lui) — xem **Rút lui** bên dưới. **[CHỐT]** `applyUrgentBackstop` chỉ bắn khi hunter còn sống, ở field (node có zone), không ở trong building và chưa có goal `returnTown`; nó **ghi đè cả lệnh của người chơi** (`forced`). Chạy ở đầu pass AI và chạy lại trong `urgentBackstopSystem` ngay sau combat + skills (§3.2).
 **Nhu cầu mềm** (`softNeedFrac`, hiện 40%): kéo `needsOk` xuống, tức giảm điểm `hunt` và tăng `returnTown`; với HP, cả dải khẩn cấp→mềm dời lên đúng phần sàn rút lui vượt ngưỡng khẩn cấp. Ở field, ngưỡng mềm cũng nhân hệ số personality (tối đa `softNeedFrac`) để hunter liều lĩnh đánh tiếp; ở Town thì không, để hunter vừa hồi sinh vẫn đi chữa trước.
@@ -405,6 +409,24 @@ Như EHT: tái sinh diễn ra ở **Reincarnation Portal** gần chỗ hunter m�
 - **Nhịp** (`tools/pacing.ts 900 1`): mọi mốc tới Lv100 đầu (12,38 giờ) **giống hệt** trước khi có cổng; tái sinh đầu 12,40 → 12,48 giờ (đi bộ + 5 phút trong cổng), vẫn trong 8–14 giờ; 7/8 hunter đã tái sinh lúc 13 và 14 giờ, 8/8 lúc 15 giờ (như trước).
 - Debug overlay: dòng "Cổng Tái Sinh" (hunter, thời gian còn), số hunter trong cổng cạnh số hunter, goal "đi tới Cổng Tái Sinh". Render: vòng tím ở node portal.
 
+### 5.14 Vật tư dịch vụ, thuốc, phí hồi sinh (EHT) **[ĐÃ LÀM — số liệu ĐỀ XUẤT]**
+
+Như EHT: Infirmary/Restaurant/Tavern/Inn bán hàng làm từ nguyên liệu; Town hết hàng thì hunter không hồi được và nhịp săn chậm lại. Code: `src/core/systems/supplies.ts` (kho vật tư, sản xuất, yêu cầu NL), `src/core/systems/consumables.ts` (thuốc, phí hồi sinh), nối vào `services.ts`, `trading.ts` (`baseMaterialNeed`/`autoMaterialDemand`/`sellOrder`), `economy.ts` (`doSell` theo `sellOrder`), `combat.ts` (chết/hồi sinh), `ai/utility.ts` (`potionDrinkLine`, goal `buyPotion`, bỏ dịch vụ hết hàng), `systems/ai.ts` (đích của `buyPotion`). Config: `config/consumable.json` (`TABLE_SPECS.consumable`), `building.json` (`supplyCap[]`, `potionCap[]`), tham số `supply*`/`potion*`/`revive*` ở cuối `formula_params.json`.
+
+- **Bảng `consumable`** (công thức kho): `{ id, nameKey?, kind: supply|potion, buildingId, minLevel, materials[], units, craftSec, heal?, price? }`. Mỗi (`kind`, `buildingId`) là một **dòng kho** (`town.supply["supply:<bld>"]`, `"potion:<bld>"`: `{ stock: {recipeId → n}, job, stockoutMs }`), các hàng của dòng là bậc theo `minLevel` (phải có bậc `minLevel` 1). `config:check`: hàng supply chỉ thuộc dịch vụ có `supplyCap`, hàng potion thuộc building có `potionCap` (tối đa một — Infirmary) và cần `heal` + `price`; building có cap phải có công thức.
+- **Bậc** = vùng: mỗi bậc dùng NL của một vùng (dịch vụ: NL chính của vùng — gel/quặng/sậy/tro/băng/muối/hư không, Tavern và thuốc: NL phụ). Bậc của một hunter (`hunterTier`) = bậc cao nhất có NL rơi ở vùng nó đang săn (goal `hunt`, hoặc vùng của goal hunt cuối `lastZoneId` khi ở Town); không có thì theo level. Theo vùng chứ không theo level vì sau tái sinh level và vùng tách nhau (bản đầu theo level trung vị: sau tái sinh Infirmary/Inn hết hàng 84–240 phút / 4 giờ vì NL yêu cầu là của vùng không ai săn).
+- **Dịch vụ**: 1 đơn vị = 1 lượt phục vụ (vào cửa trả tiền, lấy 1 đơn vị bậc thấp nhất còn hàng; đơn vị mọi bậc thay nhau được). Cap = `supplyCap[level]` (30 → 54). Game mới và save migrate bắt đầu **đầy**. Hết hàng: AI không chấm dịch vụ đó (`serviceInStock`), hunter tới cửa bị từ chối không mất tiền (event `serviceStockout`, stat `serviceStockouts`), rồi quyết định lại — nghỉ trong Town vẫn hồi miễn phí `townIdleRegenPerSec` nên không bao giờ kẹt (chậm: HP 1%/s thay vì 60–96 điểm/s). Thời gian dòng dịch vụ rỗng khi building đang chạy được đếm (`stockoutMs`, `stats.supplyStockoutMs`).
+- **Sản xuất** (system `supplies`, sau `consumables`, trước `academy`/`crafting` — NL thiết yếu được ưu tiên trước craft): mỗi dòng một mẻ một lúc (`craftSec`), NL lấy khỏi kho lúc bắt đầu; dòng rảnh tìm công thức mỗi giây. Mục tiêu: dịch vụ = bậc **thiết yếu** (bậc nhiều hunter dùng nhất) tới cap; thuốc = mỗi bậc min(cap, số hunter của bậc × `potionCarryMax`), tổng ≤ `potionCap[level]`. Chọn: công thức thiếu nhiều nhất có đủ NL; dòng dịch vụ không có thì bậc khác (cao trước) **chỉ** bằng NL kho vượt nhu cầu craft/đầu tư (`baseMaterialNeed`), để lúc hết hàng không ăn NL của công thức đồ. Không tốn vàng Town (Town đã trả lúc mua NL).
+- **Yêu cầu NL thiết yếu** (`supplyMaterialNeed`, cộng vào `autoMaterialDemand`, **kể cả khi tắt auto-craft**): mọi công thức còn thiếu, tối đa `supplyRequestBatches` (3) mẻ. **Ưu tiên**: Trạm Thu Mua trả tiền NL thiết yếu trước (`sellOrder`) khi vàng Town không đủ cho cả túi; NL thiết yếu cũng kéo hunter về vùng của nó như mọi yêu cầu (§5.3).
+- **Thuốc HP** (Infirmary, mở khi Town Hall ≥ `potionTownHallLevel` 2): goal `buyPotion` (Town, `bestPotionPurchase`): bậc của mình, hết hàng thì bậc ngay dưới; số lượng = min(chỗ trống tới `potionCarryMax` 2, hàng, ⌊`potionSpendFrac` 0,2 × vàng / giá⌋) ≥ 1; điểm `potionBuyScore` 1,05 × `econMul`. Giá = round(`price` × (1 + `potionPriceLevelPct` 2 / 100 × max(0, level − minLevel))) — 12 → 220 theo bậc, cộng 2%/level trong bậc. Hunter mang `potions` (world v11).
+- **Uống** (system `potionUse`, giữa `skills` và `urgentBackstop`): ở field, có thuốc, hết hồi (`potionCooldownSec` 8 s), HP < `potionDrinkLine` → bậc cao nhất đang mang hồi `heal` (0,35) × HP tối đa. `potionDrinkLine` = max(`potionUseHpFrac` 0,5, ranh giới kill max(ngưỡng HP khẩn cấp, sàn rút lui) + 1 kill, giữa dải HP mềm của `needsOk`), trần 0,95 — luôn ≥ mọi đường rút lui (§5.2), nên thuốc được dùng **trước** khi luật rút lui bắn; luật rút lui không đổi (HP đã hồi thì nó tự qua). Test: ở mọi HP mà `shouldRetreatBeforeNextKill` đúng thì HP < đường uống. Headless đếm chuyến rút lui HP khi còn thuốc (`hpRetreatWithPotion`).
+- **Phí hồi sinh**: round(`reviveFeeBase` 20 + `reviveFeePerLevel` 15 × (level − 1)) trả lúc hồi sinh, chỉ từ vàng **trên** giá Infirmary của hunter (luôn còn tiền chữa); không trả đủ → trả phần có được và nằm chết `reviveBrokeDelayMul` 4 × `reviveSec` (stat `reviveBroke`). Event `hunterRevived` có `fee`, `townGold`.
+- **Vàng đi đâu (quyết định)**: tiền thuốc và phí hồi sinh đi qua `economy.feeTownCut` như phí Lò Cường Hóa/Học Viện (§5.7): Town giữ `feeTownShare` khi vàng Town ≤ mục tiêu ngân khố, ít hơn khi trên; phần còn lại **rời nền kinh tế**. Như vậy đây là chỗ tiêu vàng hunter thật (nếu chỉ chuyển cho Town thì Town lại trả cho hunter qua mua NL xuất khẩu). Vật tư dịch vụ không phải chỗ tiêu vàng hunter (Town trả hunter giá đủ cho NL thiết yếu rồi thu lại ở giá dịch vụ) mà là chỗ tiêu NL kho.
+- **Save**: world v11 = `MIGRATIONS[10]`: mọi dòng dịch vụ đầy theo level building, bậc theo level trung vị; dòng thuốc rỗng; hunter (cả đang journey) không có thuốc; stat mới = 0; chỉ điền trường thiếu. `Hunter.potions`/`potionCdMs`/`lastZoneId` là optional (code đọc bằng `??`). Offline không mô phỏng săn/dịch vụ nên không có xử lý offline.
+- **Debug/tool**: overlay hiện goal "mua <thuốc>". `tools/headless.ts` in mỗi mốc: phút hết hàng từng dịch vụ (inf/rest/tav/inn), lượt phục vụ/sản xuất/từ chối, thuốc mua/uống, vàng thuốc (phần Town), rút lui HP khi còn thuốc, phí hồi sinh (phần Town) — tiền thuốc/hồi sinh là dòng riêng trong sổ, không nằm trong `fees`; cuối run in từng dòng kho.
+
+NUMBERS_TBD
+
 ## 6. Di chuyển và pathfinding
 
 - Map là **waypoint graph**: node (vị trí, zoneId, loại: square/road/door/gate/field/portal — `portal` = Cổng Tái Sinh, §5.13) và cạnh (khoảng cách).
@@ -488,7 +510,7 @@ Bảng dưới là **thiết kế đích**. Đã có trong `game/config/` (trư�
 | `building` | id, nameKey, kind, maxLevel, requires: {townHallLevel}, upgradeCost: [{gold, materials, sec}] × maxLevel (phần tử 0 = giá xây), mảng hiệu ứng theo level theo kind (§5.12). Đã làm; chưa có maxCount (= 1), size |
 | `building_plot` | id, doorNode, townHallLevel, startBuilding?, startLevel?, x, y, w, h (§5.12). Đã làm |
 | `service` | buildingId, need (hp/satiety/mood/stamina), restoreAmount[], price[], stockPerCycle[], cycleSec |
-| `consumable` | id, nameKey, effect, keepTime[], value[], cooldown, price[], craftMaterials |
+| `consumable` | id, nameKey?, kind (supply/potion), buildingId, minLevel, materials[], units, craftSec, heal?, price? (§5.14). Đã làm; thiết kế đích còn effect/keepTime[]/cooldown theo hàng (hiện cooldown chung `potionCooldownSec`, chỉ thuốc HP) |
 | `rune` | id, effect, grades, valueByGrade[], dropChance[] |
 | `relic` | id, nameKey, maxLevel, value[], upgradeCost[] |
 | `growth_property` | id, stat, valuePerLevel, maxLevel, cost[] |
@@ -534,7 +556,7 @@ Các bảng đã trích là **tham chiếu khoảng giá trị và nhịp tiến
 | v7 → v8 | Town Hall/building | `town.buildings` = mọi `startBuilding` của `building_plot` ở level giữ nguyên cách chơi (Lò Rèn/Kim Hoàn đủ cho công thức ≤ level hunter + `craftLevelAhead` và đồ đang có, Town Hall ≥ building cao nhất, còn lại 1), `autoInvest = true`, `investPlan = null`, stat building = 0 (§5.12). |
 | v8 → v9 | Journey | `journeys = []` (giữ mảng nếu đã có), stat `journey*` = 0. Chỉ điền trường thiếu nên đúng ở cả hai phía migration building. |
 | v9 → v10 | Tier đồ theo độ khó, thu hồi, rã đồ (§5.8) | Mọi món đang có — đang mặc (cả hunter đang đi journey), đang bán, đang chế — nhận tier gốc (`difficultyId` = độ khó đầu tiên, ×1) nếu chưa có; `town.gearStorage = []`, `town.autoDifficulty = true` (chỉ tự **tăng**); stat `gearDismantled`/`gearReclaimed`/`gearRelisted` = 0. `MIGRATIONS[9]`. |
-| v10 → v11 | (nhánh khác) | Migration **giữ chỗ** (không đổi gì); thay bằng migration thật của nhánh kia khi merge. |
+| v10 → v11 | Vật tư dịch vụ, thuốc, phí hồi sinh (§5.14) | `town.supply`: mọi dòng dịch vụ đầy theo level building (bậc theo level hunter trung vị), dòng thuốc rỗng; hunter (cả đang journey) `potions = {}`, `potionCdMs = 0`; stat `supply*`/`potion*`/`revive*` = 0; chỉ điền trường thiếu. `MIGRATIONS[10]`. |
 | v11 → v12 | Cổng Tái Sinh | `portal = []` (giữ mảng nếu đã có), §5.13. |
 
 - **Offline progress [CHỐT, theo EHT]:** khi tắt game **không săn**: không EXP, vàng, kill, vật liệu, không hồi nhu cầu, không lên level/tái sinh theo ước lượng; timer săn/boss không chạy. Như EHT, chỉ những thứ chạy theo **đồng hồ thời gian thực** tiếp tục. (Trước đây có ước lượng theo tốc độ đo được + mô hình tăng trưởng, trần 8 giờ; đã gỡ hẳn cùng các khóa `offline*` trong `formula_params` và `tools/offline-accuracy.ts`.) **[ĐÃ LÀM]**
@@ -622,7 +644,7 @@ Mọi hệ thống nhắc trong GDD hoặc có bảng ở §8 phải nằm trong
 | 9 bậc nghề, 7 slot đồ (GDD §6) | M5 | ⚪ |
 | Tier đồ theo độ khó (tinh chất, `difficulty.gearStatMul`), tự tăng độ khó, thu hồi đồ khi tái sinh + kho đồ Town, rã đồ (EHT; §5.8) | M4 | ✅ (world v10; số liệu đề xuất) |
 | Nâng tier đồ có sẵn, `gear_option`, `gear_set`, `gear_skill` | M5 | ⚪ |
-| `consumable`, potion, Alchemist, goal BuyPotion | M5 | ⚪ |
+| `consumable`, potion, Alchemist, goal BuyPotion; vật tư dịch vụ, phí hồi sinh | M5 | 🟡 §5.14: vật tư 4 dịch vụ + thuốc HP ở Infirmary (thay Alchemist), goal `buyPotion`, phí hồi sinh; chưa có thuốc satiety/stamina, chưa UI |
 | Training Ground + goal Train; Bank, Courage Headstone, Fountain of Life, Library of Wisdom | M5 | ⚪ |
 | `rune`, `relic`, thú cưỡi, `growth_property` | M5 | ⚪ |
 | Ghép NL (`composeTo`), `exp_curve` | M5 | ⚪ |

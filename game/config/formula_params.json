@@ -170,7 +170,7 @@
  "craftEssencePerLevel": 0.05,
  "diffAutoAdvanceFrac": 0.5,
  "supplyRequestBatches": 3,
- "potionTownHallLevel": 2,
+ "potionTownHallLevel": 6,
  "potionCarryMax": 2,
  "potionPriceLevelPct": 2,
  "potionSpendFrac": 0.2,
