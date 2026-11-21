@@ -1,6 +1,6 @@
 import type { GameConfig } from '../config/types';
 import { WORLD_SCHEMA_VERSION, type World } from '../world';
-import { fillMissingBuildings, fillMissingSupply, MIGRATIONS } from './migrations';
+import { fillMissingBuildings, fillMissingGearSlots, fillMissingSupply, MIGRATIONS } from './migrations';
 
 export const SAVE_FORMAT = 'town-hunter-save';
 
@@ -72,6 +72,8 @@ export function deserialize(text: string, config: GameConfig): LoadResult {
   world = fillMissingBuildings(world, config);
   // A v12 save from a build where v10 → v11 was a placeholder has no supply lines: fill them like v10 → v11 does.
   world = fillMissingSupply(world, config);
+  // A v13–v15 save from a build where v12 → v13 was a placeholder still has 3-slot keys: remap like v12 → v13 does.
+  world = fillMissingGearSlots(world, config);
 
   const w = world as unknown as World;
   return {

@@ -237,6 +237,22 @@ export const MIGRATIONS: Record<number, Migration> = {
   },
 };
 
+/**
+ * Apply the v12 → v13 slot remap when any hunter (field, journey, portal) still has a 3-slot key (`armor`/`accessory`).
+ * Idempotent; used at load for saves written by a build whose v12 → v13 step was a pass-through placeholder.
+ */
+export function fillMissingGearSlots(w: Record<string, unknown>, config: GameConfig): Record<string, unknown> {
+  const old = (h: unknown) => {
+    const eq = (h as { equipment?: Record<string, unknown> } | undefined)?.equipment;
+    return !!eq && Object.keys(eq).some((k) => SLOT_V13[k] !== undefined);
+  };
+  const hunters = (Array.isArray(w.hunters) ? w.hunters : []) as unknown[];
+  const journeys = (Array.isArray(w.journeys) ? w.journeys : []) as { hunters?: unknown[] }[];
+  const portal = (Array.isArray(w.portal) ? w.portal : []) as { hunter?: unknown }[];
+  const any = hunters.some(old) || journeys.some((j) => (j?.hunters ?? []).some(old)) || portal.some((p) => old(p?.hunter));
+  return any ? MIGRATIONS[12]!(w, config) : w;
+}
+
 /** v12 → v13 slot names of the 3-slot gear model. */
 const SLOT_V13: Record<string, string> = { armor: 'body', accessory: 'necklace' };
 

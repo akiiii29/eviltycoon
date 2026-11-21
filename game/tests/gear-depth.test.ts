@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { GEAR_SLOTS, type GameConfig, type GearSlot } from '../src/core/config/types';
 import { EventBuffer } from '../src/core/events';
-import { expectedGearExtra, gearMainValue, gearScore, hunterStats, slotValue } from '../src/core/formulas';
+import { expectedGearExtra, gearMainValue, gearScore, hunterStats, monsterTypeStats, slotValue } from '../src/core/formulas';
 import { gearBonus, hunterGearMods, needDrainMul, rollGearOptions } from '../src/core/gear';
 import { rollHunter } from '../src/core/hunterFactory';
 import { NavGraph } from '../src/core/pathfinding';
@@ -260,16 +260,44 @@ describe('gear skills and economy hooks', () => {
     const dealt = damageMonster(ctx, h, m, 1e6, false);
     expect(dealt).toBeGreaterThan(50);
     expect(h.needs.hp).toBeCloseTo(max / 2 + 50 * 0.025, 9); // overkill does not heal
-    // gold: +8 % on kill gold (before tax)
-    const g = fight(base);
-    g.h.equipment.ring = item('gear.ring.fang', { options: [opt('opt.gold', 8)] });
-    const plain = fight(base);
-    g.m.hp = plain.m.hp = 1;
-    g.h.gold = plain.h.gold = 0;
-    damageMonster(g.ctx, g.h, g.m, 1e6, false);
-    damageMonster(plain.ctx, plain.h, plain.m, 1e6, false);
-    expect(g.h.gold).toBeGreaterThanOrEqual(plain.h.gold);
-    expect(g.h.exp).toBe(plain.h.exp);
+    // gold / EXP: × (1 + bonus), clamped to gearPctCap (tax off, neutral personalities so only the gear acts).
+    const kill = (lines: { id: string; value: number }[]) => {
+      const x = fight(base);
+      x.ctx.world.town.taxRate = 0;
+      x.h.personalities = [];
+      x.h.equipment.ring = item('gear.ring.fang', { options: lines });
+      x.m.hp = 1;
+      x.h.gold = 0;
+      x.h.exp = 0;
+      damageMonster(x.ctx, x.h, x.m, 1e6, false);
+      return x.h;
+    };
+    const ms = monsterTypeStats(base, base.zones[0]!.monsters[0]!.monsterId, 'diff.easy');
+    expect(base.formula.taxMinRate).toBe(0);
+    const plainK = kill([]);
+    expect(plainK.gold).toBe(ms.gold);
+    const goldK = kill([opt('opt.gold', 1000)]); // clamped to +gearPctCap
+    expect(goldK.gold).toBe(Math.round(ms.gold * (1 + base.formula.gearPctCap / 100)));
+    expect(goldK.gold).toBeGreaterThan(plainK.gold);
+    expect(goldK.exp).toBe(plainK.exp);
+    const expK = kill([opt('opt.exp', 25)]);
+    expect(plainK.exp).toBeGreaterThan(0);
+    expect(expK.exp).toBeCloseTo(plainK.exp * 1.25, 9);
+    expect(expK.gold).toBe(plainK.gold);
+    // drops: same RNG draws, each drop chance × 1.4 → every plain drop also drops, and more on top over many kills.
+    const countDrops = (lines: { id: string; value: number }[]) => {
+      const x = fight(base);
+      x.h.equipment.ring = item('gear.ring.fang', { options: lines });
+      let n = 0;
+      for (let i = 0; i < 300; i++) {
+        x.m.hp = 1; x.h.bag = {};
+        damageMonster(x.ctx, x.h, x.m, 1e6, false);
+        for (const k in x.h.bag) n += x.h.bag[k]!;
+      }
+      return n;
+    };
+    const plainDrops = countDrops([]);
+    expect(countDrops([opt('opt.loot', 40)])).toBeGreaterThan(plainDrops);
     // needs: −5 % drain
     const n = makeCtx();
     const a = addHunter(n), b = addHunter(n);
@@ -377,5 +405,19 @@ describe('migration v12 → v13', () => {
     const sim = new Simulation(base, r.world);
     for (let t = 0; t < 600; t++) sim.step();
     expect(sim.world.tick).toBeGreaterThan(r.world.tick - 1);
+  });
+
+  it('a current-version save written while v12 → v13 was a placeholder is remapped at load (idempotent)', () => {
+    const s = new Simulation(base, createWorld(base, 4));
+    s.enqueue({ type: 'debug.spawnHunter' });
+    s.step();
+    const w = JSON.parse(JSON.stringify(s.world)) as Record<string, any>;
+    const armor = { uid: 'e2', gearId: 'gear.a.hide', qualityId: 'q.epic', enhance: 2, difficultyId: 'diff.easy' };
+    w.hunters[0].equipment = { armor };
+    const text = JSON.stringify({ format: SAVE_FORMAT, schemaVersion: WORLD_SCHEMA_VERSION, configVersion: base.version, savedAt: 0, world: w });
+    const r = deserialize(text, base);
+    expect(r.world.hunters[0]!.equipment).toEqual({ body: armor });
+    const again = deserialize(JSON.stringify({ format: SAVE_FORMAT, schemaVersion: WORLD_SCHEMA_VERSION, configVersion: base.version, savedAt: 0, world: r.world }), base);
+    expect(again.world.hunters[0]!.equipment).toEqual({ body: armor });
   });
 });

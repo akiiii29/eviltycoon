@@ -38,7 +38,7 @@ const zoneOf = (nodeId: string) => config.index.nodes.get(nodeId)?.zoneId;
 const gearLag = (h: { level: number; equipment: Record<string, { gearId: string } | undefined> }) => {
   let s = 0;
   for (const slot of GEAR_SLOTS) s += config.index.gear.get(h.equipment[slot]?.gearId ?? '')?.level ?? 0;
-  return h.level - s / 3;
+  return h.level - s / GEAR_SLOTS.length;
 };
 const lastChange = new Map<string, { reason: string; goal: string; tick: number; hp: number; on: number }>();
 const deaths: { zone: string; goal: string; reason: string; sinceSec: number; hpAtChange: number; level: number; on: number; gearLag: number; min: number }[] = [];

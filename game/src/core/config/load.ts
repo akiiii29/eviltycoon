@@ -441,7 +441,7 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'trainSessionSec', 'trainGoldPerExp', 'trainGoldReserveMul', 'trainScore',
   // M5 gear options / sets / gear skills (TECH_SPEC §4.2).
   'gearPctCap', 'gearPctFloor', 'gearNeedSaveCap', 'gearWorthLifesteal', 'gearWorthGoldPct', 'gearWorthExpPct', 'gearWorthDropPct',
-  'gearWorthNeedSavePct',
+  'gearWorthNeedSavePct', 'gearExtraMaxFrac',
 ];
 
 export class ConfigError extends Error {

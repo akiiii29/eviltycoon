@@ -14,7 +14,7 @@
 import type {
   FormulaParams, GameConfig, GearDef, GearSkillDef, GearSlot, GearStat, MainStat, ModStat, NeedKey, SkillDef, StatKey, ZoneDef,
 } from './config/types';
-import { GEAR_SLOTS, GEAR_STATS } from './config/types';
+import { GEAR_SLOTS } from './config/types';
 import { addItemMods, addSetMods, clampGearStat, emptyMods, type GearMods, hunterGearMods, pctMul, setCounts } from './gear';
 import { personalityFactor } from './hunterFactory';
 import { cacheVerifyEnabled, memoHunterStats } from './statsCache';
@@ -281,21 +281,32 @@ function gearSkillWorth(config: GameConfig, h: Hunter, s: EffectiveStats, gs: Ge
   return gearModsWorth(config, h, s, { [sk.buffStat]: sk.value[lvl - 1]! * uptime });
 }
 
-/** Set-bonus change (mods + gear skills) of putting `item` (null = nothing) into `slot` instead of leaving it empty. */
-function setDelta(config: GameConfig, h: Hunter, slot: GearSlot, item: GearInstance): { mods: GearMods; skills: GearSkillDef[] } | null {
+/**
+ * A piece's share of its set bonus: Δln P of the (cumulative) bonus reached with `item` in `slot` (the hunter's other
+ * slots as they are), divided by the number of pieces worn. An equal share rather than the marginal threshold bonus:
+ * with a marginal credit every piece of a 4-piece set carries the whole 4-piece bonus, so no single swap ever looks
+ * like an upgrade and hunters keep a low-level set for 40+ levels (seen in headless runs).
+ */
+function setShareWorth(config: GameConfig, h: Hunter, s: EffectiveStats, slot: GearSlot, item: GearInstance): number {
   const setId = config.index.gear.get(item.gearId)?.setId;
-  if (!setId) return null;
-  const withIt = emptyMods(), without = emptyMods();
-  const skWith: GearSkillDef[] = [], skWithout: GearSkillDef[] = [];
-  addSetMods(config, setCounts(config, h.equipment, { slot, item }), withIt, skWith);
-  addSetMods(config, setCounts(config, h.equipment, { slot, item: null }), without, skWithout);
-  for (const k of GEAR_STATS) withIt[k] -= without[k];
-  return { mods: withIt, skills: skWith.filter((x) => !skWithout.includes(x)) };
+  if (!setId) return 0;
+  const n = setCounts(config, h.equipment, { slot, item }).get(setId) ?? 0;
+  if (n <= 0) return 0;
+  const mods = emptyMods();
+  const skills: GearSkillDef[] = [];
+  addSetMods(config, new Map([[setId, n]]), mods, skills);
+  return gearModsWorth(config, h, s, mods, skills) / n;
+}
+
+/** Extras (options, set share) in main-stat units, kept within ±gearExtraMaxFrac × the item's main value. */
+function capExtra(config: GameConfig, extra: number, main: number): number {
+  const cap = (config.formula.gearExtraMaxFrac ?? Infinity) * Math.max(0, main);
+  return Math.max(-cap, Math.min(cap, extra));
 }
 
 /**
  * AI value of a gear instance for a hunter, in units of its main stat (TECH_SPEC §5.4):
- *   gearScore = gearMainValue + Δln P(option lines + marginal set bonus in `slot` + gear skills) / mainStatWorth.
+ *   gearScore = gearMainValue + clamp(Δln P(option lines + gear skills + set share in `slot`) / mainStatWorth, ±gearExtraMaxFrac × main).
  * Plain items (no option lines, no set) score exactly gearMainValue, so the old upgrade rules are unchanged for them.
  */
 export function gearScore(config: GameConfig, h: Hunter, g: GearInstance, slot?: GearSlot): number {
@@ -306,31 +317,26 @@ export function gearScore(config: GameConfig, h: Hunter, g: GearInstance, slot?:
   const mods = emptyMods();
   const skills: GearSkillDef[] = [];
   addItemMods(config, g, mods, skills);
-  const d = setDelta(config, h, slot ?? def.slot, g);
-  if (d) {
-    for (const k of GEAR_STATS) mods[k] += d.mods[k];
-    for (const x of d.skills) if (!skills.includes(x)) skills.push(x);
-  }
   const s = hunterStats(config, h, { steady: true });
-  return main + gearModsWorth(config, h, s, mods, skills) / mainStatWorth(config, h, def.mainStat);
+  const w = gearModsWorth(config, h, s, mods, skills) + setShareWorth(config, h, s, slot ?? def.slot, g);
+  return main + capExtra(config, w / mainStatWorth(config, h, def.mainStat), main);
 }
 
 /**
  * gearScore of a piece not rolled yet (theoretical craft, job in progress) whose main value is `mainValue`:
- * mainValue + its marginal set bonus / mainStatWorth. Option lines are NOT anticipated: half of all crafts roll none and a
+ * mainValue + its set share (capped like gearScore). Option lines are NOT anticipated: half of all crafts roll none and a
  * mean would make a same-tier recraft look like an upgrade (savings held and crafts made for a coin flip); the lines an
  * item actually has count once it is on sale (gearScore).
  */
 export function expectedGearScore(config: GameConfig, h: Hunter, def: GearDef, mainValue: number): number {
-  return mainValue + expectedGearExtra(config, h, def);
+  return mainValue + capExtra(config, expectedGearExtra(config, h, def), mainValue);
 }
 
-/** The part of expectedGearScore beyond the main value (same for every quality roll of a recipe): the set bonus. */
+/** The uncapped part of expectedGearScore beyond the main value (same for every quality roll of a recipe): the set share. */
 export function expectedGearExtra(config: GameConfig, h: Hunter, def: GearDef): number {
   if (!def.setId) return 0;
-  const d = setDelta(config, h, def.slot, { uid: '', gearId: def.id, qualityId: '', enhance: 0 });
-  if (!d) return 0;
-  const w = gearModsWorth(config, h, hunterStats(config, h, { steady: true }), d.mods, d.skills);
+  const s = hunterStats(config, h, { steady: true });
+  const w = setShareWorth(config, h, s, def.slot, { uid: '', gearId: def.id, qualityId: '', enhance: 0 });
   return w === 0 ? 0 : w / mainStatWorth(config, h, def.mainStat);
 }
 

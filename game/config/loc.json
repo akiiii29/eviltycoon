@@ -1201,33 +1201,33 @@
  },
  {
   "key": "gr.c.name",
-  "vi": "C",
-  "en": "C"
+  "vi": "Thô",
+  "en": "Rough"
  },
  {
   "key": "gr.b.name",
-  "vi": "B",
-  "en": "B"
+  "vi": "Khá",
+  "en": "Fine"
  },
  {
   "key": "gr.a.name",
-  "vi": "A",
-  "en": "A"
+  "vi": "Tinh",
+  "en": "Superb"
  },
  {
   "key": "gr.s.name",
-  "vi": "S",
-  "en": "S"
+  "vi": "Quý",
+  "en": "Prime"
  },
  {
   "key": "gr.ss.name",
-  "vi": "SS",
-  "en": "SS"
+  "vi": "Huyền",
+  "en": "Exalted"
  },
  {
   "key": "gr.sss.name",
-  "vi": "SSS",
-  "en": "SSS"
+  "vi": "Tuyệt",
+  "en": "Peerless"
  },
  {
   "key": "opt.atk.name",

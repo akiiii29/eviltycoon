@@ -758,6 +758,8 @@ export interface FormulaParams {
   gearWorthExpPct: number;
   gearWorthDropPct: number;
   gearWorthNeedSavePct: number;
+  /** AI: option lines + set share count at most ±gearExtraMaxFrac × the item's main value (formulas.gearScore). */
+  gearExtraMaxFrac: number;
   /**
    * M5 waiting queue and auto-invite (TECH_SPEC §4.1, systems/arrivals): at most queueMax hunters wait while Town slots are
    * full, one joins every queueArrivalIntervalSec; when townHunterCount ≤ autoInviteMaxHunters a free hunter of the
