@@ -4,7 +4,8 @@
  * The post only buys REQUESTED materials:
  *  - automatic requests, derived every time from auto-craft needs (never stored): for every recipe that
  *    would upgrade w ≥ 1 hunters (recipeWanters), keep materials for min(w, requestMaxCopies) crafts in
- *    Town Storage; the request is whatever storage lacks;
+ *    Town Storage; plus the auto-investment plan and the essential supply/potion materials (TECH_SPEC §5.13);
+ *    the request is whatever storage lacks;
  *  - player requests (`town.requests`, set by the `town.requestMaterial` command), on top of the automatic
  *    ones and decremented as hunters sell.
  * Unrequested materials (anything beyond the request) are never stored, so storage cannot pile up:
@@ -15,16 +16,18 @@
 import type { GameConfig, ZoneDef } from '../config/types';
 import type { World } from '../world';
 import { autoCraftReserve, recipeWanters } from './crafting';
+import { supplyMaterialNeed } from './supplies';
 import { extraRequestCopies, gearCraftable, investMaterialNeed, surplusPriceMul } from './town';
 
 export type Demand = Record<string, number>;
 
 /**
- * Automatic requests: auto-craft needs (when auto-craft is on; only recipes the craft building's level allows; copies =
- * requestMaxCopies + Storehouse requestCopies) plus the materials of the auto-investment plan (TECH_SPEC §5.12, when
- * auto-invest is on), minus what storage already holds.
+ * Materials crafting and investment want in storage (full counts, storage not subtracted): auto-craft needs (when
+ * auto-craft is on; only recipes the craft building's level allows; copies = requestMaxCopies + Storehouse requestCopies)
+ * plus the materials of the auto-investment plan (TECH_SPEC §5.12, when auto-invest is on). Supplies use it to keep their
+ * fallback tiers off these units (systems/supplies.ts).
  */
-export function autoMaterialDemand(config: GameConfig, world: World): Demand {
+export function baseMaterialNeed(config: GameConfig, world: World): Demand {
   const need: Demand = {};
   const copies = Math.max(0, Math.floor(config.formula.requestMaxCopies)) + (copiesBonus(config, world));
   if (world.town.autoCraft && copies > 0) {
@@ -38,12 +41,34 @@ export function autoMaterialDemand(config: GameConfig, world: World): Demand {
   }
   const invest = investMaterialNeed(config, world);
   for (const id in invest) need[id] = (need[id] ?? 0) + invest[id]!;
+  return need;
+}
+
+/**
+ * Automatic requests: baseMaterialNeed plus the essential supply/potion materials (supplies.supplyMaterialNeed, TECH_SPEC
+ * §5.13; requested even with auto-craft off), minus what storage already holds.
+ */
+export function autoMaterialDemand(config: GameConfig, world: World): Demand {
+  const need = baseMaterialNeed(config, world);
+  const supply = supplyMaterialNeed(config, world);
+  for (const id in supply) need[id] = (need[id] ?? 0) + supply[id]!;
   const out: Demand = {};
   for (const id of Object.keys(need).sort()) {
     const lack = need[id]! - (world.town.storage[id] ?? 0);
     if (lack > 0) out[id] = lack;
   }
   return out;
+}
+
+/**
+ * Order in which the Trading Post pays for a bag (economy.doSell): materials the supplies still lack (essential, TECH_SPEC
+ * §5.13) first, then the rest, each group by material id. When Town gold runs short the essentials are bought first.
+ */
+export function sellOrder(config: GameConfig, world: World, bag: Record<string, number>): string[] {
+  const supply = supplyMaterialNeed(config, world);
+  const ids = Object.keys(bag).sort();
+  const essential = (id: string) => (supply[id] ?? 0) > (world.town.storage[id] ?? 0);
+  return [...ids.filter(essential), ...ids.filter((id) => !essential(id))];
 }
 
 /** Units of each material the Trading Post will buy right now: automatic + player requests. */

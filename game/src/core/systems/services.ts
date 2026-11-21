@@ -2,6 +2,7 @@ import type { BuildingDef, GameConfig } from '../config/types';
 import { needMax } from '../formulas';
 import type { System } from '../system';
 import { isAlive, type Hunter } from '../world';
+import { takeSupply } from './supplies';
 import { buildingLevel, levelValue, serviceRestorePerSec } from './town';
 
 /**
@@ -23,7 +24,8 @@ export function servicePrice(config: GameConfig, h: Hunter, b: BuildingDef, buil
 
 /**
  * Town services (GDD §5): a hunter at the door pays once, goes inside, recovers the need,
- * then comes out and decides again. Stock/capacity arrive with the economy in M2.
+ * then comes out and decides again. Each entry takes one supply unit (systems/supplies.ts, TECH_SPEC §5.13); with the
+ * stock empty the hunter is turned away unpaid (`serviceStockout`) and decides again (resting in town still regenerates).
  */
 export const servicesSystem: System = {
   name: 'services',
@@ -56,6 +58,13 @@ export const servicesSystem: System = {
       const price = servicePrice(config, h, b, lv);
       if (h.gold < price) {
         h.ai.goal = null;
+        continue;
+      }
+      if (!takeSupply(world, config, b)) {
+        h.ai.goal = null;
+        h.ai.forced = false;
+        world.stats.serviceStockouts = (world.stats.serviceStockouts ?? 0) + 1;
+        ctx.events.emit(world.tick, { type: 'serviceStockout', hunterId: h.id, buildingId: b.id });
         continue;
       }
       h.gold -= price;

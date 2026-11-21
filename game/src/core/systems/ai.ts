@@ -16,6 +16,7 @@ function destination(ctx: SystemContext, h: Hunter, goal: Goal): string | null {
     case 'shop': return buildingDoor(config, world, config.index.shop);
     case 'enhance': return buildingDoor(config, world, config.index.forge);
     case 'learn': return buildingDoor(config, world, config.index.academy);
+    case 'buyPotion': return config.index.potionSeller ? buildingDoor(config, world, config.index.potionSeller) : null;
     case 'dead': return null;
   }
 }
@@ -28,6 +29,7 @@ function goalLabel(g: Goal): string {
     case 'shop': return `shop:${g.itemUid}`;
     case 'enhance': return `enhance:${g.slot}`;
     case 'learn': return `learn:${g.kind}:${g.id}`;
+    case 'buyPotion': return `buyPotion:${g.consumableId}`;
     default: return g.type;
   }
 }

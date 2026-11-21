@@ -378,6 +378,11 @@ function downgrade(src: World, v: number): Record<string, any> {
   const w = JSON.parse(JSON.stringify(src)) as Record<string, any>;
   const del = (o: Record<string, any> | undefined, ...keys: string[]) => { if (o) for (const k of keys) delete o[k]; };
   const hunters = w.hunters as Record<string, any>[];
+  if (v < 11) {
+    del(w.town, 'supply');
+    for (const h of hunters) del(h, 'potions', 'potionCdMs');
+    del(w.stats, 'supplyProduced', 'supplyUsed', 'serviceStockouts', 'supplyStockoutMs', 'potionsProduced', 'potionsBought', 'potionsUsed', 'potionGold', 'reviveFees', 'reviveBroke');
+  }
   if (v < 9) { delete w.journeys; del(w.stats, 'journeysStarted', 'journeysSucceeded', 'journeysFailed', 'journeysRecalled', 'journeyGold'); }
   if (v < 8) { del(w.town, 'buildings', 'autoInvest', 'investPlan'); del(w.stats, 'buildingsBuilt', 'buildingUpgrades', 'investGold', 'investMaterials', 'investImportGold'); }
   if (v < 7) { del(w.town, 'bounties', 'autoBounty', 'taxRate'); del(w.stats, 'bountiesPosted', 'bountiesCompleted', 'bountyGoldPaid', 'bountyKingdomGold', 'taxCollected'); }
@@ -403,7 +408,10 @@ function downgrade(src: World, v: number): Record<string, any> {
   return w;
 }
 
-describe('QA-MIG: every schema version v0..v8 (and a pre-building v9) loads into a working M4 town', () => {
+/** Case id of the "v9 save made before buildings existed" (a version number no real case uses). */
+const PRE_BUILDING_V9 = -9;
+
+describe('QA-MIG: every schema version v0..v10 (and a pre-building v9) loads into a working M4 town', () => {
   let base: World;
   beforeAll(() => {
     const s = new Simulation(config, createWorld(config, 2));
@@ -413,22 +421,24 @@ describe('QA-MIG: every schema version v0..v8 (and a pre-building v9) loads into
   });
   const oldSave = (v: number): Record<string, any> => {
     expect(base.journeys).toEqual([]);
-    if (v < WORLD_SCHEMA_VERSION) return downgrade(base, v);
-    const w = downgrade(base, WORLD_SCHEMA_VERSION); // v9 made before buildings existed
+    if (v !== PRE_BUILDING_V9) return downgrade(base, v);
+    const w = downgrade(base, 9); // v9 made before buildings existed
     delete w.town.buildings; delete w.town.autoInvest; delete w.town.investPlan;
     return w;
   };
   const cases: [string, number][] = [];
   for (let v = 0; v < WORLD_SCHEMA_VERSION; v++) cases.push([`v${v}`, v]);
-  cases.push(['v9 without buildings', WORLD_SCHEMA_VERSION]);
+  cases.push(['v9 without buildings', PRE_BUILDING_V9]);
 
   it.each(cases)('%s', (_label, version) => {
     const old = oldSave(version);
+    expect(old.schemaVersion).toBe(version === PRE_BUILDING_V9 ? 9 : version);
     const text = JSON.stringify({ format: SAVE_FORMAT, schemaVersion: old.schemaVersion, configVersion: config.version, savedAt: T0, world: old });
     const r = deserialize(text, config);
     const w = r.world;
     expect(w.schemaVersion).toBe(WORLD_SCHEMA_VERSION);
     expect(r.migratedFrom).toBe(old.schemaVersion < WORLD_SCHEMA_VERSION ? old.schemaVersion : null);
+    expect(Object.keys(w.town.supply).length).toBeGreaterThan(0);
     // Every M4 field is there.
     expect(w.journeys).toEqual([]);
     expect(Array.isArray(w.town.bounties)).toBe(true);

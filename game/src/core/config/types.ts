@@ -157,6 +157,34 @@ export interface BuildingDef {
   surplusPriceMul?: number[];
   /** storehouse only: extra copies kept by the automatic material requests (per level). */
   requestCopies?: number[];
+  /**
+   * service only: max supply units in stock (per level; one unit = one serving, TECH_SPEC §5.13). Missing = the service
+   * needs no supplies (unlimited, as before supplies existed).
+   */
+  supplyCap?: number[];
+  /** Potion seller (the Infirmary, TECH_SPEC §5.13): max potions in stock over every tier (per level). */
+  potionCap?: number[];
+}
+
+export type ConsumableKind = 'supply' | 'potion';
+
+/**
+ * A stock recipe (config/consumable.json, TECH_SPEC §5.13): `materials` from Town Storage → `units` in the stock of
+ * `buildingId` after `craftSec`. `kind` supply = service servings (fungible across tiers); potion = an HP potion hunters
+ * buy (`price` before level scaling) and drink in the field (`heal` × max HP). Rows of one building + kind form a tier
+ * ladder by `minLevel` (the tier a hunter / the town median level uses).
+ */
+export interface ConsumableDef {
+  id: string;
+  nameKey?: string;
+  kind: ConsumableKind;
+  buildingId: string;
+  minLevel: number;
+  materials: { materialId: string; count: number }[];
+  units: number;
+  craftSec: number;
+  heal?: number;
+  price?: number;
 }
 
 /** A building plot (TECH_SPEC §5.12): a fixed spot on the map with its own door node (enterable only once built). */
@@ -560,6 +588,29 @@ export interface FormulaParams {
   defSoftKnee: number;
   /** Kills per HP bar that count as journey power 1 per member (formulas.zonePower); the AI uses zoneRefKills. */
   journeyRefKills: number;
+  /**
+   * Supplies and potions (TECH_SPEC §5.13, systems/supplies.ts, systems/consumables.ts). Automatic requests keep at most
+   * supplyRequestBatches batches of the essential recipe per stock line.
+   */
+  supplyRequestBatches: number;
+  /** Potions are sold once the Town Hall is at least potionTownHallLevel; hunters carry at most potionCarryMax. */
+  potionTownHallLevel: number;
+  potionCarryMax: number;
+  /** Potion price = round(price × (1 + potionPriceLevelPct / 100 × max(0, level − minLevel))). */
+  potionPriceLevelPct: number;
+  /** A purchase spends at most potionSpendFrac × gold. AI score = potionBuyScore × econMul. */
+  potionSpendFrac: number;
+  potionBuyScore: number;
+  /** Drink in the field below max(potionUseHpFrac, the HP retreat lines); potionCooldownSec between two potions. */
+  potionUseHpFrac: number;
+  potionCooldownSec: number;
+  /**
+   * Revive fee = round(reviveFeeBase + reviveFeePerLevel × (level − 1)), paid from gold above the hunter's Infirmary
+   * price; a hunter who cannot pay it all pays what it can and waits reviveSec × reviveBrokeDelayMul.
+   */
+  reviveFeeBase: number;
+  reviveFeePerLevel: number;
+  reviveBrokeDelayMul: number;
   [key: string]: number;
 }
 
@@ -616,6 +667,8 @@ export interface GameConfig {
   /** Sorted by order (index 0 = starting difficulty). */
   difficulties: DifficultyDef[];
   journeys: JourneyDef[];
+  /** Stock recipes in config order (TECH_SPEC §5.13). */
+  consumables: ConsumableDef[];
   loc: LocEntry[];
   /** Lookups built by the loader. */
   index: {
@@ -644,6 +697,9 @@ export interface GameConfig {
     traits: Map<string, TraitDef>;
     difficulties: Map<string, DifficultyDef>;
     journeys: Map<string, JourneyDef>;
+    consumables: Map<string, ConsumableDef>;
+    /** The building that sells potions (first building with potionCap), or null. */
+    potionSeller: string | null;
     /** The single town square node (spawn / revive / return point). */
     squareNode: string;
     /** Field node ids per zone. */

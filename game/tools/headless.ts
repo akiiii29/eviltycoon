@@ -7,6 +7,10 @@
  * incl. material imports, refunds, material units consumed; TECH_SPEC §5.12) with every building's level (`*` = upgrade
  * running) and the hunter gold ledger (gross: kill gold before tax, enhance and skill-study spending), then event counts,
  * stats, active bounties, buildings and the final hunter list.
+ * Supplies/potions/revive (TECH_SPEC §5.13): per window `supply` = service stockout minutes per service (inf/rest/tav/inn),
+ * units served / produced, turned-away arrivals; `potion` = bought / drunk, gold hunters paid (Town cut), HP retreats started
+ * while carrying a potion; `revive` = fees paid (Town cut), revives that could not pay. Potion and revive gold are explicit
+ * ledger terms (not in `fees`).
  * Env HEADLESS_FP="key=value,..." overrides formula_params for the run (no file is changed), like tools/pacing.ts.
  * Env HEADLESS_JOURNEY="journeyId@minute[xN],..." sends the journeyTeamMax strongest Town hunters (bestJourneyTeam) on
  * that journey from that game minute on, N times in a row (retried each minute until accepted); journey events and
@@ -74,6 +78,11 @@ const levels = (w: World): string =>
   (w.town.buildings ?? []).map((s) => `${short(s.buildingId)}${s.level}${s.upgrade ? '*' : ''}`).join(' ');
 /** Hunter side (gross amounts the hunters paid): enhance tries, skill study. Kill gold is the residual of the window. */
 const hl = { enh: 0, skill: 0 };
+/** Supplies / potions / revive fee (TECH_SPEC §5.13), per window. */
+const sp = { potGold: 0, potTown: 0, potBought: 0, potUsed: 0, revFee: 0, revTown: 0, served: 0, made: 0, denied: 0, potRetreat: 0 };
+const svcIds = config.buildings.filter((b) => b.supplyCap).map((b) => b.id);
+const stockoutMs = (w: World) => svcIds.map((id) => w.town.supply?.[`supply:${id}`]?.stockoutMs ?? 0);
+let stockout0 = stockoutMs(sim.world);
 /** Town tax taken from kill gold (taxCollected events). */
 let tax = 0;
 const hunterGold = (w: World): number => w.hunters.reduce((a, h) => a + h.gold, 0);
@@ -129,17 +138,32 @@ for (let t = 0; t < ticks; t++) {
     else if (e.type === 'buildingCancelled') inv.refund += e.refund;
     else if (e.type === 'buildingCompleted') inv.done += 1;
     else if (e.type === 'taxCollected') tax += e.gold;
+    if (e.type === 'potionBought') { sp.potGold += e.gold; sp.potTown += e.townGold; sp.potBought += e.count; }
+    else if (e.type === 'potionUsed') sp.potUsed += 1;
+    else if (e.type === 'hunterRevived') { sp.revFee += e.fee ?? 0; sp.revTown += e.townGold ?? 0; }
+    else if (e.type === 'serviceUsed') sp.served += 1;
+    else if (e.type === 'supplyProduced' && config.index.buildings.get(e.buildingId)?.supplyCap && e.consumableId.startsWith('sup.')) sp.made += e.units;
+    else if (e.type === 'serviceStockout') sp.denied += 1;
+    if (e.type === 'goalChanged' && e.goal === 'returnTown' && /^(retreat hp|urgent hp)/.test(e.reason)) {
+      const hh = sim.world.hunters.find((x) => x.id === e.hunterId);
+      if (hh && Object.values(hh.potions ?? {}).some((n) => n > 0)) sp.potRetreat += 1;
+    }
     else if (e.type === 'craftStarted') ledger.craft += Math.round((config.index.gear.get(e.gearId)?.basePrice ?? 0) * config.formula.craftGoldFrac);
     if (e.type === 'goalChanged') reasons[`${e.goal.split(':')[0]} <- ${e.reason.split(' ')[0]}`] = (reasons[`${e.goal.split(':')[0]} <- ${e.reason.split(' ')[0]}`] ?? 0) + 1;
   }
   if (snapEvery > 0 && (t + 1) % (snapEvery * 600) === 0) {
     // Fee cut = residual of the town window (the share depends on town gold, see trading.townFeeShare).
-    ledger.fees = sim.world.town.gold - townGold0 - ledger.svc - ledger.shop + ledger.mats + ledger.craft + bl.escrow - bl.refund - bl.kingdom + inv.gold - inv.refund - tax;
+    ledger.fees = sim.world.town.gold - townGold0 - ledger.svc - ledger.shop + ledger.mats + ledger.craft + bl.escrow - bl.refund - bl.kingdom + inv.gold - inv.refund - tax - sp.potTown - sp.revTown;
     townGold0 = sim.world.town.gold;
-    const kill = hunterGold(sim.world) - hunterGold0 + ledger.svc + ledger.shop + hl.enh + hl.skill - ledger.mats - bl.paid + tax;
+    const kill = hunterGold(sim.world) - hunterGold0 + ledger.svc + ledger.shop + hl.enh + hl.skill - ledger.mats - bl.paid + tax + sp.potGold + sp.revFee;
+    const so = stockoutMs(sim.world).map((x, i) => Math.round((x - stockout0[i]!) / 60000));
+    stockout0 = stockoutMs(sim.world);
     timeline.push(snapshot(sim.world, (t + 1) / 600) +
       ` | in svc ${ledger.svc} shop ${ledger.shop} fees ${ledger.fees} tax ${tax} out mats ${ledger.mats} (req ${reqMats}) craft ${ledger.craft}` +
-      ` | hunter kill ${kill} enh ${hl.enh} skill ${hl.skill} | burned ${hl.enh + hl.skill - ledger.fees + ledger.craft}` +
+      ` | hunter kill ${kill} enh ${hl.enh} skill ${hl.skill} | burned ${hl.enh + hl.skill - ledger.fees + ledger.craft + sp.potGold - sp.potTown + sp.revFee - sp.revTown}` +
+      ` | supply stockoutMin [${so.join(' ')}] served ${sp.served} made ${sp.made} denied ${sp.denied}` +
+      ` | potion bought ${sp.potBought} used ${sp.potUsed} gold ${sp.potGold} (town ${sp.potTown}) hpRetreatWithPotion ${sp.potRetreat}` +
+      ` | revive fees ${sp.revFee} (town ${sp.revTown})` +
       ` total ${sim.world.town.gold + hunterGold(sim.world) + escrowNow(sim.world)} townMin ${townGoldMin}` +
       ` | bounty posted ${bl.posted} done ${bl.done} escrow ${bl.escrow} refund ${bl.refund} paid ${bl.paid} kingdom ${bl.kingdom} held ${escrowNow(sim.world)}` +
       ` | build invest ${inv.gold - inv.refund} (import ${inv.imp}) mats ${inv.mats} done ${inv.done} [${levels(sim.world)}]`);
@@ -151,6 +175,7 @@ for (let t = 0; t < ticks; t++) {
     hl.enh = hl.skill = 0;
     tax = 0;
     reqMats = 0;
+    for (const k of Object.keys(sp) as (keyof typeof sp)[]) sp[k] = 0;
   }
 }
 const w = sim.world;
@@ -161,6 +186,9 @@ console.log('events', counts);
 console.log('goal changes', reasons);
 console.log('stats', w.stats, 'town gold', w.town.gold, 'shop items', w.town.shop.length, 'monsters', w.monsters.length);
 console.log('storage', w.town.storage);
+for (const [k, l] of Object.entries(w.town.supply ?? {})) {
+  console.log(`  stock ${k} ${JSON.stringify(l.stock)} job ${l.job ? `${l.job.consumableId} ${Math.ceil(l.job.remainingMs / 1000)}s` : '-'} stockout ${Math.round(l.stockoutMs / 60000)}m`);
+}
 if (plans.length > 0 || journeyLog.length > 0) {
   console.log('journeys');
   for (const l of journeyLog) console.log('  ' + l);
@@ -179,5 +207,5 @@ for (const s of w.town.buildings ?? []) {
 for (const h of w.hunters) {
   const n = h.needs;
   const eq = Object.entries(h.equipment).map(([s, g]) => `${s}:${g!.gearId.split('.').pop()}/${g!.qualityId.slice(2)}+${g!.enhance}`).join(' ');
-  console.log(`${h.id} Lv${h.level} gold ${h.gold} kills ${h.kills} [${eq}] goal ${h.ai.goal ? JSON.stringify(h.ai.goal) : '-'} ${h.ai.phase} hp ${(n.hp / h.stats.hp * 100).toFixed(0)}% sat ${n.satiety.toFixed(0)} mood ${n.mood.toFixed(0)} sta ${n.stamina.toFixed(0)}`);
+  console.log(`${h.id} Lv${h.level} gold ${h.gold} kills ${h.kills} [${eq}] potions ${JSON.stringify(h.potions ?? {})} goal ${h.ai.goal ? JSON.stringify(h.ai.goal) : '-'} ${h.ai.phase} hp ${(n.hp / h.stats.hp * 100).toFixed(0)}% sat ${n.satiety.toFixed(0)} mood ${n.mood.toFixed(0)} sta ${n.stamina.toFixed(0)}`);
 }

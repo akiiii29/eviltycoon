@@ -708,5 +708,40 @@
   "key": "journey.hollowthrone.name",
   "vi": "Ngai Rỗng",
   "en": "Hollow Throne"
+ },
+ {
+  "key": "pot.hp.1.name",
+  "vi": "Thuốc hồi máu nhỏ",
+  "en": "Minor healing draught"
+ },
+ {
+  "key": "pot.hp.2.name",
+  "vi": "Thuốc hồi máu",
+  "en": "Healing draught"
+ },
+ {
+  "key": "pot.hp.3.name",
+  "vi": "Thuốc hồi máu đầm lầy",
+  "en": "Fen healing draught"
+ },
+ {
+  "key": "pot.hp.4.name",
+  "vi": "Thuốc hồi máu tro",
+  "en": "Ember healing draught"
+ },
+ {
+  "key": "pot.hp.5.name",
+  "vi": "Thuốc hồi máu băng",
+  "en": "Frost healing draught"
+ },
+ {
+  "key": "pot.hp.6.name",
+  "vi": "Thuốc hồi máu triều",
+  "en": "Tide healing draught"
+ },
+ {
+  "key": "pot.hp.7.name",
+  "vi": "Thuốc hồi máu hư không",
+  "en": "Void healing draught"
  }
 ]

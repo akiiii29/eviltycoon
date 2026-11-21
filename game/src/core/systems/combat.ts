@@ -5,6 +5,7 @@ import { SpatialHash } from '../spatial';
 import type { System, SystemContext } from '../system';
 import { bagCount, dist, findHunter, findMonster, isAlive, newAiState, type Hunter, type Monster } from '../world';
 import { bountyOnKill } from './bounty';
+import { payReviveFee, reviveDelayMs } from './consumables';
 import { stepTowards } from './movement';
 import { grantKillGold } from './tax';
 
@@ -32,7 +33,8 @@ function buildAggroIndex(ctx: SystemContext): void {
 
 function killHunter(ctx: SystemContext, h: Hunter): void {
   h.needs.hp = 0;
-  h.deadMs = ctx.config.formula.reviveSec * 1000;
+  // Revive fee (TECH_SPEC §5.13): a hunter who cannot pay it in full waits longer.
+  h.deadMs = reviveDelayMs(ctx.config, ctx.world, h);
   h.ai = { ...newAiState(), goal: { type: 'dead' } };
   h.attackCdMs = 0;
   ctx.world.stats.deaths += 1;
@@ -47,7 +49,8 @@ function revive(ctx: SystemContext, h: Hunter): void {
   h.nodeId = sq.id;
   h.needs.hp = hunterStats(ctx.config, h).hp * ctx.config.formula.reviveHpFrac;
   h.ai = newAiState();
-  ctx.events.emit(ctx.world.tick, { type: 'hunterRevived', hunterId: h.id });
+  const paid = payReviveFee(ctx, h);
+  ctx.events.emit(ctx.world.tick, { type: 'hunterRevived', hunterId: h.id, fee: paid.fee, townGold: paid.townGold });
 }
 
 function grantKill(ctx: SystemContext, h: Hunter, m: Monster): void {

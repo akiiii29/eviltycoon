@@ -5,9 +5,10 @@ export type { GearSlot, NeedKey } from './config/types';
 
 /**
  * Bump when the World shape changes and add a migration in save/migrations.ts.
- * v8 = Town buildings (TECH_SPEC §5.12); v9 = journeys (TECH_SPEC §5.11).
+ * v8 = Town buildings (TECH_SPEC §5.12); v9 = journeys (TECH_SPEC §5.11); v10 = reserved (gear/difficulty, parallel branch);
+ * v11 = service supplies, potions, revive fee (TECH_SPEC §5.13).
  */
-export const WORLD_SCHEMA_VERSION = 9;
+export const WORLD_SCHEMA_VERSION = 11;
 
 export type Grade = 'normal' | 'high' | 'highest';
 export type HunterTier = 'normal' | 'rare' | 'superior' | 'heroic' | 'legendary';
@@ -30,7 +31,9 @@ export type Goal =
   /** M2: try to enhance the gear in a slot at the forge. */
   | { type: 'enhance'; slot: GearSlot }
   /** M3: learn/upgrade a skill (gold) or a trait (trait points) at the Academy (re-validated on arrival). */
-  | { type: 'learn'; kind: 'skill' | 'trait'; id: string };
+  | { type: 'learn'; kind: 'skill' | 'trait'; id: string }
+  /** v11: buy HP potions of a tier at the potion seller (re-validated on arrival, TECH_SPEC §5.13). */
+  | { type: 'buyPotion'; consumableId: string };
 
 /** Temporary stat modifier from a buff skill. */
 export interface Buff {
@@ -115,6 +118,14 @@ export interface Hunter {
   deadMs: number;
   kills: number;
   arrivedAtMs: number;
+  /**
+   * v11: potions carried (consumableId → count, at most potionCarryMax in total) and the time until the next one may be
+   * drunk (TECH_SPEC §5.13). Optional so code that builds hunters by hand keeps working; absent = none / ready.
+   */
+  potions?: Record<string, number>;
+  potionCdMs?: number;
+  /** v11: zone of the hunter's last hunt goal (systems/consumables.potionUseSystem), picks its supply/potion tier in town. */
+  lastZoneId?: string;
 }
 
 export interface Monster {
@@ -173,6 +184,17 @@ export interface BuildingState {
   /** 0 while the first construction is running (not usable yet). Upgrades keep the old level working until done. */
   level: number;
   upgrade: BuildingUpgrade | null;
+}
+
+/**
+ * v11: one stock line of a building (systems/supplies.ts, TECH_SPEC §5.13): service servings (`supply:<buildingId>`) or
+ * potions (`potion:<buildingId>`). Stock per recipe id; at most one batch in production.
+ */
+export interface SupplyLine {
+  stock: Record<string, number>;
+  job: { consumableId: string; remainingMs: number } | null;
+  /** Game ms this line spent with an empty stock while its building was working (services only). */
+  stockoutMs: number;
 }
 
 /** v8: the auto-investment's current goal (systems/town.ts): the Trading Post requests its materials. */
@@ -251,6 +273,8 @@ export interface World {
      * absent = config `taxRate`.
      */
     taxRate?: number;
+    /** v11: stock lines by key `supply:<buildingId>` / `potion:<buildingId>` (TECH_SPEC §5.13). */
+    supply: Record<string, SupplyLine>;
   };
   /** Arrays (not maps) so iteration order is stable and deterministic. */
   hunters: Hunter[];
@@ -294,6 +318,21 @@ export interface World {
     journeysFailed: number;
     journeysRecalled: number;
     journeyGold: number;
+    /**
+     * v11 (TECH_SPEC §5.13): supply units produced / served; arrivals turned away by an empty service; game ms of empty
+     * service stock (sum over services); potions produced / bought / drunk, gold hunters paid for them; revive fees paid
+     * and revives that could not pay in full.
+     */
+    supplyProduced: number;
+    supplyUsed: number;
+    serviceStockouts: number;
+    supplyStockoutMs: number;
+    potionsProduced: number;
+    potionsBought: number;
+    potionsUsed: number;
+    potionGold: number;
+    reviveFees: number;
+    reviveBroke: number;
   };
 }
 

@@ -8,7 +8,13 @@ export type SimEvent =
   | { type: 'hit'; tick: number; attackerId: string; targetId: string; damage: number; crit: boolean; evaded: boolean }
   | { type: 'monsterKilled'; tick: number; hunterId: string; monsterId: string; defId: string }
   | { type: 'hunterDied'; tick: number; hunterId: string }
-  | { type: 'hunterRevived'; tick: number; hunterId: string }
+  /** v11: `fee` = revive fee paid, `townGold` = the Town's cut of it (TECH_SPEC §5.13). */
+  | { type: 'hunterRevived'; tick: number; hunterId: string; fee?: number; townGold?: number }
+  /** v11 supplies and potions (TECH_SPEC §5.13). */
+  | { type: 'serviceStockout'; tick: number; hunterId: string; buildingId: string }
+  | { type: 'supplyProduced'; tick: number; buildingId: string; consumableId: string; units: number }
+  | { type: 'potionBought'; tick: number; hunterId: string; consumableId: string; count: number; gold: number; townGold: number }
+  | { type: 'potionUsed'; tick: number; hunterId: string; consumableId: string; hp: number }
   | { type: 'levelUp'; tick: number; hunterId: string; level: number }
   | { type: 'materialsSold'; tick: number; hunterId: string; units: number; gold: number }
   /** Unrequested materials thrown away at the Trading Post (it only buys requested ones). */

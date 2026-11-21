@@ -2,7 +2,7 @@ import type { GameConfig, GearSlot } from '../config/types';
 import { hunterStats } from '../formulas';
 import type { System, SystemContext } from '../system';
 import { isAlive, type GearInstance, type Hunter, type ShopItem, type World } from '../world';
-import { materialDemand, salePrice, surplusBudget, surplusPrice, townFeeShare } from './trading';
+import { materialDemand, salePrice, sellOrder, surplusBudget, surplusPrice, townFeeShare } from './trading';
 import { enhanceBonus } from './town';
 
 /** Gold cost of the next enhance step for this gear, or null when it is already at max (or unknown). */
@@ -34,7 +34,7 @@ function done(h: Hunter): void {
 }
 
 /**
- * Trading Post (GDD §5, material requests). Per material in id order, with demand computed fresh
+ * Trading Post (GDD §5, material requests). Per material (essential supply materials first, then id order), with demand computed fresh
  * (so two hunters in the same tick never fill the same request twice):
  *  - requested units (≤ demand) are sold while town gold lasts, at salePrice; player requests are filled first;
  *  - requested units the town cannot afford yet stay in the bag;
@@ -49,7 +49,8 @@ function doSell(ctx: SystemContext, h: Hunter): void {
   let paid = 0;
   let discarded = 0;
   let budget = surplusBudget(config, world);
-  for (const matId of Object.keys(h.bag).sort()) {
+  // Essential supply materials first (trading.sellOrder), so a short Town treasury still restocks the services.
+  for (const matId of sellOrder(config, world, h.bag)) {
     const have = h.bag[matId]!;
     const wanted = Math.min(have, demand[matId] ?? 0);
     const price = salePrice(config, matId);

@@ -1,7 +1,7 @@
 import { validateTables, type ConfigIssue, type FieldSpec, type TableSpec } from './schema';
 import {
   BUILDING_KINDS, GEAR_SLOTS, MOD_STATS, NEED_KEYS, STAT_KEYS,
-  type BuildingDef, type BuildingPlotDef, type DifficultyDef, type JourneyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
+  type BuildingDef, type BuildingPlotDef, type ConsumableDef, type DifficultyDef, type JourneyDef, type EnhanceDef, type JobDef, type SkillDef, type TraitDef, type FormulaParams, type GameConfig, type GearDef, type GearQualityDef,
   type MapEdge, type MapNode, type MaterialDef, type MonsterDef, type ZoneDef,
 } from './types';
 
@@ -116,6 +116,8 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       studyGoldMul: perLevel({ kind: 'number', min: 0 }),
       surplusPriceMul: perLevel({ kind: 'number', min: 0 }),
       requestCopies: perLevel({ kind: 'int', min: 0 }),
+      supplyCap: perLevel({ kind: 'int', min: 0 }),
+      potionCap: perLevel({ kind: 'int', min: 0 }),
     },
   },
   building_plot: {
@@ -283,6 +285,26 @@ export const TABLE_SPECS: Record<string, TableSpec> = {
       failRewardFrac: { kind: 'number', min: 0, max: 1 },
     },
   },
+  // Supplies and potions (TECH_SPEC §5.13).
+  consumable: {
+    idField: 'id',
+    row: {
+      id: { kind: 'string', nonEmpty: true },
+      nameKey: { kind: 'ref', table: 'loc', optional: true },
+      kind: { kind: 'enum', values: ['supply', 'potion'] },
+      buildingId: { kind: 'ref', table: 'building' },
+      minLevel: { kind: 'int', min: 1 },
+      materials: {
+        kind: 'array',
+        minLength: 1,
+        of: { kind: 'object', fields: { materialId: { kind: 'ref', table: 'material' }, count: { kind: 'int', min: 1 } } },
+      },
+      units: { kind: 'int', min: 1 },
+      craftSec: { kind: 'number', min: 0.1 },
+      heal: { kind: 'number', min: 0.01, max: 1, optional: true },
+      price: { kind: 'int', min: 0, optional: true },
+    },
+  },
 };
 
 /** Formula keys that must exist (other numeric keys are allowed for tuning). */
@@ -320,6 +342,9 @@ export const REQUIRED_FORMULA_KEYS: readonly (keyof FormulaParams)[] = [
   'zoneCrowdMul', 'zoneCrowdMinRho', 'retreatBurstMul', 'defSoftKnee', 'journeyRefKills',
   // Economy pass 2 (TECH_SPEC §5.4, §5.8, §5.12).
   'enhanceMinNetFrac', 'upgradeSavingsConcreteFrac', 'enhanceVsUpgradeMul', 'investTownHallLeadLevels', 'investUrgentImportSec', 'investValueService', 'investValueShop', 'investValueForge', 'investValueAcademy', 'investValueTradingPost', 'investValueStorehouse', 'investValueTownHall', 'investValueCraft', 'investReadyMul',
+  // Supplies, potions, revive fee (TECH_SPEC §5.13).
+  'supplyRequestBatches', 'potionTownHallLevel', 'potionCarryMax', 'potionPriceLevelPct', 'potionSpendFrac', 'potionBuyScore',
+  'potionUseHpFrac', 'potionCooldownSec', 'reviveFeeBase', 'reviveFeePerLevel', 'reviveBrokeDelayMul',
 ];
 
 export class ConfigError extends Error {
@@ -462,6 +487,18 @@ export function validateConfig(raw: RawConfig): ConfigIssue[] {
     range('investValueTownHall', 0, 1000);
     range('investValueCraft', 0, 1000);
     range('investReadyMul', 0, 1000);
+    // Supplies, potions, revive fee (TECH_SPEC §5.13).
+    range('supplyRequestBatches', 0, 100);
+    range('potionTownHallLevel', 1, 100);
+    range('potionCarryMax', 0, 100);
+    range('potionPriceLevelPct', 0, 100);
+    range('potionSpendFrac', 0, 1);
+    range('potionBuyScore', 0, 10);
+    range('potionUseHpFrac', 0, 0.95);
+    range('potionCooldownSec', 0, 3600);
+    range('reviveFeeBase', 0, 1e6);
+    range('reviveFeePerLevel', 0, 1e6);
+    range('reviveBrokeDelayMul', 1, 100);
   }
 
   const grades = raw.stat_grade;
@@ -529,6 +566,28 @@ function validateMap(raw: RawConfig): ConfigIssue[] {
       issues.push({ path: `building[${i}]`, message: `needs a Town Hall level above its max level ${th.maxLevel}` });
     }
   });
+  // Stock recipes (TECH_SPEC §5.13): supplies belong to a service with supplyCap, potions to the building with potionCap
+  // (at most one) and need heal + price; every stock line needs a tier at minLevel 1 so any hunter level has one.
+  const consumables = raw.consumable as ConsumableDef[];
+  const typeById = new Map(buildings.map((b) => [b.id, b]));
+  const lines = new Map<string, number>();
+  consumables.forEach((c, i) => {
+    const b = typeById.get(c.buildingId);
+    if (!b) return;
+    if (c.kind === 'supply' && (b.kind !== 'service' || !b.supplyCap)) issues.push({ path: `consumable[${i}].buildingId`, message: 'supply rows need a service building with supplyCap' });
+    if (c.kind === 'potion') {
+      if (!b.potionCap) issues.push({ path: `consumable[${i}].buildingId`, message: 'potion rows need a building with potionCap' });
+      if (c.heal === undefined || c.price === undefined) issues.push({ path: `consumable[${i}]`, message: 'potion rows need heal and price' });
+    }
+    const key = `${c.kind}:${c.buildingId}`;
+    lines.set(key, Math.min(lines.get(key) ?? Infinity, c.minLevel));
+  });
+  for (const [key, lv] of lines) if (lv !== 1) issues.push({ path: 'consumable', message: `stock line "${key}" needs a row with minLevel 1` });
+  buildings.forEach((b, i) => {
+    if (b.supplyCap && !lines.has(`supply:${b.id}`)) issues.push({ path: `building[${i}].supplyCap`, message: 'no supply recipe for this building' });
+    if (b.potionCap && !lines.has(`potion:${b.id}`)) issues.push({ path: `building[${i}].potionCap`, message: 'no potion recipe for this building' });
+  });
+  if (buildings.filter((b) => b.potionCap).length > 1) issues.push({ path: 'building', message: 'at most one building may sell potions (potionCap)' });
   for (const kind of ['tradingPost', 'shop', 'forge', 'academy', 'townHall'] as const) {
     const n = buildings.filter((b) => b.kind === kind).length;
     if (n !== 1) issues.push({ path: 'building', message: `need exactly one "${kind}" building, got ${n}` });
@@ -629,6 +688,7 @@ export function loadConfig(raw: RawConfig): GameConfig {
   const traits = raw.trait as TraitDef[];
   const difficulties = [...(raw.difficulty as DifficultyDef[])].sort((a, b) => a.order - b.order);
   const journeys = raw.journey as JourneyDef[];
+  const consumables = raw.consumable as ConsumableDef[];
   const jobsByClass = new Map<string, JobDef[]>(classes.map((c) => [c.id, jobs.filter((j) => j.classId === c.id).sort((a, b) => a.tier - b.tier)]));
   return {
     version: (raw.meta as { version: string }).version,
@@ -651,6 +711,7 @@ export function loadConfig(raw: RawConfig): GameConfig {
     traits,
     difficulties,
     journeys,
+    consumables,
     loc,
     index: {
       classes: new Map(classes.map((c) => [c.id, c])),
@@ -675,6 +736,8 @@ export function loadConfig(raw: RawConfig): GameConfig {
       traits: new Map(traits.map((x) => [x.id, x])),
       difficulties: new Map(difficulties.map((d) => [d.id, d])),
       journeys: new Map(journeys.map((j) => [j.id, j])),
+      consumables: new Map(consumables.map((c) => [c.id, c])),
+      potionSeller: buildings.find((b) => b.potionCap)?.id ?? null,
       squareNode: nodes.find((n) => n.kind === 'square')!.id,
       zoneNodes,
     },

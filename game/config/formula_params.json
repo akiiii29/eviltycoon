@@ -175,5 +175,16 @@
  "investValueStorehouse": 0.5,
  "investValueTownHall": 0.3,
  "investValueCraft": 0.2,
- "investReadyMul": 2
+ "investReadyMul": 2,
+ "supplyRequestBatches": 3,
+ "potionTownHallLevel": 2,
+ "potionCarryMax": 2,
+ "potionPriceLevelPct": 2,
+ "potionSpendFrac": 0.2,
+ "potionBuyScore": 1.05,
+ "potionUseHpFrac": 0.5,
+ "potionCooldownSec": 8,
+ "reviveFeeBase": 20,
+ "reviveFeePerLevel": 15,
+ "reviveBrokeDelayMul": 4
 }

@@ -51,6 +51,8 @@ export function rollHunter(config: GameConfig, rng: Rng, id: string, nodeId: str
     buffs: [],
     equipment: {},
     bag: {},
+    potions: {},
+    potionCdMs: 0,
     level: 1,
     exp: 0,
     reincarnation: 0,

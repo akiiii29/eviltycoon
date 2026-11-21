@@ -9,6 +9,7 @@ import { arrivalsSystem } from './systems/arrivals';
 import { academySystem } from './systems/academy';
 import { bountySystem } from './systems/bounty';
 import { combatSystem } from './systems/combat';
+import { consumablesSystem, potionUseSystem } from './systems/consumables';
 import { craftingSystem } from './systems/crafting';
 import { journeySystem } from './systems/journey';
 import { economySystem } from './systems/economy';
@@ -18,6 +19,7 @@ import { progressionSystem } from './systems/progression';
 import { servicesSystem } from './systems/services';
 import { skillsSystem } from './systems/skills';
 import { spawnSystem } from './systems/spawn';
+import { initialSupply, suppliesSystem } from './systems/supplies';
 import { initialBuildings, townSystem } from './systems/town';
 import { WORLD_SCHEMA_VERSION, type World } from './world';
 
@@ -28,7 +30,10 @@ const MAX_TICKS_PER_ADVANCE = 600;
 /**
  * Fixed per-tick order (TECH_SPEC §3.2; commands are applied first in `step()`). `urgentBackstop` re-runs the AI's
  * emergency check after combat/skills; the Trading Post lives inside `economy`. `town` (constructions, auto-investment) runs
- * after crafting and before `bounty`, so investment spends spare Town gold before the auto-bounty looks at it. New systems go here and in §3.2.
+ * after crafting and before `bounty`, so investment spends spare Town gold before the auto-bounty looks at it. `potionUse` drinks
+ * between skills and the backstop (a potion answers the hit before a retreat fires); `consumables` sells potions at the door;
+ * `supplies` produces service/potion stock after the Trading Post and before crafting (essential materials first,
+ * TECH_SPEC §5.13). New systems go here and in §3.2.
  */
 export const DEFAULT_SYSTEMS: readonly System[] = [
   arrivalsSystem,
@@ -36,9 +41,12 @@ export const DEFAULT_SYSTEMS: readonly System[] = [
   movementSystem,
   combatSystem,
   skillsSystem,
+  potionUseSystem,
   urgentBackstopSystem,
   servicesSystem,
   economySystem,
+  consumablesSystem,
+  suppliesSystem,
   academySystem,
   craftingSystem,
   townSystem,
@@ -74,12 +82,13 @@ export function createWorld(config: GameConfig, seed: number): World {
       buildings: initialBuildings(config),
       autoInvest: true,
       investPlan: null,
+      supply: initialSupply(config),
     },
     hunters: [],
     monsters: [],
     journeys: [],
     zones: {},
-    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0 },
+    stats: { kills: 0, deaths: 0, serviceUses: 0, materialsSold: 0, crafted: 0, gearBought: 0, enhanceTries: 0, enhanceSuccess: 0, skillCasts: 0, jobChanges: 0, reincarnations: 0, learned: 0, materialsDiscarded: 0, gearScrapped: 0, bountiesPosted: 0, bountiesCompleted: 0, bountyGoldPaid: 0, bountyKingdomGold: 0, buildingsBuilt: 0, buildingUpgrades: 0, investGold: 0, investMaterials: 0, investImportGold: 0, journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, supplyProduced: 0, supplyUsed: 0, serviceStockouts: 0, supplyStockoutMs: 0, potionsProduced: 0, potionsBought: 0, potionsUsed: 0, potionGold: 0, reviveFees: 0, reviveBroke: 0 },
   };
 }
 

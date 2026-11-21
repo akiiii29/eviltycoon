@@ -7,7 +7,9 @@ import {
 import { personalityFactor } from '../hunterFactory';
 import type { NavGraph } from '../pathfinding';
 import { canLearnTrait, nextSkillStudy } from '../systems/academy';
+import { bestPotionPurchase } from '../systems/consumables';
 import { servicePrice } from '../systems/services';
+import { serviceInStock } from '../systems/supplies';
 import { buildingLevel, enhanceBonus, gearCraftable } from '../systems/town';
 import { bountyZoneMul } from '../systems/bounty';
 import { bagHasSellable, bagUnrequested, materialDemand, requestZoneMul, type Demand } from '../systems/trading';
@@ -242,6 +244,29 @@ export function shouldRetreatBeforeNextKill(config: GameConfig, nav: NavGraph, w
   return hp - kill < line;
 }
 
+/**
+ * HP fraction under which a hunter carrying potions drinks one in the field (TECH_SPEC §5.13; 0 in town): the highest of
+ *  - potionUseHpFrac,
+ *  - the kill-boundary line max(HP urgent threshold, retreatHpFloor) + one kill (shouldRetreatBeforeNextKill),
+ *  - the middle of the field HP needs band (needsOk's HP term at 0.5, about where returnTown overtakes hunt),
+ * capped at 0.95. The urgent backstop line (max(threshold, floor)) is below the kill-boundary line, so a potion is drunk
+ * before any retreat rule fires; the retreat rules themselves are unchanged.
+ */
+export function potionDrinkLine(config: GameConfig, nav: NavGraph, world: World, h: Hunter): number {
+  const f = config.formula;
+  const zone = currentZone(nav, h);
+  if (!zone) return 0;
+  const c = dangerCache(config, h, world);
+  const floor = retreatHpFloor(config, nav, world, h, undefined, c);
+  const k = personalityFactor(config, h, 'urgent.hp');
+  const base = urgentFrac(f, 'hp') * k;
+  const shift = Math.max(0, floor - base);
+  const u = base + shift;
+  const soft = Math.max(f.softNeedFrac * Math.min(k, 1), base + 0.01) + shift;
+  const kill = Math.max(urgentThreshold(config, h, 'hp'), floor) + killCostFrac(config, h, zone, world.town.difficulty, c);
+  return Math.min(0.95, Math.max(f.potionUseHpFrac ?? 0, kill, u + 0.5 * (soft - u)));
+}
+
 /** Zone the hunter is currently standing in, or null when in town. */
 export function currentZone(nav: NavGraph, h: Hunter): string | null {
   return nav.node(h.nodeId).zoneId ?? null;
@@ -254,6 +279,7 @@ export function sameGoal(a: Goal | null, b: Goal | null): boolean {
   if (a.type === 'shop' && b.type === 'shop') return a.itemUid === b.itemUid;
   if (a.type === 'enhance' && b.type === 'enhance') return a.slot === b.slot;
   if (a.type === 'learn' && b.type === 'learn') return a.kind === b.kind && a.id === b.id;
+  if (a.type === 'buyPotion' && b.type === 'buyPotion') return a.consumableId === b.consumableId;
   return true;
 }
 
@@ -545,6 +571,7 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
       if (b.kind !== 'service' || !b.need || b.price === undefined) continue;
       const lv = buildingLevel(world, b.id);
       if (lv < 1) continue; // not built yet
+      if (!serviceInStock(world, b)) continue; // out of supplies (TECH_SPEC §5.13): rest instead
       const frac = needFrac(config, h, b.need);
       if (frac >= f.serviceFullFrac || h.gold < servicePrice(config, h, b, lv)) continue;
       const base = frac < f.softNeedFrac ? f.serviceLowBase + f.serviceLowWeight * (1 - frac) : f.serviceWeight * (1 - frac);
@@ -571,6 +598,12 @@ export function scoreGoals(config: GameConfig, nav: NavGraph, world: World, h: H
     if (learn) {
       const s = (learn.kind === 'skill' ? f.learnSkillScore : f.learnTraitScore) * econMul;
       out.push({ goal: { type: 'learn', kind: learn.kind, id: learn.id }, score: s, label: `learn ${learn.kind} ${learn.id}` });
+    }
+
+    // Potions (TECH_SPEC §5.13): restock the pack at the seller, scored like an economy goal.
+    const potion = bestPotionPurchase(config, world, h);
+    if (potion) {
+      out.push({ goal: { type: 'buyPotion', consumableId: potion.consumable.id }, score: f.potionBuyScore * econMul, label: `buyPotion ${potion.consumable.id}` });
     }
 
     // Idling in town also recovers needs slowly for free, so a tired hunter who cannot pay rests instead of hunting.

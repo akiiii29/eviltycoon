@@ -449,6 +449,7 @@ export class DebugOverlay {
       }
       case 'enhance': return `cường hóa ${slotName(config, g.slot)}`;
       case 'learn': return `học ${g.kind === 'skill' ? skillName(config, g.id) : traitName(config, g.id)}`;
+      case 'buyPotion': return `mua ${name(config, config.index.consumables.get(g.consumableId)?.nameKey, g.consumableId)}`;
       default: return 'dạo';
     }
   }

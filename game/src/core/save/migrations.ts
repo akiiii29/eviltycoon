@@ -1,4 +1,5 @@
 import type { GameConfig } from '../config/types';
+import { initialSupply } from '../systems/supplies';
 
 /**
  * MIGRATIONS[n] upgrades a world from schema v(n) to v(n+1).
@@ -150,6 +151,33 @@ export const MIGRATIONS: Record<number, Migration> = {
       ...w,
       journeys: Array.isArray(w.journeys) ? w.journeys : [],
       stats: { journeysStarted: 0, journeysSucceeded: 0, journeysFailed: 0, journeysRecalled: 0, journeyGold: 0, ...stats },
+    };
+  },
+  // v9 → v10: RESERVED for the gear/difficulty branch (identity here so the chain reaches v11). The lead renumbers on merge.
+  9: (w) => w,
+  // v10 → v11 (supplies, potions, revive fee — TECH_SPEC §5.13): every supply line full at the building's level with the tier
+  // of the median hunter level (the save keeps playing as before supplies existed), potion lines empty, hunters (also those
+  // away on a journey) carry no potions, new stats = 0. Idempotent: existing fields win.
+  10: (w, config) => {
+    const town = (w.town ?? {}) as Record<string, any>;
+    const stats = (w.stats ?? {}) as Record<string, unknown>;
+    const hunters = (Array.isArray(w.hunters) ? w.hunters : []) as Record<string, any>[];
+    const journeys = (Array.isArray(w.journeys) ? w.journeys : []) as Record<string, any>[];
+    const addPotions = (h: Record<string, any>) => ({ potions: {}, potionCdMs: 0, ...h });
+    const levels = hunters.map((h) => Number(h.level) || 1).sort((a, b) => a - b);
+    const ref = levels.length ? levels[Math.floor((levels.length - 1) / 2)]! : 1;
+    const built = new Map<string, number>();
+    for (const s of (Array.isArray(town.buildings) ? town.buildings : []) as Record<string, any>[]) built.set(String(s.buildingId), Number(s.level) || 0);
+    const supply = initialSupply(config, (id) => Math.max(1, built.get(id) ?? 1), ref);
+    return {
+      ...w,
+      town: { ...town, supply: { ...supply, ...(town.supply ?? {}) } },
+      hunters: hunters.map(addPotions),
+      journeys: journeys.map((j) => ({ ...j, hunters: (Array.isArray(j.hunters) ? j.hunters : []).map(addPotions) })),
+      stats: {
+        supplyProduced: 0, supplyUsed: 0, serviceStockouts: 0, supplyStockoutMs: 0, potionsProduced: 0, potionsBought: 0,
+        potionsUsed: 0, potionGold: 0, reviveFees: 0, reviveBroke: 0, ...stats,
+      },
     };
   },
 };
